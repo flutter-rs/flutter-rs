@@ -1,0 +1,9 @@
+[package]
+name = "flutter-download"
+version = "0.1.0"
+authors = ["Bach <gliheng@foxmail.com>"]
+
+[dependencies]
+curl = { version = "0.4.19", features = ['http2'] }
+dirs = "1.0.4"
+unzip = "0.1.0"

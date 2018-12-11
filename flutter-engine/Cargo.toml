@@ -1,0 +1,16 @@
+[package]
+name = "flutter"
+description = "flutter engine embedder in rust"
+version = "0.1.0"
+authors = ["Bach <gliheng@foxmail.com>"]
+keywords = ["flutter", "GUI"]
+
+[dependencies]
+glfw = "0.25.0"
+libc = "0.2.44"
+lazy_static = "1.2.0"
+serde = "1.0.81"
+serde_derive = "1.0.81"
+serde_json = "1.0.33"
+log = "0.4.6"
+env_logger = "0.6.0"

@@ -1,0 +1,26 @@
+[package]
+name = "flutter-runner"
+version = "0.1.0"
+authors = ["Bach <gliheng@foxmail.com>"]
+publish = false
+edition = "2018"
+
+[dependencies]
+log = "0.4.6"
+env_logger = "0.6.0"
+flutter = { path = "./flutter-engine" }
+
+[package.metadata.flutter]
+version = "5c8147450db52b81232c138b9f9a65a8f9c61862"
+
+[build-dependencies]
+flutter-download = { path = "./flutter-download" }
+cargo_toml = "0.4.0"
+serde = "1.0.81"
+serde_derive = "1.0.81"
+
+[workspace]
+members = [
+    "flutter-engine",
+    "flutter-download",
+]

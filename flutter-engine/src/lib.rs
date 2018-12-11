@@ -187,13 +187,17 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
         }
         glfw::WindowEvent::FramebufferSize(w, h) => {
             if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                engine.send_window_metrics_change(w as usize, h as usize);
+                let w_size = window.get_size();
+                engine.send_window_metrics_change(w_size, (w, h));
             }
         },
         glfw::WindowEvent::CursorPos(x, y) => {
             if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
                 if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
-                    engine.send_cursor_position_at_phase(x, y, ffi::FlutterPointerPhase::Move);
+                    let w_size = window.get_size();
+                    let size = window.get_framebuffer_size();
+                    let pixel_ratio = size.0 as f64 / w_size.0 as f64;
+                    engine.send_cursor_position_at_phase(x * pixel_ratio, y * pixel_ratio, ffi::FlutterPointerPhase::Move);
                 }
             }
         },
@@ -205,8 +209,12 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 } else {
                     ffi::FlutterPointerPhase::Up
                 };
+                let w_size = window.get_size();
+                let size = window.get_framebuffer_size();
+                let pixel_ratio = size.0 as f64 / w_size.0 as f64;
+
                 if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                    engine.send_cursor_position_at_phase(pos.0, pos.1, phase);
+                    engine.send_cursor_position_at_phase(pos.0 * pixel_ratio, pos.1 * pixel_ratio, phase);
                 }
             }
         },
@@ -222,12 +230,12 @@ pub struct FlutterEngineInner {
 }
 
 impl FlutterEngineInner {
-    fn send_window_metrics_change(&self, w: usize, h: usize) {
+    fn send_window_metrics_change(&self, w_size: (i32, i32), size: (i32, i32)) {
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
-            width: w,
-            height: h,
-            pixel_ratio: 1.0,
+            width: size.0 as usize,
+            height: size.1 as usize,
+            pixel_ratio: size.0 as f64/ w_size.0 as f64,
         };
         unsafe {
             FlutterEngineSendWindowMetricsEvent(self.ptr, &evt as *const FlutterWindowMetricsEvent);
@@ -358,8 +366,9 @@ impl FlutterEngine {
             let ret = FlutterEngineRun(1, &self.engine.config, &self.engine.args, w as *const c_void, &self.engine.ptr as *const *const ffi::FlutterEngine);
             assert!(ret == FlutterResult::Success);
 
+            let w_size = window.get_size();
             let size = window.get_framebuffer_size();
-            self.engine.send_window_metrics_change(size.0 as usize, size.1 as usize);
+            self.engine.send_window_metrics_change(w_size, size);
         }
 
         {

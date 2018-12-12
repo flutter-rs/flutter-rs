@@ -135,7 +135,7 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                         } else {
                             // TODO
                             // why add_char plus newline action?
-                            p.add_char('\n');
+                            p.add_chars("\n");
                             p.perform_action("newline");
                         }
                     });
@@ -171,18 +171,43 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                     });
                 },
                 Key::A => {
-                    if modifiers.contains(Modifiers::Control) {
+                    if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Super) || modifiers.contains(Modifiers::Control) {
                         FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
                             p.select_all();
                         });
                     }
-                }
+                },
+                Key::X => {
+                    if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Super) || modifiers.contains(Modifiers::Control) {
+                        FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                            let s = p.get_selected_text();
+                            p.remove_selected_text();
+                            window.set_clipboard_string(&s);
+                        });
+                    }
+                },
+                Key::C => {
+                    if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Super) || modifiers.contains(Modifiers::Control) {
+                        FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                            let s = p.get_selected_text();
+                            window.set_clipboard_string(&s);
+                        });
+                    }
+                },
+                Key::V => {
+                    if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Super) || modifiers.contains(Modifiers::Control) {
+                        FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                            let s = window.get_clipboard_string();
+                            p.add_chars(&s);
+                        });
+                    }
+                },
                 _ => (),
             }
         }
         glfw::WindowEvent::Char(c) => {
             FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
-                p.add_char(c);
+                p.add_chars(&c.to_string());
             });
         }
         glfw::WindowEvent::FramebufferSize(w, h) => {
@@ -410,7 +435,7 @@ impl FlutterEngine {
         }
     }
 
-    fn with_plugin<T, F: Fn(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, cbk: F) {
+    fn with_plugin<T, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
         if let Some(engine) = FlutterEngine::get_engine(window_ptr) {
             if let Some(plugin) = engine.plugins.borrow().get_plugin(channel) {
                 unsafe {

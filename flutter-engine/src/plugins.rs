@@ -130,15 +130,15 @@ impl TextInputPlugin {
         };
         return (lo, hi);
     }
-    pub fn add_char(&self, c: char) {
+    pub fn add_chars(&self, c: &str) {
         self.remove_selected_text();
 
         self.with_state(|s: &mut TextEditingState| {
             let mut text = String::from(s.text.substring(0, s.selection_base as usize));
-            text.push(c);
+            text.push_str(c);
             text.push_str(&s.text.substring(s.selection_base as usize, s.text.count()));
             s.text = text;
-            s.selection_base += 1;
+            s.selection_base += c.chars().count() as i64;
             s.selection_extent = s.selection_base;
         });
         self.notify_changes();
@@ -154,21 +154,23 @@ impl TextInputPlugin {
     /// remove_selected_text do nothing if no text is selected
     /// return true if the state has been updated
     pub fn remove_selected_text(&self) -> bool {
+        let mut ret = false;
         if let Some(s) = &mut *self.editing_state.borrow_mut() {
-            if s.selection_base == s.selection_extent {
-                return false;
+            if s.selection_base != s.selection_extent {
+                let (lo, hi) = self.get_lo_and_hi_idx(s);
+                s.text = String::from(s.text.substring(0, lo as usize))
+                    + &s.text.substring(hi as usize, s.text.count());
+                s.selection_base = lo;
+                s.selection_extent = lo;
+                s.selection_is_directional = false;
+                ret = true;
             }
-
-            let (lo, hi) = self.get_lo_and_hi_idx(s);
-            s.text = String::from(s.text.substring(0, lo as usize))
-                + &s.text.substring(hi as usize, s.text.count());
-            s.selection_base = lo;
-            s.selection_extent = lo;
-            s.selection_is_directional = false;
-            return true;
         }
-    
-        false
+        if ret {
+            self.notify_changes();
+        }
+
+        ret
     }
 
     /// Delete char to the left of caret
@@ -183,8 +185,8 @@ impl TextInputPlugin {
                         + &s.text.substring(s.selection_extent as usize + 1, s.text.count());
                 }
             });
+            self.notify_changes();
         }
-        self.notify_changes();
     }
     /// Delete char to the right of caret
     pub fn delete(&self) {
@@ -197,8 +199,8 @@ impl TextInputPlugin {
                         + &s.text.substring(s.selection_extent as usize + 1, s.text.count());
                 }
             });
+            self.notify_changes();
         }
-        self.notify_changes();
     }
     pub fn move_cursor_left(&self, modifiers: Modifiers) {
         self.with_state(|s: &mut TextEditingState| {
@@ -260,7 +262,19 @@ impl TextInputPlugin {
             s.selection_extent = s.text.count() as i64;
         });
     }
-    
+
+    pub fn get_selected_text(&self) -> String {
+        if let Some(s) = &mut *self.editing_state.borrow_mut() {
+            if s.selection_base == s.selection_extent {
+                return "".to_string();
+            }
+
+            let (lo, hi) = self.get_lo_and_hi_idx(s);
+            s.text.substring(lo as usize, hi as usize).to_owned()
+        } else {
+            return "".to_string();
+        }
+    }
 
     pub fn perform_action(&self, action: &str) {
         let engine = self.engine.upgrade().unwrap();

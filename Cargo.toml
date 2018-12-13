@@ -7,13 +7,16 @@ publish = false
 edition = "2018"
 license = "MIT"
 
+[package.metadata.flutter]
+version = "5c8147450db52b81232c138b9f9a65a8f9c61862"
+
 [dependencies]
 log = "0.4.6"
 env_logger = "0.6.0"
 flutter = { path = "./flutter-engine" }
 
-[package.metadata.flutter]
-version = "5c8147450db52b81232c138b9f9a65a8f9c61862"
+[target.'cfg(macos)'.dependencies]
+core-foundation = "0.6.3"
 
 [build-dependencies]
 flutter-download = { path = "./flutter-download" }

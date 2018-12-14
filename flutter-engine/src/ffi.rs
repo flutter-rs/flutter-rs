@@ -67,6 +67,7 @@ pub struct FlutterPointerEvent {
     pub y: f64,
 }
 
+#[derive(Debug)]
 pub enum FlutterPlatformMessageResponseHandle {}
 
 #[repr(C)]

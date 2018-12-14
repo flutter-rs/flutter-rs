@@ -183,13 +183,13 @@ impl TextInputPlugin {
 
     pub fn perform_action(&self, action: &str) {
         let engine = self.engine.upgrade().unwrap();
-        engine.send_platform_message(PlatformMessage {
+        engine.send_platform_message(&PlatformMessage {
             channel: String::from("flutter/textinput"),
             message: Message {
                 method: String::from("TextInputClient.performAction"),
                 args: json!([self.client_id, "TextInputAction.".to_owned() + action]),
             },
-            response_handle: None, // TODO
+            response_handle: None,
         });
     }
 }
@@ -227,13 +227,13 @@ impl Plugin for TextInputPlugin {
         let engine = self.engine.upgrade().unwrap();
         self.with_state(|s: &mut TextEditingState| {
             let args = json!([self.client_id, s]);
-            engine.send_platform_message(PlatformMessage {
+            engine.send_platform_message(&PlatformMessage {
                 channel: String::from("flutter/textinput"),
                 message: Message {
                     method: String::from("TextInputClient.updateEditingState"),
                     args: args,
                 },
-                response_handle: None, // TODO
+                response_handle: None,
             });
         });
     }

@@ -1,7 +1,8 @@
 use serde_json::Value;
 use super::{ffi, FlutterEngineInner};
 use std::{
-    mem, ptr::{null},
+    ptr::null,
+    mem,
     sync::Weak,
     collections::HashMap,
     ffi::CString,
@@ -57,27 +58,32 @@ pub struct Message {
 pub struct PlatformMessage {
     pub channel: String,
     pub message: Message,
-    pub response_handle: Option<i32>, //TODO
+    pub response_handle: Option<&'static ffi::FlutterPlatformMessageResponseHandle>,
 }
 
-impl Into<ffi::FlutterPlatformMessage> for PlatformMessage {
+impl Into<ffi::FlutterPlatformMessage> for &PlatformMessage {
     fn into(self) -> ffi::FlutterPlatformMessage {
         let s = serde_json::to_string(&self.message).unwrap();
-        let channel = CString::new(self.channel).unwrap();
+        let channel = CString::new(self.channel.to_owned()).unwrap();
         let message = s.into_bytes();
         let message_ptr = message.as_ptr();
         let message_len = message.len();
 
         mem::forget(message);
-        // must manually clean up FlutterPlatformMessage
+        // TODO: must manually clean up FlutterPlatformMessage
+
+        let response_handle = if let Some(h) = self.response_handle {
+            h as *const ffi::FlutterPlatformMessageResponseHandle
+        } else {
+            null()
+        };
 
         ffi::FlutterPlatformMessage {
             struct_size: mem::size_of::<ffi::FlutterPlatformMessage>(),
             channel: channel.into_raw(),
             message: message_ptr,
             message_size: message_len,
-            response_handle: null()
-            // TODO: self.response_handle as *const ffi::FlutterPlatformMessageResponseHandle,
+            response_handle,
         }            
     }
 }

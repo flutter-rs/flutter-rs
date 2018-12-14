@@ -105,11 +105,16 @@ fn into_platform_message(ptr: *const FlutterPlatformMessage) -> Result<PlatformM
         let msg = &*ptr;
         let channel = CStr::from_ptr(msg.channel);
         let s = std::str::from_utf8_unchecked(slice::from_raw_parts(msg.message, msg.message_size));
+        let response_handle = if msg.response_handle == null() {
+            None
+        } else {
+            Some(&*msg.response_handle)
+        };
         serde_json::from_str::<Message>(&s).map(|message| {
             PlatformMessage {
                 channel: channel.to_string_lossy().into_owned(),
                 message: message,
-                response_handle: if msg.response_handle == null() { None } else { Some(10) } // TODO fix this handle
+                response_handle,
             }
         })        
     }
@@ -286,7 +291,7 @@ impl FlutterEngineInner {
         }
     }
 
-    fn send_platform_message(&self, message: PlatformMessage) {
+    fn send_platform_message(&self, message: &PlatformMessage) {
         trace!("Sending message {:?}", message);
         let mut msg: FlutterPlatformMessage = message.into();
         unsafe {
@@ -299,8 +304,17 @@ impl FlutterEngineInner {
         msg.drop();
     }
 
-    fn send_platform_message_response(&self) {
-
+    fn send_platform_message_response(&self, message: &PlatformMessage, bytes: &[u8]) {
+        trace!("Sending message response {:?}", message);
+        let msg: FlutterPlatformMessage = message.into();
+        unsafe {
+            ffi::FlutterEngineSendPlatformMessageResponse(
+                self.ptr,
+                msg.response_handle,
+                bytes as *const [u8] as *const _,
+                bytes.len(),
+            );
+        }
     }
 
     fn handle_platform_msg(&self, msg: PlatformMessage, window: &mut glfw::Window) {

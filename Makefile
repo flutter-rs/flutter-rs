@@ -1,4 +1,4 @@
-build_mac_app:
-	./scripts/build_mac_app.py
+build_mac:
+	./scripts/build.py mac
 
-.PHONY: build_mac_app
+.PHONY: build_mac

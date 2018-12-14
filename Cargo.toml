@@ -15,7 +15,7 @@ log = "0.4.6"
 env_logger = "0.6.0"
 flutter = { path = "./flutter-engine" }
 
-[target.'cfg(macos)'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.6.3"
 
 [build-dependencies]

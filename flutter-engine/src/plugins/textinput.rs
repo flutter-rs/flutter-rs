@@ -1,107 +1,12 @@
-use serde_json::Value;
 use std::cell::RefCell;
-use super::{ffi, FlutterEngineInner};
 use std::{
-    mem, ptr::{null},
     sync::{Arc, Weak},
-    collections::HashMap,
-    ffi::CString,
 };
 use glfw::{Modifiers};
-use utils::StringUtils;
-
-pub struct PluginRegistry {
-    map: HashMap<String, Vec<Box<dyn Plugin>>>,
-    engine: Weak<FlutterEngineInner>,
-}
-
-impl PluginRegistry {
-    pub fn new() -> Self {
-        PluginRegistry {
-            map: HashMap::new(),
-            engine: Weak::new(),
-        }
-    }
-    pub fn set_engine(&mut self, engine: Weak<FlutterEngineInner>) {
-        self.engine = engine;
-    }
-    pub fn add_plugin(&mut self, plugin: Box<dyn Plugin>) {
-        let r = self.map.entry(plugin.get_channel()).or_insert_with(|| Vec::new());
-        r.push(plugin);
-    }
-    pub fn handle(&mut self, msg: PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window) {
-        for (channel, plugin) in &mut self.map {
-            if channel == &msg.channel {
-                for h in plugin {
-                    h.handle(&msg, engine, window);
-                }
-            }
-        }
-    }
-    pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
-        if let Some(v) = self.map.get(channel) {
-            Some(&v[0])
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Message {
-    pub method: String,
-    pub args: Value,
-}
-
-#[derive(Debug)]
-pub struct PlatformMessage {
-    pub channel: String,
-    pub message: Message,
-    pub response_handle: Option<i32>, //TODO
-}
-
-impl Into<ffi::FlutterPlatformMessage> for PlatformMessage {
-    fn into(self) -> ffi::FlutterPlatformMessage {
-        let s = serde_json::to_string(&self.message).unwrap();
-        let channel = CString::new(self.channel).unwrap();
-        let message = s.into_bytes();
-        let message_ptr = message.as_ptr();
-        let message_len = message.len();
-
-        mem::forget(message);
-        // must manually clean up FlutterPlatformMessage
-
-        ffi::FlutterPlatformMessage {
-            struct_size: mem::size_of::<ffi::FlutterPlatformMessage>(),
-            channel: channel.into_raw(),
-            message: message_ptr,
-            message_size: message_len,
-            response_handle: null()
-            // TODO: self.response_handle as *const ffi::FlutterPlatformMessageResponseHandle,
-        }            
-    }
-}
-
-pub trait Plugin {
-    fn get_channel(&self) -> String;
-    fn handle(&mut self, &PlatformMessage, &super::FlutterEngineInner, &mut glfw::Window) {}
-    fn notify_changes(&self) {}
-}
-
-#[derive(Default)]
-pub struct PlatformPlugin {}
-
-impl Plugin for PlatformPlugin {
-    fn get_channel(&self) -> String {
-        String::from("flutter/platform")
-    }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &super::FlutterEngineInner, window: &mut glfw::Window) {
-        if msg.message.method == "SystemChrome.setApplicationSwitcherDescription" {
-            // label and primaryColor
-            window.set_title(msg.message.args.as_object().unwrap().get("label").unwrap().as_str().unwrap());
-        }
-    }
-}
+use crate::{FlutterEngineInner};
+use super::{Plugin, Message, PlatformMessage};
+use serde_json::Value;
+use crate::utils::StringUtils;
 
 #[derive(Default)]
 pub struct TextInputPlugin {

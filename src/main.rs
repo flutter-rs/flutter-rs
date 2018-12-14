@@ -5,7 +5,10 @@ use std::{
 use log::{info};
 use env_logger;
 use flutter::{FlutterProjectArgs, FlutterEngine};
+
+#[cfg(target_os = "macos")]
 use core_foundation::bundle;
+
 
 fn main() {
     env_logger::init();

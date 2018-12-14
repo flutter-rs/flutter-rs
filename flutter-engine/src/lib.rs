@@ -39,8 +39,8 @@ use self::plugins::{
     Message,
     PluginRegistry,
     Plugin,
-    TextInputPlugin,
-    PlatformPlugin,
+    textinput::TextInputPlugin,
+    platform::PlatformPlugin,
 };
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};

@@ -23,8 +23,10 @@ impl TextInputPlugin {
         }
     }
     pub fn with_state(&self, cbk: impl Fn(&mut TextEditingState)) {
-        if let Some(state) = (*self.editing_state.borrow_mut()).as_mut() {
-            cbk(state);
+        if let Ok(mut state) = self.editing_state.try_borrow_mut() {
+            if let Some(state) = &mut *state {
+                cbk(state);
+            }
         }
     }
     fn get_lo_and_hi_idx(&self, s: &TextEditingState) -> (i64, i64) {
@@ -211,11 +213,11 @@ impl Plugin for TextInputPlugin {
             },
             "TextInput.clearClient" => {
                 self.client_id = None;
-                self.editing_state = RefCell::new(None);
+                self.editing_state.replace(None);
             },
             "TextInput.setEditingState" => {
                 if self.client_id.is_some() {
-                    self.editing_state = RefCell::new(TextEditingState::from(&msg.message.args));
+                    self.editing_state.replace(TextEditingState::from(&msg.message.args));
                 }
             },
             "TextInput.show" => {},

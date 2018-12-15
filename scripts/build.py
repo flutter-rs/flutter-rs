@@ -20,8 +20,6 @@ def collect_env(args):
 
     DEBUG = not args.release
     TARGET_DIR = os.path.join(PROJ_DIR, 'target')
-    APP_NAME = NAME + '.app'
-    APP_DIR = os.path.join(TARGET_DIR, APP_NAME)
     IDENTIFIER = 'one.juju.flutter-rs'
     FLUTTER_LIB_VER = META['package']['metadata']['flutter']['version']
     FLUTTER_ASSETS = os.path.join(PROJ_DIR, 'examples', 'gallery', 'flutter_assets')

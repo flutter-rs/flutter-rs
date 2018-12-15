@@ -8,12 +8,12 @@ This project uses libflutter_engine to implement a desktop flutter runner.
 
 
 # Features:
+- Clipboard support.
 
 # Roadmap:
 
 ## 0.1
 - Cross platform support.
-- Clipboard support.
 - Support distribution format. That is: app package for mac. Linux should support snap or deb, Windows support windows installer.
 - Export flutter rust lib on crates.io
 - Support setting default window background color.

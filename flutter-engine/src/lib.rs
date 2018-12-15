@@ -45,9 +45,13 @@ use self::plugins::{
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};
 
-pub struct FlutterProjectArgs<'a> {
-    pub assets_path: &'a str,
-    pub icu_data_path: &'a str,
+
+pub struct FlutterEngineArgs {
+    pub assets_path: String,
+    pub icu_data_path: String,
+    pub title: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 extern fn present(data: *const c_void) -> bool {
@@ -253,8 +257,9 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
 }
 
 pub struct FlutterEngineInner {
+    args: FlutterEngineArgs,
     config: ffi::FlutterRendererConfig,
-    args: ffi::FlutterProjectArgs,
+    proj_args: ffi::FlutterProjectArgs,
     ptr: *const ffi::FlutterEngine,
     plugins: RefCell<PluginRegistry>,
 }
@@ -337,12 +342,12 @@ lazy_static! {
 }
 
 // Use Arc, since ENGINES need to have a weak ref of FlutterEngineInner
-pub struct FlutterEngine{
+pub struct FlutterEngine {
     engine: Arc<FlutterEngineInner>,
 }
 
 impl FlutterEngine {
-    pub fn new(_args: FlutterProjectArgs) -> FlutterEngine {
+    pub fn new(args: FlutterEngineArgs) -> FlutterEngine {
         let config: ffi::FlutterRendererConfig = ffi::FlutterRendererConfig {
             kind: FlutterRendererType::OpenGL,
             open_gl: FlutterOpenGLRendererConfig {
@@ -358,23 +363,24 @@ impl FlutterEngine {
         let main_path = CString::new("").unwrap();
         let packages_path = CString::new("").unwrap();
         let vm_args = CStringVec::new(&["--dart-non-checked-mode", "--observatory-port=50300"]);
-        let args = ffi::FlutterProjectArgs {
+        let proj_args = ffi::FlutterProjectArgs {
             struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),
-            assets_path: CString::new(_args.assets_path).unwrap().into_raw(),
+            assets_path: CString::new(args.assets_path.to_string()).unwrap().into_raw(),
             main_path: main_path.into_raw(),
             packages_path: packages_path.into_raw(),
-            icu_data_path: CString::new(_args.icu_data_path).unwrap().into_raw(),
+            icu_data_path: CString::new(args.icu_data_path.to_string()).unwrap().into_raw(),
             command_line_argc: vm_args.len() as i32,
             command_line_argv: vm_args.into_raw(),
             platform_message_callback: platform_message_callback,
         };
 
-        info!("Project args {:?}", args);
+        info!("Project args {:?}", proj_args);
         info!("OpenGL config {:?}", config);
 
         let inner = Arc::new(FlutterEngineInner {
-            config: config,
-            args: args,
+            args,
+            config,
+            proj_args,
             ptr: null(),
             plugins: RefCell::new(PluginRegistry::new()),
         });
@@ -384,12 +390,16 @@ impl FlutterEngine {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&self) {
 //     -> (glfw::Glfw, glfw::Window, std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>) {
         let mut glfw = glfw::Glfw;
 
-        let (mut window, events) = glfw.create_window(400, 550, "Flutter Demo", glfw::WindowMode::Windowed)
-            .expect("Failed to create GLFW window.");
+        let (mut window, events) = glfw.create_window(
+            self.engine.args.width,
+            self.engine.args.height,
+            &self.engine.args.title,
+            glfw::WindowMode::Windowed,
+        ).expect("Failed to create GLFW window.");
 
         self.add_system_plugins();
         window.set_key_polling(true);
@@ -402,7 +412,7 @@ impl FlutterEngine {
 
         unsafe {
             let w = &mut window as *mut glfw::Window;
-            let ret = FlutterEngineRun(1, &self.engine.config, &self.engine.args, w as *const c_void, &self.engine.ptr as *const *const ffi::FlutterEngine);
+            let ret = FlutterEngineRun(1, &self.engine.config, &self.engine.proj_args, w as *const c_void, &self.engine.ptr as *const *const ffi::FlutterEngine);
             assert!(ret == FlutterResult::Success);
 
             let w_size = window.get_size();
@@ -416,8 +426,7 @@ impl FlutterEngine {
         }
 
         while !window.should_close() {
-            glfw.poll_events();
-            // glfw.wait_events();
+            glfw.wait_events();
             // engine.flush_pending_tasks_now();
             for (_, event) in glfw::flush_messages(&events) {
                 handle_window_event(&mut window, event);

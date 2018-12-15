@@ -3,12 +3,15 @@ from shutil import copyfile, copytree, rmtree
 import subprocess
 
 def build(envs):
-    # clear last output
-    rmtree(envs['APP_DIR'])
+    APP_NAME = envs['NAME'] + '.app'
+    APP_DIR = os.path.join(envs['TARGET_DIR'], APP_NAME)
 
-    bin_dir = os.path.join(envs['APP_DIR'], 'Contents', 'MacOS')
-    frm_dir = os.path.join(envs['APP_DIR'], 'Contents', 'Frameworks')
-    res_dir = os.path.join(envs['APP_DIR'], 'Contents', 'Resources')
+    # clear last output
+    rmtree(APP_DIR)
+
+    bin_dir = os.path.join(APP_DIR, 'Contents', 'MacOS')
+    frm_dir = os.path.join(APP_DIR, 'Contents', 'Frameworks')
+    res_dir = os.path.join(APP_DIR, 'Contents', 'Resources')
 
     os.makedirs(bin_dir, exist_ok = True)
     os.makedirs(res_dir, exist_ok = True)

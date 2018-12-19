@@ -7,7 +7,7 @@ def build(envs):
     APP_DIR = os.path.join(envs['TARGET_DIR'], APP_NAME)
 
     # clear last output
-    rmtree(APP_DIR)
+    rmtree(APP_DIR, ignore_errors = True)
 
     bin_dir = os.path.join(APP_DIR, 'Contents', 'MacOS')
     frm_dir = os.path.join(APP_DIR, 'Contents', 'Frameworks')
@@ -17,7 +17,7 @@ def build(envs):
     os.makedirs(res_dir, exist_ok = True)
     copyfile(os.path.join(envs['TARGET_DIR'], 'debug' if envs['DEBUG'] else 'release' , envs['NAME']), os.path.join(bin_dir, envs['NAME']))
     subprocess.run(['chmod', '+x', os.path.join(bin_dir, envs['NAME'])], check = True)
-    copytree(os.path.join(envs['PROJ_DIR'],'libs', envs['FLUTTER_LIB_VER'], 'FlutterEmbedder.framework'), os.path.join(frm_dir, 'FlutterEmbedder.framework'), symlinks = True)
+    copytree(os.path.join(envs['PROJ_DIR'], 'libs', envs['FLUTTER_LIB_VER'], 'FlutterEmbedder.framework'), os.path.join(frm_dir, 'FlutterEmbedder.framework'), symlinks = True)
 
     # copy resources
     copyfile(os.path.join(envs['PROJ_DIR'], 'assets', 'icon.icns'), os.path.join(res_dir, 'icon.icns'))
@@ -25,7 +25,7 @@ def build(envs):
     copytree(envs['FLUTTER_ASSETS'], os.path.join(res_dir, 'flutter_assets'))
 
     plist = plist_tmpl.format(identifier = envs['IDENTIFIER'], name = envs['NAME'])
-    plist_file = open(os.path.join(envs['TARGET_DIR'], envs['APP_NAME'], 'Contents', 'Info.plist'), 'w+')
+    plist_file = open(os.path.join(envs['TARGET_DIR'], APP_NAME, 'Contents', 'Info.plist'), 'w+')
     plist_file.write(plist)
 
 

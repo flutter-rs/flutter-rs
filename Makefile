@@ -1,4 +1,4 @@
 build_mac:
-	./scripts/build.py mac
+	cd flutter-runner && cargo build && ./scripts/build.py mac
 
 .PHONY: build_mac

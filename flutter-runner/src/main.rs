@@ -4,7 +4,7 @@ use std::{
 };
 use log::{info};
 use env_logger;
-use flutter::{FlutterEngineArgs, FlutterEngine};
+use flutter_engine::{FlutterEngineArgs, FlutterEngine};
 
 #[cfg(target_os = "macos")]
 use core_foundation::bundle;
@@ -25,7 +25,7 @@ fn get_res_dir() -> PathBuf {
 
 fn main() {
     env_logger::init();
-    flutter::init();
+    flutter_engine::init();
 
     let (assets_path, icu_data_path) = match env::var("CARGO_MANIFEST_DIR") {
         Ok(project_dir) => {

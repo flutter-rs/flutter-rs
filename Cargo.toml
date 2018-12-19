@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "flutter-runner",
+    "flutter-runner/rust",
     "flutter-engine",
     "flutter-download",
 ]

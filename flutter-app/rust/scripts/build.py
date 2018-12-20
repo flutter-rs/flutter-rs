@@ -3,35 +3,33 @@ import os
 import toml
 import argparse
 
-def look_for_proj_dir():
-    d = os.path.abspath(__file__)
+def look_for_proj_dir(d):
     while not os.path.isfile(os.path.join(d, 'Cargo.toml')):
         p = os.path.dirname(d)
         if not p or p == d:
-            print('Cannot find project directory')
+            return None
         d = p
     return d
 
-def is_workspace(proj_dir):
-    parent = os.path.join(os.path.dirname(proj_dir), 'Cargo.toml')
-    return os.path.isfile(parent)
+def get_workspace_dir(proj_dir):
+    return look_for_proj_dir(os.path.dirname(proj_dir))
 
 def collect_env(args):
-    PROJ_DIR = look_for_proj_dir()
+    PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__))
     TOML_FILE = os.path.join(PROJ_DIR, 'Cargo.toml')
     META = toml.loads(open(TOML_FILE).read())
     NAME = META['package']['name']
 
     DEBUG = not args.release
-    if is_workspace(PROJ_DIR):
+    workspace = get_workspace_dir(PROJ_DIR)
+    if workspace is not None:
         # cargo put outputs in workspace target directory
-        TARGET_DIR = os.path.join(os.path.dirname(PROJ_DIR), 'target')
+        TARGET_DIR = os.path.join(workspace, 'target')
     else:
         TARGET_DIR = os.path.join(PROJ_DIR, 'target')
-    print("is workdspace: " + TARGET_DIR)
     IDENTIFIER = 'one.juju.flutter-rs'
     FLUTTER_LIB_VER = META['package']['metadata']['flutter']['version']
-    FLUTTER_ASSETS = os.path.join(PROJ_DIR, 'examples', 'gallery', 'flutter_assets')
+    FLUTTER_ASSETS = os.path.join(os.path.dirname(PROJ_DIR), 'build', 'flutter_assets')
     return locals()
 
 if __name__ == '__main__':

@@ -47,7 +47,7 @@ fn main() {
 }
 
 fn write_cargo_config(project_dir: &Path, libs_dir: &Path) {
-    println!("Generate .cargo/config file");
+    println!("Generating .cargo/config file");
 
     let config_dir = project_dir.join(".cargo");
     std::fs::create_dir(&config_dir).unwrap_or(());

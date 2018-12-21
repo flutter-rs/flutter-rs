@@ -443,7 +443,7 @@ impl FlutterEngine {
         plugins.add_plugin(Box::new(platform_plugin));
     }
 
-    pub fn shutdown(&mut self) {
+    pub fn shutdown(&self) {
         unsafe {
             ffi::FlutterEngineShutdown(self.engine.ptr);
         }

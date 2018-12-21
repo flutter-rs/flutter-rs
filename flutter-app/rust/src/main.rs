@@ -57,5 +57,5 @@ fn main() {
     engine.run();
     // TODO segfault
     // for some reason this segfault, it does not if put inside run
-    // engine.shutdown();
+    engine.shutdown();
 }

@@ -262,9 +262,73 @@ pub struct FlutterEngineInner {
     proj_args: ffi::FlutterProjectArgs,
     ptr: *const ffi::FlutterEngine,
     plugins: RefCell<PluginRegistry>,
+    glfw: RefCell<Option<(
+        glfw::Glfw,
+        glfw::Window,
+        std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
+    )>>,
 }
 
 impl FlutterEngineInner {
+    fn run(&self) {
+        let glfw = glfw::Glfw;
+
+        let (mut window, events) = glfw.create_window(
+            self.args.width,
+            self.args.height,
+            &self.args.title,
+            glfw::WindowMode::Windowed,
+        ).expect("Failed to create GLFW window.");
+
+        self.add_system_plugins();
+        window.set_key_polling(true);
+        window.set_framebuffer_size_polling(true);
+        window.set_size_polling(true);
+        window.set_mouse_button_polling(true);
+        window.set_cursor_pos_polling(true);
+        window.set_char_polling(true);
+        window.make_current();
+
+        self.glfw.replace(Some((glfw, window, events)));
+
+        unsafe {
+            let pack = &*self.glfw.borrow();
+            let (_, window, _) = pack.as_ref().unwrap();
+
+            let w = window as *const glfw::Window;
+            let ret = FlutterEngineRun(
+                1,
+                &self.config,
+                &self.proj_args,
+                w as *const c_void,
+                &self.ptr as *const *const ffi::FlutterEngine);
+
+            assert!(ret == FlutterResult::Success);
+
+            let w_size = window.get_size();
+            let size = window.get_framebuffer_size();
+            self.send_window_metrics_change(w_size, size);
+        }
+    }
+    fn add_system_plugins(&self) {
+        let plugins = &mut *self.plugins.borrow_mut();
+
+        plugins.add_plugin(Box::new(TextInputPlugin::new()));
+
+        let platform_plugin: PlatformPlugin = Default::default();
+        plugins.add_plugin(Box::new(platform_plugin));
+    }
+    fn event_loop(&self) {
+        if let Some((glfw, window, events)) = &mut *self.glfw.borrow_mut() {
+            while !window.should_close() {
+                glfw.wait_events();
+                // engine.flush_pending_tasks_now();
+                for (_, event) in glfw::flush_messages(&events) {
+                    handle_window_event(window, event);
+                }
+            }
+        }
+    }
     fn send_window_metrics_change(&self, w_size: (i32, i32), size: (i32, i32)) {
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
@@ -383,6 +447,7 @@ impl FlutterEngine {
             proj_args,
             ptr: null(),
             plugins: RefCell::new(PluginRegistry::new()),
+            glfw: RefCell::new(None),
         });
         inner.plugins.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {
@@ -391,56 +456,14 @@ impl FlutterEngine {
     }
 
     pub fn run(&self) {
-//     -> (glfw::Glfw, glfw::Window, std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>) {
-        let mut glfw = glfw::Glfw;
-
-        let (mut window, events) = glfw.create_window(
-            self.engine.args.width,
-            self.engine.args.height,
-            &self.engine.args.title,
-            glfw::WindowMode::Windowed,
-        ).expect("Failed to create GLFW window.");
-
-        self.add_system_plugins();
-        window.set_key_polling(true);
-        window.set_framebuffer_size_polling(true);
-        window.set_size_polling(true);
-        window.set_mouse_button_polling(true);
-        window.set_cursor_pos_polling(true);
-        window.set_char_polling(true);
-        window.make_current();
-
-        unsafe {
-            let w = &mut window as *mut glfw::Window;
-            let ret = FlutterEngineRun(1, &self.engine.config, &self.engine.proj_args, w as *const c_void, &self.engine.ptr as *const *const ffi::FlutterEngine);
-            assert!(ret == FlutterResult::Success);
-
-            let w_size = window.get_size();
-            let size = window.get_framebuffer_size();
-            self.engine.send_window_metrics_change(w_size, size);
-        }
-
+        self.engine.run();
         {
+            let glfw = &*self.engine.glfw.borrow();
+            let (_, window, _) = glfw.as_ref().unwrap();
             let mut guard = ENGINES.lock().unwrap();
             guard.insert(WindowKey(window.window_ptr()), Arc::downgrade(&self.engine));
         }
-
-        while !window.should_close() {
-            glfw.wait_events();
-            // engine.flush_pending_tasks_now();
-            for (_, event) in glfw::flush_messages(&events) {
-                handle_window_event(&mut window, event);
-            }
-        }
-    }
-
-    fn add_system_plugins(&self) {
-        let plugins = &mut *self.engine.plugins.borrow_mut();
-
-        plugins.add_plugin(Box::new(TextInputPlugin::new(&self.engine)));
-
-        let platform_plugin: PlatformPlugin = Default::default();
-        plugins.add_plugin(Box::new(platform_plugin));
+        self.engine.event_loop();
     }
 
     pub fn shutdown(&self) {

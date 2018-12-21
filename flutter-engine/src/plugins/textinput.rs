@@ -1,26 +1,34 @@
 use std::cell::RefCell;
 use std::{
-    sync::{Arc, Weak},
+    sync::{Weak},
 };
 use glfw::{Modifiers};
 use crate::{FlutterEngineInner};
-use super::{Plugin, Message, PlatformMessage};
+use super::{PluginRegistry, Plugin, Message, PlatformMessage};
 use serde_json::Value;
 use crate::utils::StringUtils;
 
-#[derive(Default)]
 pub struct TextInputPlugin {
-    engine: Weak<FlutterEngineInner>,
     client_id: Option<i64>,
     editing_state: RefCell<Option<TextEditingState>>,
+    registry: Option<*const PluginRegistry>,
 }
 
 impl TextInputPlugin {
-    pub fn new(engine: &Arc<FlutterEngineInner>) -> TextInputPlugin {
+    pub fn new() -> TextInputPlugin {
         TextInputPlugin {
-            engine: Arc::downgrade(engine),
-            .. Default::default()
+            client_id: None,
+            editing_state: RefCell::new(None),
+            registry: None,
         }
+    }
+    pub fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
+        self.registry.map(|ptr| {
+            unsafe {
+                let registry = &*ptr;
+                registry.engine.clone()
+            }
+        })
     }
     pub fn with_state(&self, cbk: impl Fn(&mut TextEditingState)) {
         if let Ok(mut state) = self.editing_state.try_borrow_mut() {
@@ -184,15 +192,16 @@ impl TextInputPlugin {
     }
 
     pub fn perform_action(&self, action: &str) {
-        let engine = self.engine.upgrade().unwrap();
-        engine.send_platform_message(&PlatformMessage {
-            channel: String::from("flutter/textinput"),
-            message: Message {
-                method: String::from("TextInputClient.performAction"),
-                args: json!([self.client_id, "TextInputAction.".to_owned() + action]),
-            },
-            response_handle: None,
-        });
+        if let Some(engine) = self.get_engine() {
+            engine.upgrade().unwrap().send_platform_message(&PlatformMessage {
+                channel: String::from("flutter/textinput"),
+                message: Message {
+                    method: String::from("TextInputClient.performAction"),
+                    args: json!([self.client_id, "TextInputAction.".to_owned() + action]),
+                },
+                response_handle: None,
+            });
+        }
     }
 }
 
@@ -225,18 +234,22 @@ impl Plugin for TextInputPlugin {
             _ => {}
         }
     }
+    fn set_registry(&mut self, registry: *const PluginRegistry) {
+        self.registry = Some(registry);
+    }
     fn notify_changes(&self) {
-        let engine = self.engine.upgrade().unwrap();
         self.with_state(|s: &mut TextEditingState| {
             let args = json!([self.client_id, s]);
-            engine.send_platform_message(&PlatformMessage {
-                channel: String::from("flutter/textinput"),
-                message: Message {
-                    method: String::from("TextInputClient.updateEditingState"),
-                    args: args,
-                },
-                response_handle: None,
-            });
+            if let Some(engine) = self.get_engine() {
+                engine.upgrade().unwrap().send_platform_message(&PlatformMessage {
+                    channel: String::from("flutter/textinput"),
+                    message: Message {
+                        method: String::from("TextInputClient.updateEditingState"),
+                        args: args,
+                    },
+                    response_handle: None,
+                });
+            }
         });
     }
 }

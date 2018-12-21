@@ -55,7 +55,5 @@ fn main() {
 
     let engine = FlutterEngine::new(args);
     engine.run();
-    // TODO segfault
-    // for some reason this segfault, it does not if put inside run
     engine.shutdown();
 }

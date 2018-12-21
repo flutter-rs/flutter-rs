@@ -28,6 +28,7 @@ impl PluginRegistry {
     }
     pub fn add_plugin(&mut self, plugin: Box<dyn Plugin>) {
         let r = self.map.entry(plugin.get_channel()).or_insert_with(|| Vec::new());
+
         r.push(plugin);
     }
     pub fn handle(&mut self, msg: PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window) {
@@ -92,4 +93,5 @@ pub trait Plugin {
     fn get_channel(&self) -> String;
     fn handle(&mut self, &PlatformMessage, &super::FlutterEngineInner, &mut glfw::Window) {}
     fn notify_changes(&self) {}
+    fn set_registry(&mut self, _registry: *const PluginRegistry) {}
 }

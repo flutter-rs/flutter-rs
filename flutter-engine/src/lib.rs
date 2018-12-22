@@ -91,7 +91,7 @@ extern fn make_resource_current(_data: *const c_void) -> bool {
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
     match into_platform_message(ptr) {
         Ok(msg) => {
-            info!("Got msg {:?}", msg);
+            info!("Got msg {:?} from {:?}", msg.message, msg.channel);
             unsafe {
                 let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
                 handle_platform_message(window, msg);

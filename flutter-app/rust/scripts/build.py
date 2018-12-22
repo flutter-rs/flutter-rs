@@ -2,17 +2,7 @@
 import os
 import toml
 import argparse
-
-def look_for_proj_dir(d):
-    while not os.path.isfile(os.path.join(d, 'Cargo.toml')):
-        p = os.path.dirname(d)
-        if not p or p == d:
-            return None
-        d = p
-    return d
-
-def get_workspace_dir(proj_dir):
-    return look_for_proj_dir(os.path.dirname(proj_dir))
+from lib import look_for_proj_dir, get_workspace_dir
 
 def collect_env(args):
     PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__))
@@ -21,10 +11,10 @@ def collect_env(args):
     NAME = META['package']['name']
 
     DEBUG = not args.release
-    workspace = get_workspace_dir(PROJ_DIR)
-    if workspace is not None:
+    WORKSPACE = get_workspace_dir(PROJ_DIR)
+    if WORKSPACE is not None:
         # cargo put outputs in workspace target directory
-        TARGET_DIR = os.path.join(workspace, 'target')
+        TARGET_DIR = os.path.join(WORKSPACE, 'target')
     else:
         TARGET_DIR = os.path.join(PROJ_DIR, 'target')
     IDENTIFIER = 'one.juju.flutter-rs'
@@ -39,8 +29,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.dist == 'mac':
-        from build_mac import build
+        from lib.build_mac import build
         build(collect_env(args))
     elif args.dist == 'snap':
-        from build_snap import build
+        from lib.build_snap import build
         build(collect_env(args))

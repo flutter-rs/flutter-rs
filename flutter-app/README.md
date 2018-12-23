@@ -3,10 +3,8 @@
 A desktop app built using flutter & rust.
 
 # Workflow
+- To develop:
+    ./scripts/run.py
 
-```shell
-flutter build bundle
-cargo run
-flutter attach --device-id=flutter-tester --debug-port=50300
-```
-Press r to hot reload
+- To build distribution:
+    ./scripts/build.py mac

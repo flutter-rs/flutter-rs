@@ -1,7 +1,7 @@
 import os
 
-def look_for_proj_dir(d):
-    while not os.path.isfile(os.path.join(d, 'Cargo.toml')):
+def look_for_proj_dir(d, fn = 'Cargo.toml'):
+    while not os.path.isfile(os.path.join(d, fn)):
         p = os.path.dirname(d)
         if not p or p == d:
             return None

@@ -5,21 +5,22 @@ import argparse
 from lib import look_for_proj_dir, get_workspace_dir
 
 def collect_env(args):
-    PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__))
-    TOML_FILE = os.path.join(PROJ_DIR, 'Cargo.toml')
+    PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__), 'pubspec.yaml')
+    RUST_PROJ_DIR = os.path.join(PROJ_DIR, 'rust')
+    TOML_FILE = os.path.join(RUST_PROJ_DIR, 'Cargo.toml')
     META = toml.loads(open(TOML_FILE).read())
     NAME = META['package']['name']
 
     DEBUG = not args.release
-    WORKSPACE = get_workspace_dir(PROJ_DIR)
+    WORKSPACE = get_workspace_dir(RUST_PROJ_DIR)
     if WORKSPACE is not None:
         # cargo put outputs in workspace target directory
         TARGET_DIR = os.path.join(WORKSPACE, 'target')
     else:
-        TARGET_DIR = os.path.join(PROJ_DIR, 'target')
+        TARGET_DIR = os.path.join(RUST_PROJ_DIR, 'target')
     IDENTIFIER = 'one.juju.flutter-rs'
     FLUTTER_LIB_VER = META['package']['metadata']['flutter']['version']
-    FLUTTER_ASSETS = os.path.join(os.path.dirname(PROJ_DIR), 'build', 'flutter_assets')
+    FLUTTER_ASSETS = os.path.join(os.path.dirname(RUST_PROJ_DIR), 'build', 'flutter_assets')
     return locals()
 
 if __name__ == '__main__':

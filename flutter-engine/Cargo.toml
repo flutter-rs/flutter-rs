@@ -2,8 +2,9 @@
 name = "flutter-engine"
 description = "flutter engine embedder in rust"
 version = "0.1.0"
-authors = ["Bach <gliheng@foxmail.com>"]
+authors = ["juju <gliheng@foxmail.com>"]
 keywords = ["flutter", "GUI"]
+license = "MIT"
 
 [dependencies]
 glfw = "0.25.0"

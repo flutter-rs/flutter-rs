@@ -2,8 +2,9 @@
 name = "flutter-download"
 description = "download flutter engine for building"
 version = "0.1.0"
-authors = ["Bach <gliheng@foxmail.com>"]
+authors = ["juju <gliheng@foxmail.com>"]
 keywords = ["flutter"]
+license = "MIT"
 
 [dependencies]
 curl = { version = "0.4.19", features = ['http2'] }

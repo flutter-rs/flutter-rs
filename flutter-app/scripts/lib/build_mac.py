@@ -4,7 +4,7 @@ import subprocess
 
 def build(envs):
     APP_NAME = envs['NAME'] + '.app'
-    APP_DIR = os.path.join(envs['TARGET_DIR'], APP_NAME)
+    APP_DIR = os.path.join(envs['TARGET_DIR'], 'debug' if envs['DEBUG'] else 'release', APP_NAME)
 
     # clear last output
     rmtree(APP_DIR, ignore_errors = True)
@@ -25,7 +25,7 @@ def build(envs):
     copytree(envs['FLUTTER_ASSETS'], os.path.join(res_dir, 'flutter_assets'))
 
     plist = plist_tmpl.format(identifier = envs['IDENTIFIER'], name = envs['NAME'])
-    plist_file = open(os.path.join(envs['TARGET_DIR'], APP_NAME, 'Contents', 'Info.plist'), 'w+')
+    plist_file = open(os.path.join(APP_DIR, 'Contents', 'Info.plist'), 'w+')
     plist_file.write(plist)
 
 

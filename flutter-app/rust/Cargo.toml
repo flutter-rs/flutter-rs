@@ -8,6 +8,7 @@ edition = "2018"
 
 [package.metadata.flutter]
 version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
+identifier = "one.juju.flutter-app" # This is only used on mac
 
 [dependencies]
 log = "0.4.6"

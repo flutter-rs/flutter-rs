@@ -1,10 +1,12 @@
 [package]
 name = "flutter-engine"
-description = "flutter engine embedder in rust"
-version = "0.1.0"
+description = "Flutter engine embedder in rust"
+version = "0.1.1"
 authors = ["juju <gliheng@foxmail.com>"]
 keywords = ["flutter", "GUI"]
 license = "MIT"
+repository = "git@github.com:gliheng/flutter-rs.git"
+readme = "crates-io.md"
 
 [dependencies]
 glfw = "0.25.0"

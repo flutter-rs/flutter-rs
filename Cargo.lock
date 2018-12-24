@@ -263,7 +263,7 @@ dependencies = [
  "core-foundation 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-download 0.1.0",
- "flutter-engine 0.1.0",
+ "flutter-engine 0.1.1",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -5,7 +5,7 @@ version = "0.1.1"
 authors = ["juju <gliheng@foxmail.com>"]
 keywords = ["flutter"]
 license = "MIT"
-repository = "git@github.com:gliheng/flutter-rs.git"
+repository = "https://github.com/gliheng/flutter-rs"
 
 [dependencies]
 curl = { version = "0.4.19", features = ['http2'] }

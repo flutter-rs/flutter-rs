@@ -1,4 +1,4 @@
-** flutter-engine is a library to make desktop apps in flutter and rust **
+**flutter-engine is a library to make desktop apps in flutter and rust**
 
 ## flutter-engine in action
 

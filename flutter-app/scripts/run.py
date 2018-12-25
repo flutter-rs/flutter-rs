@@ -30,7 +30,7 @@ if __name__ == '__main__':
     print('>>> Building rust project')
     port = cargo_run()
     if not port:
-        raise Exception('Lauch cargo error')
+        raise Exception('Launch cargo error')
 
     print('>>> Attaching dart debugger')
     subprocess.run(['flutter', 'attach', '--device-id=flutter-tester', '--debug-port=50300'], cwd = PROJ_DIR, check = True)

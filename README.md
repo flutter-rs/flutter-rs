@@ -5,9 +5,13 @@
 This is the development repo. Head to [flutter-app-template](https://github.com/gliheng/flutter-app-template) for a running demo.
 
 # Install
-- install latest [Rust](https://www.rust-lang.org)
+- Install latest [Rust](https://www.rust-lang.org)
+- Install libglfw:
+    - Mac: `brew install glfw`
+    - linux: `apt install libglfw3`
 - Run `cargo run` to get a running example.
     Note: The first run is going to take a while to download rust dependecies and flutter engine.
+
 
 
 # Features:

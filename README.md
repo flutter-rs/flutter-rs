@@ -13,7 +13,6 @@ This is the development repo. Head to [flutter-app-template](https://github.com/
     Note: The first run is going to take a while to download rust dependecies and flutter engine.
 
 
-
 # Features:
 - Support Hot reload
 - Application icons

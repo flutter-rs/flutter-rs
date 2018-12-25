@@ -23,6 +23,9 @@ A desktop app built using flutter & rust.
 - To build distribution, use:
     `./scripts/build.py mac`
 
+**Note:**
+Build scripts are written in python3. Install python depenendencies using `pip3 install -r scripts/requirements.txt`
+
 ---
 
 ### For users in China

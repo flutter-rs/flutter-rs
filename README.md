@@ -1,5 +1,8 @@
-This project uses libflutter_engine to implement a desktop flutter runner.
-[This guide](https://github.com/google/flutter-desktop-embedding)  describes how it works.
+# flutter-rs [![Join Gitter Chat Channel](https://badges.gitter.im/flutter-rs/community.svg)](https://gitter.im/flutter-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
+**Build flutter desktop app in dart & rust**
+
+This is the development repo. Head to [flutter-app-template](https://github.com/gliheng/flutter-app-template) for a running demo.
 
 # Install
 - install latest [Rust](https://www.rust-lang.org)
@@ -8,20 +11,20 @@ This project uses libflutter_engine to implement a desktop flutter runner.
 
 
 # Features:
-- Clipboard support.
+- Support Hot reload
+- Application icons
+- Clipboard support
+- Cross platform support (mac & linux so far)
+- Support distribution format: (only mac app so far)
 
 # Roadmap:
 
-## 0.1
-- Cross platform support.
-- Support distribution format. That is: app package for mac. Linux should support snap or deb, Windows support windows installer.
-- Export flutter rust lib on crates.io
-- Support setting default window background color.
-- Application icons.
-
 ## 0.2
-- Support Hot reload.
+- Support setting default window background color.
 - Loader UI and rebranding.
 - Desktop integration: App menu, context menu, file dialogs.
 - Flutter scroller should support desktop scroll event.
-- Download dll from web
+- Download dll from web?
+
+# Contribution
+Contribution and PR are welcome.

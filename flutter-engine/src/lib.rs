@@ -91,7 +91,6 @@ extern fn make_resource_current(_data: *const c_void) -> bool {
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
     match into_platform_message(ptr) {
         Ok(msg) => {
-            info!("Got msg {:?} from {:?}", msg.message, msg.channel);
             unsafe {
                 let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
                 handle_platform_message(window, msg);
@@ -114,6 +113,7 @@ fn into_platform_message(ptr: *const FlutterPlatformMessage) -> Result<PlatformM
         } else {
             Some(&*msg.response_handle)
         };
+        trace!("Unpacking platform msg {:?} from channel {:?}", s, channel);
         serde_json::from_str::<Message>(&s).map(|message| {
             PlatformMessage {
                 channel: channel.to_string_lossy().into_owned(),
@@ -261,7 +261,7 @@ pub struct FlutterEngineInner {
     config: ffi::FlutterRendererConfig,
     proj_args: ffi::FlutterProjectArgs,
     ptr: *const ffi::FlutterEngine,
-    plugins: RefCell<PluginRegistry>,
+    registry: RefCell<PluginRegistry>,
     glfw: RefCell<Option<(
         glfw::Glfw,
         glfw::Window,
@@ -311,12 +311,14 @@ impl FlutterEngineInner {
         }
     }
     fn add_system_plugins(&self) {
-        let plugins = &mut *self.plugins.borrow_mut();
-
-        plugins.add_plugin(Box::new(TextInputPlugin::new()));
+        let registry = &mut *self.registry.borrow_mut();
+        
+        let mut plugin = TextInputPlugin::new();
+        plugin.set_registry(registry);
+        registry.add_plugin(Box::new(plugin));
 
         let platform_plugin: PlatformPlugin = Default::default();
-        plugins.add_plugin(Box::new(platform_plugin));
+        registry.add_plugin(Box::new(platform_plugin));
     }
     fn event_loop(&self) {
         if let Some((glfw, window, events)) = &mut *self.glfw.borrow_mut() {
@@ -387,7 +389,7 @@ impl FlutterEngineInner {
     }
 
     fn handle_platform_msg(&self, msg: PlatformMessage, window: &mut glfw::Window) {
-        self.plugins.borrow_mut().handle(msg, self, window);
+        self.registry.borrow_mut().handle(msg, self, window);
     }
 }
 
@@ -446,10 +448,10 @@ impl FlutterEngine {
             config,
             proj_args,
             ptr: null(),
-            plugins: RefCell::new(PluginRegistry::new()),
+            registry: RefCell::new(PluginRegistry::new()),
             glfw: RefCell::new(None),
         });
-        inner.plugins.borrow_mut().set_engine(Arc::downgrade(&inner));
+        inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {
             engine: inner,
         }
@@ -483,7 +485,7 @@ impl FlutterEngine {
 
     fn with_plugin<T, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
         if let Some(engine) = FlutterEngine::get_engine(window_ptr) {
-            if let Some(plugin) = engine.plugins.borrow().get_plugin(channel) {
+            if let Some(plugin) = engine.registry.borrow().get_plugin(channel) {
                 unsafe {
                     let p = std::mem::transmute::<&Box<dyn Plugin>, &Box<T>>(plugin);
                     cbk(p);

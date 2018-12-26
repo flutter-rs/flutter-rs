@@ -249,6 +249,8 @@ impl Plugin for TextInputPlugin {
                     },
                     response_handle: None,
                 });
+            } else {
+                error!("Cannot get engine");
             }
         });
     }

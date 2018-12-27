@@ -12,11 +12,14 @@ extern crate env_logger;
 
 pub mod ffi;
 pub mod plugins;
+pub mod codec;
+pub mod channel;
 mod utils;
 
 use std::{
     slice,
     mem,
+    borrow::Cow,
     collections::HashMap,
     ptr::{null},
     ffi::{CString, CStr},
@@ -34,9 +37,8 @@ use self::ffi::{
     FlutterEngineRun,
     FlutterEngineSendWindowMetricsEvent,
 };
-use self::plugins::{
+pub use self::plugins::{
     PlatformMessage,
-    Message,
     PluginRegistry,
     Plugin,
     textinput::TextInputPlugin,
@@ -45,6 +47,7 @@ use self::plugins::{
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};
 
+pub use glfw::Window;
 
 pub struct FlutterEngineArgs {
     pub assets_path: String,
@@ -89,44 +92,33 @@ extern fn make_resource_current(_data: *const c_void) -> bool {
 }
 
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
-    match into_platform_message(ptr) {
-        Ok(msg) => {
-            unsafe {
-                let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
-                handle_platform_message(window, msg);
-            }
-        },
-        Err(err) => {
-            error!("Decode msg error {:?}", err);
+    unsafe {
+        let msg = &*ptr;
+        let mmsg = into_platform_message(msg);
+        let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
+        if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+            engine.handle_platform_msg(mmsg, window);
         }
     }
 }
 
 /// consider refactor this with TryFrom trait？
-fn into_platform_message(ptr: *const FlutterPlatformMessage) -> Result<PlatformMessage, serde_json::Error> {
+fn into_platform_message(msg: &FlutterPlatformMessage) -> PlatformMessage {
     unsafe {
-        let msg = &*ptr;
         let channel = CStr::from_ptr(msg.channel);
-        let s = std::str::from_utf8_unchecked(slice::from_raw_parts(msg.message, msg.message_size));
+        trace!("Unpacking platform msg from channel {:?}", channel);
+
+        let message = slice::from_raw_parts(msg.message, msg.message_size);
         let response_handle = if msg.response_handle == null() {
             None
         } else {
             Some(&*msg.response_handle)
         };
-        trace!("Unpacking platform msg {:?} from channel {:?}", s, channel);
-        serde_json::from_str::<Message>(&s).map(|message| {
-            PlatformMessage {
-                channel: channel.to_string_lossy().into_owned(),
-                message: message,
-                response_handle,
-            }
-        })        
-    }
-}
-
-fn handle_platform_message(window: &mut glfw::Window, msg: PlatformMessage) {
-    if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-        engine.handle_platform_msg(msg, window);
+        PlatformMessage {
+            channel: Cow::Owned(channel.to_string_lossy().into_owned()),
+            message,
+            response_handle,
+        }
     }
 }
 
@@ -313,12 +305,11 @@ impl FlutterEngineInner {
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
         
-        let mut plugin = TextInputPlugin::new();
-        plugin.set_registry(registry);
+        let plugin = TextInputPlugin::new();
         registry.add_plugin(Box::new(plugin));
 
-        let platform_plugin: PlatformPlugin = Default::default();
-        registry.add_plugin(Box::new(platform_plugin));
+        let plugin = PlatformPlugin::new();
+        registry.add_plugin(Box::new(plugin));
     }
     fn event_loop(&self) {
         if let Some((glfw, window, events)) = &mut *self.glfw.borrow_mut() {
@@ -362,8 +353,8 @@ impl FlutterEngineInner {
         }
     }
 
-    fn send_platform_message(&self, message: &PlatformMessage) {
-        trace!("Sending message {:?}", message);
+    pub fn send_platform_message(&self, message: &PlatformMessage) {
+        trace!("Sending message {:?} on channel {}", message, message.channel);
         let mut msg: FlutterPlatformMessage = message.into();
         unsafe {
             ffi::FlutterEngineSendPlatformMessage(
@@ -375,13 +366,12 @@ impl FlutterEngineInner {
         msg.drop();
     }
 
-    fn send_platform_message_response(&self, message: &PlatformMessage, bytes: &[u8]) {
-        trace!("Sending message response {:?}", message);
-        let msg: FlutterPlatformMessage = message.into();
+    pub fn send_platform_message_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, bytes: &[u8]) {
+        trace!("Sending message response");
         unsafe {
             ffi::FlutterEngineSendPlatformMessageResponse(
                 self.ptr,
-                msg.response_handle,
+                response_handle,
                 bytes as *const [u8] as *const _,
                 bytes.len(),
             );
@@ -409,7 +399,7 @@ lazy_static! {
 
 // Use Arc, since ENGINES need to have a weak ref of FlutterEngineInner
 pub struct FlutterEngine {
-    engine: Arc<FlutterEngineInner>,
+    inner: Arc<FlutterEngineInner>,
 }
 
 impl FlutterEngine {
@@ -453,25 +443,30 @@ impl FlutterEngine {
         });
         inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {
-            engine: inner,
+            inner,
         }
     }
 
     pub fn run(&self) {
-        self.engine.run();
+        self.inner.run();
         {
-            let glfw = &*self.engine.glfw.borrow();
+            let glfw = &*self.inner.glfw.borrow();
             let (_, window, _) = glfw.as_ref().unwrap();
             let mut guard = ENGINES.lock().unwrap();
-            guard.insert(WindowKey(window.window_ptr()), Arc::downgrade(&self.engine));
+            guard.insert(WindowKey(window.window_ptr()), Arc::downgrade(&self.inner));
         }
-        self.engine.event_loop();
+        self.inner.event_loop();
     }
 
     pub fn shutdown(&self) {
         unsafe {
-            ffi::FlutterEngineShutdown(self.engine.ptr);
+            ffi::FlutterEngineShutdown(self.inner.ptr);
         }
+    }
+
+    pub fn add_plugin(&self, plugin: Box<dyn Plugin>) {
+        let mut registry = self.inner.registry.borrow_mut();
+        registry.add_plugin(plugin);
     }
 
     fn get_engine(window_ptr: *mut glfw::ffi::GLFWwindow) -> Option<Arc<FlutterEngineInner>> {

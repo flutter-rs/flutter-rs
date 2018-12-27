@@ -17,8 +17,10 @@ A desktop app built using flutter & rust.
     - Install on linux with `apt install libglfw3`
 
 # Workflow
-- To develop with hot-reloading, use:
+- To develop with hot-reloading, simple run:
     `./scripts/run.py`
+
+    To show rust logs, add these environment variables: `RUST_LOG=flutter_engine=trace,flutter_app=trace`
 
 - To build distribution, use:
     `./scripts/build.py mac`

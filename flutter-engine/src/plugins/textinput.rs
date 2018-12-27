@@ -1,17 +1,16 @@
 use std::cell::RefCell;
-use std::{
-    sync::{Weak},
-};
 use glfw::{Modifiers};
-use crate::{FlutterEngineInner};
-use super::{PluginRegistry, Plugin, Message, PlatformMessage};
+use crate::FlutterEngineInner;
+use super::{ Plugin, PlatformMessage};
+use codec::{ MethodCall };
 use serde_json::Value;
-use crate::utils::StringUtils;
+use utils::StringUtils;
+use channel::{ Channel, JsonMethodChannel };
 
 pub struct TextInputPlugin {
     client_id: Option<i64>,
     editing_state: RefCell<Option<TextEditingState>>,
-    registry: Option<*const PluginRegistry>,
+    channel: JsonMethodChannel,
 }
 
 impl TextInputPlugin {
@@ -19,16 +18,8 @@ impl TextInputPlugin {
         TextInputPlugin {
             client_id: None,
             editing_state: RefCell::new(None),
-            registry: None,
+            channel: JsonMethodChannel::new("flutter/textinput"),
         }
-    }
-    pub fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
-        self.registry.map(|ptr| {
-            unsafe {
-                let registry = &*ptr;
-                registry.engine.clone()
-            }
-        })
     }
     pub fn with_state(&self, cbk: impl Fn(&mut TextEditingState)) {
         if let Ok(mut state) = self.editing_state.try_borrow_mut() {
@@ -192,27 +183,31 @@ impl TextInputPlugin {
     }
 
     pub fn perform_action(&self, action: &str) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message(&PlatformMessage {
-                channel: String::from("flutter/textinput"),
-                message: Message {
-                    method: String::from("TextInputClient.performAction"),
-                    args: json!([self.client_id, "TextInputAction.".to_owned() + action]),
-                },
-                response_handle: None,
+        self.channel.invoke_method(MethodCall {
+            method: String::from("TextInputClient.performAction"),
+            args: json!([self.client_id, "TextInputAction.".to_owned() + action])
+        });
+    }
+
+    fn notify_changes(&self) {
+        self.with_state(|s: &mut TextEditingState| {
+            self.channel.invoke_method(MethodCall {
+                method: String::from("TextInputClient.updateEditingState"),
+                args: json!([self.client_id, s]),
             });
-        }
+        });
     }
 }
 
 impl Plugin for TextInputPlugin {
-    fn get_channel(&self) -> String {
-        String::from("flutter/textinput")
+    fn get_channel_mut(&mut self) -> &mut Channel {
+        return &mut self.channel;
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &super::FlutterEngineInner, _window: &mut glfw::Window) {
-        match msg.message.method.as_str() {
+    fn handle(&mut self, msg: &PlatformMessage, _: &FlutterEngineInner, _: &mut glfw::Window) {
+        let decoded = self.channel.decode_method_call(msg);
+        match decoded.method.as_str() {
             "TextInput.setClient" => {
-                if let Value::Array(v) = &msg.message.args {
+                if let Value::Array(v) = &decoded.args {
                     if v.len() > 0 {
                         if let Some(n) = v[0].as_i64() {
                             self.client_id = Some(n);
@@ -226,7 +221,7 @@ impl Plugin for TextInputPlugin {
             },
             "TextInput.setEditingState" => {
                 if self.client_id.is_some() {
-                    self.editing_state.replace(TextEditingState::from(&msg.message.args));
+                    self.editing_state.replace(TextEditingState::from(&decoded.args));
                 }
             },
             "TextInput.show" => {},
@@ -234,29 +229,9 @@ impl Plugin for TextInputPlugin {
             _ => {}
         }
     }
-    fn set_registry(&mut self, registry: *const PluginRegistry) {
-        self.registry = Some(registry);
-    }
-    fn notify_changes(&self) {
-        self.with_state(|s: &mut TextEditingState| {
-            let args = json!([self.client_id, s]);
-            if let Some(engine) = self.get_engine() {
-                engine.upgrade().unwrap().send_platform_message(&PlatformMessage {
-                    channel: String::from("flutter/textinput"),
-                    message: Message {
-                        method: String::from("TextInputClient.updateEditingState"),
-                        args: args,
-                    },
-                    response_handle: None,
-                });
-            } else {
-                error!("Cannot get engine");
-            }
-        });
-    }
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TextEditingState {
     composing_base: i64,

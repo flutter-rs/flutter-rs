@@ -1,3 +1,6 @@
+mod calc_channel;
+mod random_channel;
+
 use std::{
     env,
     path::PathBuf,
@@ -49,11 +52,13 @@ fn main() {
         assets_path: assets_path.to_string_lossy().into_owned(),
         icu_data_path: icu_data_path.to_string_lossy().into_owned(),
         title: String::from("Flutter Demo"),
-        width: 800,
-        height: 600,
+        width: 1024,
+        height: 768,
     };
 
     let engine = FlutterEngine::new(args);
+    engine.add_plugin(Box::new(calc_channel::CalcPlugin::new()));
+    engine.add_plugin(Box::new(random_channel::RandomPlugin::new()));
     engine.run();
     engine.shutdown();
 }

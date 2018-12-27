@@ -15,10 +15,11 @@ This is the development repo. Head to [flutter-app-template](https://github.com/
 
 # Features:
 - Support Hot reload
+- MethodChannle (Only support JsonMethodChannel now)
 - Application icons
 - Clipboard support
-- Cross platform support (mac & linux so far)
-- Support distribution format: (only mac app so far)
+- Cross platform support (mac & linux)
+- Support distribution format: (only mac app now)
 
 # Roadmap:
 

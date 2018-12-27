@@ -1,4 +1,7 @@
-use serde_json::Value;
+pub mod platform;
+pub mod textinput;
+
+use channel::Channel;
 use super::{ffi, FlutterEngineInner};
 use std::{
     ptr::null,
@@ -6,14 +9,12 @@ use std::{
     sync::Weak,
     collections::HashMap,
     ffi::CString,
+    borrow::Cow,
 };
-
-pub mod platform;
-pub mod textinput;
 
 pub struct PluginRegistry {
     map: HashMap<String, Vec<Box<dyn Plugin>>>,
-    engine: Weak<FlutterEngineInner>,
+    pub engine: Weak<FlutterEngineInner>,
 }
 
 impl PluginRegistry {
@@ -26,19 +27,27 @@ impl PluginRegistry {
     pub fn set_engine(&mut self, engine: Weak<FlutterEngineInner>) {
         self.engine = engine;
     }
-    pub fn add_plugin(&mut self, plugin: Box<dyn Plugin>) {
-        let r = self.map.entry(plugin.get_channel()).or_insert_with(|| Vec::new());
-
+    pub fn add_plugin(&mut self, mut plugin: Box<dyn Plugin>) {
+        let ptr = self as *mut PluginRegistry as *const PluginRegistry;
+        let name = {
+            let mut channel = plugin.get_channel_mut();
+            let name = channel.get_name().to_owned();
+            channel.init(ptr);
+            name
+        };
+        let r = self.map.entry(name).or_insert_with(|| Vec::new());
         r.push(plugin);
     }
     pub fn handle(&mut self, msg: PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window) {
         for (channel, plugin) in &mut self.map {
             if channel == &msg.channel {
+                info!("Processing message from channel: {}", channel);
                 for h in plugin {
                     h.handle(&msg, engine, window);
                 }
             }
         }
+        // TODO: send empty response if no hanlder is registered?
     }
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
         if let Some(v) = self.map.get(channel) {
@@ -49,29 +58,18 @@ impl PluginRegistry {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Message {
-    pub method: String,
-    pub args: Value,
-}
-
 #[derive(Debug)]
-pub struct PlatformMessage {
-    pub channel: String,
-    pub message: Message,
-    pub response_handle: Option<&'static ffi::FlutterPlatformMessageResponseHandle>,
+pub struct PlatformMessage<'a, 'b> {
+    pub channel: Cow<'a, str>,
+    pub message: &'b [u8],
+    pub response_handle: Option<&'a ffi::FlutterPlatformMessageResponseHandle>,
 }
 
-impl Into<ffi::FlutterPlatformMessage> for &PlatformMessage {
+impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
     fn into(self) -> ffi::FlutterPlatformMessage {
-        let s = serde_json::to_string(&self.message).unwrap();
-        let channel = CString::new(self.channel.to_owned()).unwrap();
-        let message = s.into_bytes();
-        let message_ptr = message.as_ptr();
-        let message_len = message.len();
-
-        mem::forget(message);
-        // TODO: must manually clean up FlutterPlatformMessage
+        let channel = CString::new(&*self.channel).unwrap();
+        let message_ptr = self.message.as_ptr();
+        let message_len = self.message.len();
 
         let response_handle = if let Some(h) = self.response_handle {
             h as *const ffi::FlutterPlatformMessageResponseHandle
@@ -90,8 +88,6 @@ impl Into<ffi::FlutterPlatformMessage> for &PlatformMessage {
 }
 
 pub trait Plugin {
-    fn get_channel(&self) -> String;
-    fn handle(&mut self, &PlatformMessage, &super::FlutterEngineInner, &mut glfw::Window) {}
-    fn notify_changes(&self) {}
-    fn set_registry(&mut self, _registry: *const PluginRegistry) {}
+    fn get_channel_mut(&mut self) -> &mut Channel;
+    fn handle(&mut self, &PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window);
 }

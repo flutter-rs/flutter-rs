@@ -1,10 +1,9 @@
 use flutter_engine::{
     Window,
     codec::{
-        MethodCodec,
+        MethodCallResult,
         standard_codec::{
             Value,
-            StandardMethodCodec
         }
     },
     PlatformMessage,
@@ -29,27 +28,48 @@ impl Plugin for CalcPlugin {
     fn get_channel_mut(&mut self) -> &mut Channel {
         return &mut self.channel;
     }
-    fn handle(&mut self, msg: &PlatformMessage, engine: &FlutterEngineInner, _window: &mut Window) {
+    fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, _window: &mut Window) {
         let decoded = self.channel.decode_method_call(msg);
         match decoded.method.as_str() {
             "fibonacci" => {
                 // TODO: what if we want this processor to be async? we need to cache engine and handle?
-                if let Value::I32(n) = decoded.args {
-                    if n > 0 {
-                        let ret = fibonacci(n);
-                        if let Some(response_handle) = msg.response_handle {
-                            let buf = if let Some(v) = ret {
-                                StandardMethodCodec::encode_success_envelope(&Value::I32(v))
+                let result = if let Value::String(s) = decoded.args {
+                    if let Ok(n) = s.parse() {
+                        if n >= 0 {
+                            let ret = fibonacci(n);
+                            if let Some(v) = ret {
+                                MethodCallResult::Ok(Value::I64(v))
                             } else {
-                                StandardMethodCodec::encode_error_envelope("100", "Overflow", &Value::Null)
-                            };
-                            engine.send_platform_message_response(
-                                response_handle,
-                                &buf,
-                            );
+                                MethodCallResult::Err {
+                                    code: "100".to_owned(),
+                                    message: "Overflow".to_owned(),
+                                    data: Value::Null,
+                                }
+                            }
+                        } else {
+                            MethodCallResult::Err {
+                                code: "101".to_owned(),
+                                message: "Minus!".to_owned(),
+                                data: Value::Null,
+                            }
+                        }
+                    } else {
+                        MethodCallResult::Err {
+                            code: "102".to_owned(),
+                            message: "Not a number!".to_owned(),
+                            data: Value::Null,
                         }
                     }
-                }
+                } else {
+                    MethodCallResult::Err {
+                        code: "103".to_owned(),
+                        message: "Format error".to_owned(),
+                        data: Value::Null,
+                    }
+                };
+                self.channel.send_method_call_response(
+                    msg.response_handle,
+                    result);
             },
             _ => (),
         }
@@ -57,12 +77,12 @@ impl Plugin for CalcPlugin {
 }
 
 // TODO: we can move this to a async context and do the calc
-fn fibonacci(n: i32) -> Option<i32> {
+fn fibonacci(n: i64) -> Option<i64> {
     if n <= 0 {
         return Some(0);
     }
-    let mut a = 0i32;
-    let mut b = 1i32;
+    let mut a = 0i64;
+    let mut b = 1i64;
     let mut i = 0;
     while n > i + 1 {
         if let Some(t) = a.checked_add(b) {

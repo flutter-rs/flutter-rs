@@ -69,10 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
           }, itemCount: demos.length)
         ),
         Expanded(
-          child: Scaffold(
-              appBar: AppBar(title: Text('Flutter Demo')),
-              body: demos[currentIdx].builder(context)
-          ),
+          child: demos[currentIdx].builder(context)
         ),
       ],
     );

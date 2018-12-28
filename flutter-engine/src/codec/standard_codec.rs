@@ -82,7 +82,11 @@ impl StandardMethodCodec {
             Value::I32(n) => {
                 writer.write_u8(VALUE_INT32);
                 writer.write_i32(*n);
-            }
+            },
+            Value::I64(n) => {
+                writer.write_u8(VALUE_INT64);
+                writer.write_i64(*n);
+            },
             Value::String(s) => {
                 writer.write_u8(VALUE_STRING);
                 writer.write_size(s.len());
@@ -208,9 +212,13 @@ impl<'a> Reader<'a> {
     }
     fn read_string(&mut self, len: usize) -> String {
         unsafe {
-            let v = slice::from_raw_parts(&self.buf[self.pos], len);
-            self.pos += len;
-            String::from_utf8_lossy(v).to_owned().to_string()
+            if len == 0 {
+                String::from("")
+            } else {
+                let v = slice::from_raw_parts(&self.buf[self.pos], len);
+                self.pos += len;
+                String::from_utf8_lossy(v).to_owned().to_string()
+            }
         }
     }
     fn ended(&self) -> bool {
@@ -233,6 +241,16 @@ impl Writer {
         self.0.push(n.rotate_right(8) as u8);
         self.0.push(n.rotate_right(16) as u8);
         self.0.push(n.rotate_right(24) as u8);
+    }
+    fn write_i64(&mut self, n: i64) {
+        self.0.push(n.rotate_right(0) as u8);
+        self.0.push(n.rotate_right(8) as u8);
+        self.0.push(n.rotate_right(16) as u8);
+        self.0.push(n.rotate_right(24) as u8);
+        self.0.push(n.rotate_right(32) as u8);
+        self.0.push(n.rotate_right(40) as u8);
+        self.0.push(n.rotate_right(48) as u8);
+        self.0.push(n.rotate_right(56) as u8);
     }
     fn write_u16(&mut self, n: u16) {
         self.0.push(n.rotate_right(0) as u8);

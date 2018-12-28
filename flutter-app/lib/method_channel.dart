@@ -24,44 +24,41 @@ class _MethodChannelDemoState extends State<MethodChannelDemo> {
     } else {
       label = Text('');
     }
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Container(
-            width: 150,
-            child: TextField(
-              autofocus: true,
-              textAlign: TextAlign.center,
-              onChanged: (s) async {
-                try {
-                  var i = int.parse(s);
-                  final int n = await channel.invokeMethod('fibonacci', i);
-                  setState(() {
-                    ret = n;
-                    errorCode = null;
-                    errorMessage = null;
-                  });
-                } on PlatformException catch (e) {
-                  setState(() {
-                    ret = null;
-                    errorCode = e.code;
-                    errorMessage = e.message;
-                  });
-                } catch (e) {
-                  setState(() {
-                    ret = null;
-                    errorCode = null;
-                    errorMessage = null;
-                  });
-                }
-              },
+    var theme = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: Text('MethodChannel Demo')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text('Calc Fibonacci', style: theme.title),
+            Container(
+              width: 150,
+              child: TextField(
+                autofocus: true,
+                textAlign: TextAlign.center,
+                onChanged: (s) async {
+                  try {
+                    final int n = await channel.invokeMethod('fibonacci', s);
+                    setState(() {
+                      ret = n;
+                      errorCode = null;
+                      errorMessage = null;
+                    });
+                  } on PlatformException catch (e) {
+                    setState(() {
+                      ret = null;
+                      errorCode = e.code;
+                      errorMessage = e.message;
+                    });
+                  }
+                },
+              ),
             ),
-          ),
-          label,
-        ],
-      ),
+            label,
+          ],
+        ),
+      )
     );
   }
 }

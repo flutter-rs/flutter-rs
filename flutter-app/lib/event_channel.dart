@@ -26,11 +26,14 @@ class _EventChannelDemoState extends State<EventChannelDemo> {
 
   @override
   Widget build(context) {
-    return ListView.builder(
-      itemBuilder: (context, i) {
-        return ListTile(title: Text(data[i]));
-      },
-      itemCount: data.length,
+    return Scaffold(
+      appBar: AppBar(title: Text('EventChannel Demo')),
+      body: ListView.builder(
+        itemBuilder: (context, i) {
+          return ListTile(title: Text(data[i]));
+        },
+        itemCount: data.length,
+      )
     );
   }
 }

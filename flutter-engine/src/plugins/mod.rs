@@ -13,7 +13,7 @@ use std::{
 };
 
 pub struct PluginRegistry {
-    map: HashMap<String, Vec<Box<dyn Plugin>>>,
+    map: HashMap<String, Box<dyn Plugin>>,
     pub engine: Weak<FlutterEngineInner>,
 }
 
@@ -35,26 +35,19 @@ impl PluginRegistry {
             channel.init(ptr);
             name
         };
-        let r = self.map.entry(name).or_insert_with(|| Vec::new());
-        r.push(plugin);
+        self.map.insert(name, plugin);
     }
     pub fn handle(&mut self, msg: PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window) {
         for (channel, plugin) in &mut self.map {
             if channel == &msg.channel {
                 info!("Processing message from channel: {}", channel);
-                for h in plugin {
-                    h.handle(&msg, engine, window);
-                }
+                plugin.handle(&msg, engine, window);
             }
         }
         // TODO: send empty response if no hanlder is registered?
     }
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
-        if let Some(v) = self.map.get(channel) {
-            Some(&v[0])
-        } else {
-            None
-        }
+        self.map.get(channel)
     }
 }
 

@@ -1,5 +1,5 @@
 mod calc_channel;
-mod random_channel;
+mod msg_stream_channel;
 
 use std::{
     env,
@@ -58,7 +58,7 @@ fn main() {
 
     let engine = FlutterEngine::new(args);
     engine.add_plugin(Box::new(calc_channel::CalcPlugin::new()));
-    engine.add_plugin(Box::new(random_channel::RandomPlugin::new()));
+    engine.add_plugin(Box::new(msg_stream_channel::MsgStreamPlugin::new()));
     engine.run();
     engine.shutdown();
 }

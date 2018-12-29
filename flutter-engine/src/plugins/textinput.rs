@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use glfw::{Modifiers};
 use crate::FlutterEngineInner;
-use super::{ Plugin, PlatformMessage};
+use super::{ Plugin, PlatformMessage, PluginRegistry};
 use codec::{ MethodCall };
 use serde_json::Value;
 use utils::StringUtils;
@@ -200,11 +200,14 @@ impl TextInputPlugin {
 }
 
 impl Plugin for TextInputPlugin {
-    fn get_channel_mut(&mut self) -> &mut Channel {
-        return &mut self.channel;
+    fn init_channel(&self, registry: &PluginRegistry) -> &str {
+        self.channel.init(registry);
+        return self.channel.get_name();
     }
     fn handle(&mut self, msg: &PlatformMessage, _: &FlutterEngineInner, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
+        info!("textinput mehod {:?}", decoded.method);
+        info!("textinput mehod {:?}", decoded.args);
         match decoded.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::Array(v) = &decoded.args {
@@ -247,13 +250,13 @@ impl TextEditingState {
     fn from(v: &Value) -> Option<Self> {
         if let Some(m) = v.as_object() {
             Some(Self {
-                composing_base: m.get("composingBase").unwrap().as_i64().unwrap(),
-                composing_extent: m.get("composingExtent").unwrap().as_i64().unwrap(),
-                selection_affinity: String::from(m.get("selectionAffinity").unwrap().as_str().unwrap()),
-                selection_base: m.get("selectionBase").unwrap().as_i64().unwrap(),
-                selection_extent: m.get("selectionExtent").unwrap().as_i64().unwrap(),
-                selection_is_directional: m.get("selectionIsDirectional").unwrap().as_bool().unwrap(),
-                text: String::from(m.get("text").unwrap().as_str().unwrap()),
+                composing_base: m.get("composingBase").unwrap_or(&json!(-1)).as_i64().unwrap(),
+                composing_extent: m.get("composingExtent").unwrap_or(&json!(-1)).as_i64().unwrap(),
+                selection_affinity: String::from(m.get("selectionAffinity").unwrap_or(&json!("")).as_str().unwrap()),
+                selection_base: m.get("selectionBase").unwrap_or(&json!(-1)).as_i64().unwrap(),
+                selection_extent: m.get("selectionExtent").unwrap_or(&json!(-1)).as_i64().unwrap(),
+                selection_is_directional: m.get("selectionIsDirectional").unwrap_or(&json!(false)).as_bool().unwrap(),
+                text: String::from(m.get("text").unwrap_or(&json!("")).as_str().unwrap()),
                 .. Default::default()
             })
         } else {

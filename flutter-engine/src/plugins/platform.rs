@@ -1,5 +1,5 @@
 use crate::{FlutterEngineInner};
-use super::{Plugin, PlatformMessage};
+use super::{Plugin, PlatformMessage, PluginRegistry};
 use serde_json::Value;
 use channel::{ Channel, JsonMethodChannel };
 use codec::MethodCallResult;
@@ -17,8 +17,9 @@ impl PlatformPlugin {
 }
 
 impl Plugin for PlatformPlugin {
-    fn get_channel_mut(&mut self) -> &mut Channel {
-        return &mut self.channel;
+    fn init_channel(&self, registry: &PluginRegistry) -> &str {
+        self.channel.init(registry);
+        return self.channel.get_name();
     }
     fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, window: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);

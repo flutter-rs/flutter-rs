@@ -355,7 +355,7 @@ impl FlutterEngineInner {
 
     pub fn send_platform_message(&self, message: &PlatformMessage) {
         trace!("Sending message {:?} on channel {}", message, message.channel);
-        let mut msg: FlutterPlatformMessage = message.into();
+        let msg: FlutterPlatformMessage = message.into();
         unsafe {
             ffi::FlutterEngineSendPlatformMessage(
                 self.ptr,
@@ -363,7 +363,7 @@ impl FlutterEngineInner {
             );
         }
         // we need to manually drop this message
-        msg.drop();
+        // msg.drop();
     }
 
     pub fn send_platform_message_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, bytes: &[u8]) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 
 class EventChannelDemo extends StatefulWidget {
   @override
@@ -7,33 +8,78 @@ class EventChannelDemo extends StatefulWidget {
 }
 
 class _EventChannelDemoState extends State<EventChannelDemo> {
-  EventChannel channel = EventChannel('rust/random');
-  List data = [];
+  EventChannel channel = EventChannel('rust/msg_stream');
+  List<String> data = [];
+  StreamSubscription sub;
+
   void listenStream() async {
     var stream = channel.receiveBroadcastStream(1234);
-    await for (int value in stream) {
-      setState(() {
-        data.add(value);
-      });
-    }
+    sub = stream.listen(onData, onDone: onDone, onError: onError);
+
+    setState(() {
+      data = [];
+    });
   }
 
-  @override
-  void initState() {
-    super.initState();
-    listenStream();
+  onData(dynamic v) {
+    print('onData $v');
+    setState(() {
+      data.add(v);
+    });
+  }
+
+  onError(dynamic error) {
+    print('onError $error');
+  }
+
+  onDone() {
+    print('onDone');
+  }
+
+  cancelStream() async {
+    await sub.cancel();
+    setState(() {
+      sub = null;
+    });
   }
 
   @override
   Widget build(context) {
+    var status;
+    if (sub != null && !sub.isPaused) {
+      status = 'Listening';
+    } else {
+      status = 'Not listening';
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text('EventChannel Demo')),
       body: ListView.builder(
         itemBuilder: (context, i) {
-          return ListTile(title: Text(data[i]));
+          return ListTile(title: Text(data[i].toString()));
         },
         itemCount: data.length,
-      )
+      ),
+      bottomNavigationBar: BottomAppBar(
+        child: Row(children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: RaisedButton(child: Text("Listen"), onPressed: () {
+              listenStream();
+            }),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: RaisedButton(child: Text("Cancel"), onPressed: () {
+              cancelStream();
+            }),
+          ),    
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text('Status: $status'),
+          )      
+        ])
+      ),
     );
   }
 }

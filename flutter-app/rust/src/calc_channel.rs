@@ -1,5 +1,6 @@
 use flutter_engine::{
     Window,
+    PluginRegistry,
     codec::{
         MethodCallResult,
         standard_codec::{
@@ -25,8 +26,9 @@ impl CalcPlugin {
 }
 
 impl Plugin for CalcPlugin {
-    fn get_channel_mut(&mut self) -> &mut Channel {
-        return &mut self.channel;
+    fn init_channel(&self, registry: &PluginRegistry) -> &str {
+        self.channel.init(registry);
+        self.channel.get_name()
     }
     fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, _window: &mut Window) {
         let decoded = self.channel.decode_method_call(msg);

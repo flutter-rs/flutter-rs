@@ -13,6 +13,9 @@ identifier = "one.juju.flutter-app" # This is only used on mac
 [dependencies]
 log = "0.4.6"
 env_logger = "0.6.0"
+tokio = "0.1.13"
+tokio-timer = "0.2.8"
+futures = "0.1.25"
 flutter-engine = { path = "../../flutter-engine" }
 
 [target.'cfg(target_os = "macos")'.dependencies]

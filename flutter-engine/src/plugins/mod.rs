@@ -27,13 +27,10 @@ impl PluginRegistry {
     pub fn set_engine(&mut self, engine: Weak<FlutterEngineInner>) {
         self.engine = engine;
     }
-    pub fn add_plugin(&mut self, mut plugin: Box<dyn Plugin>) {
-        let ptr = self as *mut PluginRegistry as *const PluginRegistry;
+    pub fn add_plugin(&mut self, plugin: Box<dyn Plugin>) {
         let name = {
-            let mut channel = plugin.get_channel_mut();
-            let name = channel.get_name().to_owned();
-            channel.init(ptr);
-            name
+            let name = plugin.init_channel(self as &PluginRegistry);
+            name.to_owned()
         };
         self.map.insert(name, plugin);
     }
@@ -81,6 +78,6 @@ impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
 }
 
 pub trait Plugin {
-    fn get_channel_mut(&mut self) -> &mut Channel;
+    fn init_channel(&self, &PluginRegistry) -> &str;
     fn handle(&mut self, &PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window);
 }

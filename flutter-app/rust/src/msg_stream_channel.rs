@@ -54,6 +54,7 @@ impl Plugin for MsgStreamPlugin {
                     MethodCallResult::Ok(Value::Null)
                 );
 
+                // FIXME: naive implementation, change this using async rust
                 let ret = Value::String(String::from("Hello?"));
                 channel.send_success_event(&ret);
 

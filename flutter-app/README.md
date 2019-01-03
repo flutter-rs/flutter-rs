@@ -9,19 +9,32 @@ A desktop app built using flutter & rust.
 - Build distribution only works on mac.
 - Windows will be supported.
 
-# Requirement
+# Install requirement
 
 - [Rust](https://www.rust-lang.org/tools/install)
 - libglfw:
     - Install on Mac with: `brew install glfw`
     - Install on linux with `apt install libglfw3`
+    
+- [flutter sdk](https://flutter.io)
 
-# Workflow
+# Config
+- Set flutter engine version in *Cargo.toml*
+
+```
+[package.metadata.flutter]
+version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
+```
+
+    This commit version id can be found in bin/internal/engine.version file in flutter sdk folder.
+
+# Develop
 - To develop with hot-reloading, simple run:
     `./scripts/run.py`
 
-    To show rust logs, add these environment variables: `RUST_LOG=flutter_engine=trace,flutter_app=trace`
+    To show rust logs, add these environment variables: `RUST_LOG=flutter_engine=trace,flutter_app=trace ./scripts/run.py`
 
+# Distribute
 - To build distribution, use:
     `./scripts/build.py mac`
 
@@ -30,7 +43,7 @@ Build scripts are written in python3. Install python depenendencies using `pip3 
 
 ---
 
-### For users in China
+## For users in China
 Please ensure you have access to *storage.googleapis.com*. It is required to download lib_flutter. 
 
 Set appropriate http proxy in the terminal by using:

@@ -9,6 +9,8 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate futures;
+extern crate tokio;
 
 pub mod ffi;
 pub mod plugins;
@@ -26,6 +28,7 @@ use std::{
     sync::{Arc, Weak, Mutex},
     time::{SystemTime, UNIX_EPOCH},
     cell::RefCell,
+    thread,
 };
 use libc::{c_void};
 use self::ffi::{
@@ -46,6 +49,8 @@ pub use self::plugins::{
 };
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};
+use tokio::runtime::Runtime;
+use futures::future::Future;
 
 pub use glfw::Window;
 
@@ -259,6 +264,7 @@ pub struct FlutterEngineInner {
         glfw::Window,
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
+    rt: RefCell<Runtime>,
 }
 
 impl FlutterEngineInner {
@@ -301,6 +307,10 @@ impl FlutterEngineInner {
             let size = window.get_framebuffer_size();
             self.send_window_metrics_change(w_size, size);
         }
+    }
+    pub fn with_rt(&self, cbk: impl FnOnce(&mut Runtime)) {
+        let rt = &mut *self.rt.borrow_mut();
+        cbk(rt);
     }
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
@@ -440,6 +450,7 @@ impl FlutterEngine {
             ptr: null(),
             registry: RefCell::new(PluginRegistry::new()),
             glfw: RefCell::new(None),
+            rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
         });
         inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {

@@ -10,6 +10,8 @@ readme = "crates-io.md"
 
 [dependencies]
 glfw = "0.25.0"
+tokio = "0.1.13"
+futures = "0.1.25"
 libc = "0.2.44"
 lazy_static = "1.2.0"
 serde = "1.0.81"

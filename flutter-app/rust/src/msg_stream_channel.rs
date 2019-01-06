@@ -13,21 +13,26 @@ use flutter_engine::{
     channel::{ Channel, StandardMethodChannel },
 };
 use std::{
+    iter::repeat,
     sync::{ Arc, Mutex },
     time::{ Duration },
 };
+use tokio::prelude::*;
+use stream_cancel::{StreamExt as StreamExt2, Tripwire, Trigger};
 use log::{info};
 
 const CHANNEL_NAME: &str = "rust/msg_stream";
 
 pub struct MsgStreamPlugin {
     channel: Arc<Mutex<StandardMethodChannel>>,
+    stop_trigger: Option<Trigger>,
 }
 
 impl MsgStreamPlugin {
     pub fn new() -> MsgStreamPlugin {
         MsgStreamPlugin {
             channel: Arc::new(Mutex::new(StandardMethodChannel::new(CHANNEL_NAME))),
+            stop_trigger: None,
         }
     }
 }
@@ -39,9 +44,10 @@ impl Plugin for MsgStreamPlugin {
         CHANNEL_NAME
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, _window: &mut Window) {
+    fn handle(&mut self, msg: &PlatformMessage, engine: &FlutterEngineInner, _window: &mut Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg);
+
         info!("Got method call {}", decoded.method);
         match decoded.method.as_str() {
             "listen" => {
@@ -54,27 +60,37 @@ impl Plugin for MsgStreamPlugin {
                     MethodCallResult::Ok(Value::Null)
                 );
 
-                // FIXME: naive implementation, change this using async rust
-                let ret = Value::String(String::from("Hello?"));
-                channel.send_success_event(&ret);
+                let c = self.channel.clone();
+                let (trigger, tripwire) = Tripwire::new();
+                self.stop_trigger = Some(trigger);
 
-                let channel = self.channel.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(1));
-                    let channel = channel.lock().unwrap();
-                    let ret1 = Value::String(String::from("What's your name?"));
-                    channel.send_success_event(&ret1);
-                });
-
-                let channel = self.channel.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(2));
-                    let channel = channel.lock().unwrap();
-                    let ret2 = Value::String(String::from("Nice to see you, man!"));
-                    channel.send_success_event(&ret2);
+                engine.with_rt(|rt| {
+                    rt.spawn(futures::lazy(|| {
+                        let v = vec![
+                            "Hello?",
+                            "What's your name?",
+                            "How old are you?",
+                            "Maybe we can be friend together...",
+                            "Do you have a brother or sister?"
+                        ];
+                        stream::iter_ok::<_, ()>(repeat(v).flatten())
+                            .throttle(Duration::from_secs(1))
+                            .map_err(|e| eprintln!("Error = {:?}", e))
+                            .take_until(tripwire)
+                            .for_each(move |v| {
+                                let channel = c.lock().unwrap();
+                                // Do I need to dispatch this call to GUI thread?
+                                let ret = Value::String(String::from(v));
+                                channel.send_success_event(&ret);
+                                println!("v: {}", v);
+                                Ok(())
+                            })
+                    }));
                 });
             },
             "cancel" => {
+                // drop the trigger to stop stream
+                self.stop_trigger.take();
                 channel.send_method_call_response(
                     msg.response_handle,
                     MethodCallResult::Ok(Value::Null)

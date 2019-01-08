@@ -11,6 +11,7 @@ extern crate serde_json;
 extern crate env_logger;
 extern crate futures;
 extern crate tokio;
+extern crate tinyfiledialogs;
 
 pub mod ffi;
 pub mod plugins;
@@ -46,6 +47,7 @@ pub use self::plugins::{
     Plugin,
     textinput::TextInputPlugin,
     platform::PlatformPlugin,
+    dialog::DialogPlugin,
 };
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};
@@ -319,6 +321,9 @@ impl FlutterEngineInner {
         registry.add_plugin(Box::new(plugin));
 
         let plugin = PlatformPlugin::new();
+        registry.add_plugin(Box::new(plugin));
+        
+        let plugin = DialogPlugin::new();
         registry.add_plugin(Box::new(plugin));
     }
     fn event_loop(&self) {

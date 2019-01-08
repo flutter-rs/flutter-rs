@@ -8,6 +8,7 @@ class MethodChannelDemo extends StatefulWidget {
 
 class _MethodChannelDemoState extends State<MethodChannelDemo> {
   MethodChannel channel = MethodChannel('rust/calc');
+
   int ret;
   String errorCode;
   String errorMessage;

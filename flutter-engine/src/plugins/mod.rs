@@ -1,5 +1,6 @@
 pub mod platform;
 pub mod textinput;
+pub mod dialog;
 
 use channel::Channel;
 use super::{ffi, FlutterEngineInner};
@@ -55,6 +56,14 @@ pub struct PlatformMessage<'a, 'b> {
     pub response_handle: Option<&'a ffi::FlutterPlatformMessageResponseHandle>,
 }
 
+impl<'a, 'b> PlatformMessage<'a, 'b> {
+    fn get_response_handle(&self) -> Option<usize> {
+        self.response_handle.map(|r| {
+            r as *const ffi::FlutterPlatformMessageResponseHandle as usize
+        })
+    }
+}
+
 impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
     fn into(self) -> ffi::FlutterPlatformMessage {
         let channel = CString::new(&*self.channel).unwrap();
@@ -79,5 +88,5 @@ impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
 
 pub trait Plugin {
     fn init_channel(&self, &PluginRegistry) -> &str;
-    fn handle(&mut self, &PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window);
+    fn handle(&mut self, msg: &PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window);
 }

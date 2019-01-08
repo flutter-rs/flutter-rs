@@ -17,6 +17,9 @@ pub struct JsonMethodChannel {
     registry: RefCell<Option<*const PluginRegistry>>,
 }
 
+unsafe impl Send for JsonMethodChannel {}
+unsafe impl Sync for JsonMethodChannel {}
+
 impl JsonMethodChannel {
     pub fn new(name: &str) -> Self {
         Self {
@@ -114,7 +117,7 @@ pub struct StandardMethodChannel {
     name: String,
     registry: RefCell<Option<*const PluginRegistry>>,
 }
-// TODO: Use a mutex to protect this?
+
 unsafe impl Send for StandardMethodChannel {}
 unsafe impl Sync for StandardMethodChannel {}
 

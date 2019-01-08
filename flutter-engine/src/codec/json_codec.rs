@@ -40,7 +40,8 @@ impl MethodCodec for JsonMethodCodec {
     }
 
     fn encode_success_envelope(v: &Self::R) -> Vec<u8> {
-        let s = serde_json::to_string(v).unwrap();
+        let json = json!([v]);
+        let s = serde_json::to_string(&json).unwrap();
         s.into_bytes()
     }
 

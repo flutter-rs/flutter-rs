@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'method_channel.dart';
 import 'event_channel.dart';
+import 'file_dialog.dart';
 
 void main() {
   // Override is necessary to prevent Unknown platform' flutter startup error.
@@ -39,6 +40,10 @@ List<Demo> demos = [
     'EventChannel',
     'Use EventChannel to listen to rust stream',
     (BuildContext context) => EventChannelDemo()),
+  Demo(
+    'File Dialogs',
+    'Open system file dialogs',
+    (BuildContext context) => FileDialogDemo()),
 ];
 
 class MyHomePage extends StatefulWidget {

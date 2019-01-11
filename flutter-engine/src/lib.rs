@@ -310,7 +310,7 @@ impl FlutterEngineInner {
             self.send_window_metrics_change(w_size, size);
         }
     }
-    pub fn with_rt(&self, cbk: impl FnOnce(&mut Runtime)) {
+    pub fn with_async(&self, cbk: impl FnOnce(&mut Runtime)) {
         let rt = &mut *self.rt.borrow_mut();
         cbk(rt);
     }

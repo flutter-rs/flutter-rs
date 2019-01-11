@@ -25,8 +25,10 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 
 # Features:
 - Support Hot reload
-- MethodChannle (Only support JsonMethodChannel now)
+- MethodChannel, EventChannel
+- Async runtime using tokio
 - Application icons
+- System dialogs
 - Clipboard support
 - Cross platform support (mac & linux)
 - Support distribution format: (only mac app now)

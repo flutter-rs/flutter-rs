@@ -64,7 +64,7 @@ impl Plugin for MsgStreamPlugin {
                 let (trigger, tripwire) = Tripwire::new();
                 self.stop_trigger = Some(trigger);
 
-                engine.with_rt(|rt| {
+                engine.with_async(|rt| {
                     rt.spawn(futures::lazy(|| {
                         let v = vec![
                             "Hello?",

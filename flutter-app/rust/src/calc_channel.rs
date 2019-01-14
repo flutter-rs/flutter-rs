@@ -45,28 +45,28 @@ impl Plugin for CalcPlugin {
                                 MethodCallResult::Err {
                                     code: "100".to_owned(),
                                     message: "Overflow".to_owned(),
-                                    data: Value::Null,
+                                    details: Value::Null,
                                 }
                             }
                         } else {
                             MethodCallResult::Err {
                                 code: "101".to_owned(),
                                 message: "Minus!".to_owned(),
-                                data: Value::Null,
+                                details: Value::Null,
                             }
                         }
                     } else {
                         MethodCallResult::Err {
                             code: "102".to_owned(),
                             message: "Not a number!".to_owned(),
-                            data: Value::Null,
+                            details: Value::Null,
                         }
                     }
                 } else {
                     MethodCallResult::Err {
                         code: "103".to_owned(),
                         message: "Format error".to_owned(),
-                        data: Value::Null,
+                        details: Value::Null,
                     }
                 };
                 self.channel.send_method_call_response(

@@ -47,7 +47,7 @@ impl Plugin for DialogPlugin {
                             MethodCallResult::Err{
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
-                                data: Value::Null,
+                                details: Value::Null,
                             },
                         );
                         return;
@@ -100,7 +100,7 @@ impl Plugin for DialogPlugin {
                             MethodCallResult::Err{
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
-                                data: Value::Null,
+                                details: Value::Null,
                             },
                         );
                         return;

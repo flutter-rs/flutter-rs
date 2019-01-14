@@ -14,7 +14,7 @@ pub enum CodecTypes {
 
 pub enum MethodCallResult<R> {
     Ok(R),
-    Err { code: String, message: String, data: R }
+    Err { code: String, message: String, details: R }
 }
 
 pub trait MethodCodec {
@@ -23,6 +23,6 @@ pub trait MethodCodec {
     fn decode_method_call(buf: &[u8]) -> Option<MethodCall<Self::R>>;
     fn decode_envelope(buf: &[u8]) -> Option<MethodCallResult<Self::R>>;
     fn encode_success_envelope(v: &Self::R) -> Vec<u8>;
-    fn encode_error_envelope(code: &str, message: &str, v: &Self::R) -> Vec<u8>;
+    fn encode_error_envelope(code: &str, message: &str, details: &Self::R) -> Vec<u8>;
     fn encode_method_call(v: &MethodCall<Self::R>) -> Vec<u8>;
 }

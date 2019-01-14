@@ -82,8 +82,8 @@ impl JsonMethodChannel {
                 MethodCallResult::Ok(data) => (
                     json_codec::JsonMethodCodec::encode_success_envelope(&data)
                 ),
-                MethodCallResult::Err{code, message, data} => (
-                    json_codec::JsonMethodCodec::encode_error_envelope(&code, &message, &data)
+                MethodCallResult::Err{code, message, details} => (
+                    json_codec::JsonMethodCodec::encode_error_envelope(&code, &message, &details)
                 )
             };
             self.send_response(handle, &buf);
@@ -183,8 +183,8 @@ impl StandardMethodChannel {
                 MethodCallResult::Ok(data) => (
                     standard_codec::StandardMethodCodec::encode_success_envelope(&data)
                 ),
-                MethodCallResult::Err{code, message, data} => (
-                    standard_codec::StandardMethodCodec::encode_error_envelope(&code, &message, &data)
+                MethodCallResult::Err{code, message, details} => (
+                    standard_codec::StandardMethodCodec::encode_error_envelope(&code, &message, &details)
                 )
             };
             self.send_response(handle, &buf);

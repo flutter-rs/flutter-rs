@@ -24,7 +24,7 @@ impl MethodCodec for JsonMethodCodec {
                     return Some(MethodCallResult::Err{
                         code: v[0].as_str().unwrap().to_owned(),
                         message: v[1].as_str().unwrap().to_owned(),
-                        data: v.swap_remove(2)
+                        details: v.swap_remove(2)
                     });
                 }
             } 

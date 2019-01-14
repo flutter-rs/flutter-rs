@@ -52,7 +52,6 @@ pub use self::plugins::{
 use utils::{CStringVec};
 use glfw::{Context, Action, Key, Modifiers};
 use tokio::runtime::Runtime;
-use futures::future::Future;
 
 pub use glfw::Window;
 

@@ -20,9 +20,12 @@ pub enum MethodCallResult<R> {
 pub trait MethodCodec {
     type R;
 
+    /// Methods for handling dart call
     fn decode_method_call(buf: &[u8]) -> Option<MethodCall<Self::R>>;
-    fn decode_envelope(buf: &[u8]) -> Option<MethodCallResult<Self::R>>;
     fn encode_success_envelope(v: &Self::R) -> Vec<u8>;
     fn encode_error_envelope(code: &str, message: &str, details: &Self::R) -> Vec<u8>;
+
+    /// Methods for calling into dart
     fn encode_method_call(v: &MethodCall<Self::R>) -> Vec<u8>;
+    fn decode_envelope(buf: &[u8]) -> Option<MethodCallResult<Self::R>>;
 }

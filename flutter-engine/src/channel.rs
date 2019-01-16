@@ -1,15 +1,100 @@
-use plugins::PluginRegistry;
-use plugins::PlatformMessage;
-use codec::{ MethodCodec, MethodCall, MethodCallResult, json_codec, standard_codec };
-use std::sync::Weak;
-use crate::FlutterEngineInner;
-use std::borrow::Cow;
-use std::cell::RefCell;
+use std::{
+    sync::Weak,
+    borrow::Cow,
+    cell::RefCell,
+};
+use crate::{
+    FlutterEngineInner,
+    codec::{
+        MethodCodec,
+        MethodCall,
+        MethodCallResult,
+        json_codec,
+        standard_codec
+    },
+    plugins::{ PluginRegistry, PlatformMessage},
+};
 use ffi;
 
 pub trait Channel {
+    type R;
+    type Codec: MethodCodec<R=Self::R>;
+
     fn get_name(&self) -> &str;
     fn init(&self, registry: *const PluginRegistry);
+    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>>;
+
+    /// Invoke a dart method using this channel
+    fn invoke_method(&self, method_call: MethodCall<Self::R>) {
+        let buf = Self::Codec::encode_method_call(&method_call);
+        self.send_platform_message(&PlatformMessage {
+            channel: Cow::Borrowed(self.get_name()),
+            message: &buf,
+            response_handle: None,
+        });
+    }
+
+    /// Decode dart method call
+    fn decode_method_call(&self, msg: &PlatformMessage) -> MethodCall<Self::R> {
+        Self::Codec::decode_method_call(msg.message).unwrap()
+    }
+
+    /// Send an EventChannel success event
+    fn send_success_event(&self, data: &Self::R) {
+        let buf = Self::Codec::encode_success_envelope(data);
+        self.send_platform_message(&PlatformMessage {
+            channel: Cow::Borrowed(self.get_name()),
+            message: &buf,
+            response_handle: None,
+        });
+    }
+
+    /// Send an EventChannel error event
+    fn send_error_event(&self, code: &str, message: &str, data: &Self::R) {
+        let buf = Self::Codec::encode_error_envelope(code, message, data);
+        self.send_platform_message(&PlatformMessage {
+            channel: Cow::Borrowed(self.get_name()),
+            message: &buf,
+            response_handle: None,
+        });
+    }
+
+    /// Send a method call response
+    fn send_method_call_response(&self, response_handle: Option<&ffi::FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<Self::R>) -> bool {
+        if let Some(handle) = response_handle {
+            let buf = match ret {
+                MethodCallResult::Ok(data) => (
+                    Self::Codec::encode_success_envelope(&data)
+                ),
+                MethodCallResult::Err{code, message, details} => (
+                    Self::Codec::encode_error_envelope(&code, &message, &details)
+                )
+            };
+            self.send_response(handle, &buf);
+            true       
+        } else {
+            false
+        }
+    }
+
+    /// Send a method call response. This is a low level method. Please use send_method_call_response
+    fn send_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, buf: &[u8]) {
+        if let Some(engine) = self.get_engine() {
+            engine.upgrade().unwrap().send_platform_message_response(
+                response_handle,
+                buf,
+            );
+        }
+    }
+
+    /// Send platform message
+    fn send_platform_message(&self, msg: &PlatformMessage) {
+        if let Some(engine) = self.get_engine() {
+            engine.upgrade().unwrap().send_platform_message(msg);
+        } else {
+            error!("Cannot get engine");
+        }
+    }
 }
 
 pub struct JsonMethodChannel {
@@ -27,88 +112,26 @@ impl JsonMethodChannel {
             registry: RefCell::new(None),
         }
     }
+}
 
-    pub fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
+impl Channel for JsonMethodChannel {
+    type Codec = json_codec::JsonMethodCodec;
+    type R = json_codec::Value;
+
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn init(&self, registry: *const PluginRegistry) {
+        self.registry.replace(Some(registry));
+    }
+
+    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
         self.registry.borrow().map(|ptr| {
             unsafe {
                 let registry = &*ptr;
                 registry.engine.clone()
             }
         })
-    }
-
-    pub fn invoke_method(&self, method_call: MethodCall<json_codec::Value>) {
-        let buf = json_codec::JsonMethodCodec::encode_method_call(&method_call);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }
-
-    pub fn decode_method_call(&self, msg: &PlatformMessage) -> MethodCall<json_codec::Value> {
-        json_codec::JsonMethodCodec::decode_method_call(msg.message).unwrap()
-    }
-
-    pub fn send_success_event(&self, data: &json_codec::Value) {
-        let buf = json_codec::JsonMethodCodec::encode_success_envelope(data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }
-    
-    pub fn send_error_event(&self, code: &str, message: &str, data: &json_codec::Value) {
-        let buf = json_codec::JsonMethodCodec::encode_error_envelope(code, message, data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }
-
-    pub fn send_platform_message(&self, msg: &PlatformMessage) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message(msg);
-        } else {
-            error!("Cannot get engine");
-        }
-    }
-
-    pub fn send_method_call_response(&self, response_handle: Option<&ffi::FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<json_codec::Value>) -> bool {
-        if let Some(handle) = response_handle {
-            let buf = match ret {
-                MethodCallResult::Ok(data) => (
-                    json_codec::JsonMethodCodec::encode_success_envelope(&data)
-                ),
-                MethodCallResult::Err{code, message, details} => (
-                    json_codec::JsonMethodCodec::encode_error_envelope(&code, &message, &details)
-                )
-            };
-            self.send_response(handle, &buf);
-            true       
-        } else {
-            false
-        }
-    }
-
-    pub fn send_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message_response(
-                response_handle,
-                buf,
-            );
-        }
-    }
-}
-
-impl Channel for JsonMethodChannel {
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-    fn init(&self, registry: *const PluginRegistry) {
-        self.registry.replace(Some(registry));
     }
 }
 
@@ -128,87 +151,24 @@ impl StandardMethodChannel {
             registry: RefCell::new(None),
         }
     }
+}
 
-    pub fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
+impl Channel for StandardMethodChannel {
+    type Codec = standard_codec::StandardMethodCodec;
+    type R = standard_codec::Value;
+
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn init(&self, registry: *const PluginRegistry) {
+        self.registry.replace(Some(registry));
+    }
+    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
         self.registry.borrow().map(|ptr| {
             unsafe {
                 let registry = &*ptr;
                 registry.engine.clone()
             }
         })
-    }
-
-    pub fn invoke_method(&self, method_call: MethodCall<standard_codec::Value>) {
-        let buf = standard_codec::StandardMethodCodec::encode_method_call(&method_call);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }
-
-    pub fn decode_method_call(&self, msg: &PlatformMessage) -> MethodCall<standard_codec::Value> {
-        standard_codec::StandardMethodCodec::decode_method_call(msg.message).unwrap()
-    }
-
-    pub fn send_success_event(&self, data: &standard_codec::Value) {
-        let buf = standard_codec::StandardMethodCodec::encode_success_envelope(data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }
-    
-    pub fn send_error_event(&self, code: &str, message: &str, data: &standard_codec::Value) {
-        let buf = standard_codec::StandardMethodCodec::encode_error_envelope(code, message, data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(&self.name),
-            message: &buf,
-            response_handle: None,
-        });
-    }    
-
-    pub fn send_platform_message(&self, msg: &PlatformMessage) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message(msg);
-        } else {
-            error!("Cannot get engine");
-        }
-    }
-
-    pub fn send_method_call_response(&self, response_handle: Option<&ffi::FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<standard_codec::Value>) -> bool {
-        if let Some(handle) = response_handle {
-            let buf = match ret {
-                MethodCallResult::Ok(data) => (
-                    standard_codec::StandardMethodCodec::encode_success_envelope(&data)
-                ),
-                MethodCallResult::Err{code, message, details} => (
-                    standard_codec::StandardMethodCodec::encode_error_envelope(&code, &message, &details)
-                )
-            };
-            self.send_response(handle, &buf);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn send_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message_response(
-                response_handle,
-                buf,
-            );
-        }
-    }
-}
-
-impl Channel for StandardMethodChannel {
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-    fn init(&self, registry: *const PluginRegistry) {
-        self.registry.replace(Some(registry));
     }
 }

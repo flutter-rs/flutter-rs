@@ -11,6 +11,7 @@ use std::{
     collections::HashMap,
     ffi::CString,
     borrow::Cow,
+    sync::Arc,
 };
 
 pub struct PluginRegistry {
@@ -35,11 +36,11 @@ impl PluginRegistry {
         };
         self.map.insert(name, plugin);
     }
-    pub fn handle(&mut self, msg: PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window) {
+    pub fn handle(&mut self, msg: PlatformMessage, engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
         for (channel, plugin) in &mut self.map {
             if channel == &msg.channel {
                 info!("Processing message from channel: {}", channel);
-                plugin.handle(&msg, engine, window);
+                plugin.handle(&msg, engine.clone(), window);
             }
         }
         // TODO: send empty response if no hanlder is registered?
@@ -88,5 +89,5 @@ impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
 
 pub trait Plugin {
     fn init_channel(&self, &PluginRegistry) -> &str;
-    fn handle(&mut self, msg: &PlatformMessage, engine: &FlutterEngineInner, window: &mut glfw::Window);
+    fn handle(&mut self, msg: &PlatformMessage, engine: Arc<FlutterEngineInner>, window: &mut glfw::Window);
 }

@@ -26,7 +26,7 @@ impl Plugin for DialogPlugin {
         channel.init(registry);
         CHANNEL_NAME
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, _window: &mut glfw::Window) {
+    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, _window: &mut glfw::Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg);
         match decoded.method.as_str() {

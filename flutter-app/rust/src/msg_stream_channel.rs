@@ -44,7 +44,7 @@ impl Plugin for MsgStreamPlugin {
         CHANNEL_NAME
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, engine: &FlutterEngineInner, _window: &mut Window) {
+    fn handle(&mut self, msg: &PlatformMessage, engine: Arc<FlutterEngineInner>, _window: &mut Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg);
 
@@ -60,12 +60,13 @@ impl Plugin for MsgStreamPlugin {
                     MethodCallResult::Ok(Value::Null)
                 );
 
-                let c = self.channel.clone();
                 let (trigger, tripwire) = Tripwire::new();
                 self.stop_trigger = Some(trigger);
 
+                let channel = self.channel.clone();
+                let e = engine.clone();
                 engine.with_async(|rt| {
-                    rt.spawn(futures::lazy(|| {
+                    rt.spawn(futures::lazy(move || {
                         let v = vec![
                             "Hello?",
                             "What's your name?",
@@ -78,11 +79,12 @@ impl Plugin for MsgStreamPlugin {
                             .map_err(|e| eprintln!("Error = {:?}", e))
                             .take_until(tripwire)
                             .for_each(move |v| {
-                                let channel = c.lock().unwrap();
-                                // Do I need to dispatch this call to GUI thread?
                                 let ret = Value::String(String::from(v));
-                                channel.send_success_event(&ret);
-                                println!("v: {}", v);
+                                let channel = channel.clone();
+                                e.ui_thread(Box::new(move || {
+                                    let channel = channel.lock().unwrap();
+                                    channel.send_success_event(&ret);
+                                }));
                                 Ok(())
                             })
                     }));

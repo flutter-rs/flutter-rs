@@ -1,4 +1,7 @@
-use std::cell::RefCell;
+use std::{
+    cell::RefCell,
+    sync::Arc,
+};
 use glfw::{Modifiers};
 use crate::FlutterEngineInner;
 use super::{ Plugin, PlatformMessage, PluginRegistry};
@@ -204,7 +207,7 @@ impl Plugin for TextInputPlugin {
         self.channel.init(registry);
         return self.channel.get_name();
     }
-    fn handle(&mut self, msg: &PlatformMessage, _: &FlutterEngineInner, _: &mut glfw::Window) {
+    fn handle(&mut self, msg: &PlatformMessage, _: Arc<FlutterEngineInner>, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
         // info!("textinput mehod {:?}", decoded.method);
         // info!("textinput mehod {:?}", decoded.args);

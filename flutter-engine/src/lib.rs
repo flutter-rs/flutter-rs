@@ -29,7 +29,7 @@ use std::{
     sync::{Arc, Weak, Mutex},
     time::{SystemTime, UNIX_EPOCH},
     cell::RefCell,
-    thread,
+    sync::mpsc:: { self, Sender, Receiver },
 };
 use libc::{c_void};
 use self::ffi::{
@@ -103,7 +103,7 @@ extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *c
         let mmsg = into_platform_message(msg);
         let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
         if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-            engine.handle_platform_msg(mmsg, window);
+            FlutterEngineInner::handle_platform_msg(mmsg, engine, window);
         }
     }
 }
@@ -266,6 +266,8 @@ pub struct FlutterEngineInner {
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
     rt: RefCell<Runtime>,
+    tx: Sender<Box<dyn Fn() + Send>>,
+    rx: Receiver<Box<dyn Fn() + Send>>,
 }
 
 impl FlutterEngineInner {
@@ -313,6 +315,9 @@ impl FlutterEngineInner {
         let rt = &mut *self.rt.borrow_mut();
         cbk(rt);
     }
+    pub fn ui_thread(&self, f: Box<dyn Fn() + Send>) {
+        let _ = self.tx.send(f);
+    }
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
         
@@ -328,10 +333,17 @@ impl FlutterEngineInner {
     fn event_loop(&self) {
         if let Some((glfw, window, events)) = &mut *self.glfw.borrow_mut() {
             while !window.should_close() {
-                glfw.wait_events();
+                // glfw.poll_events();
+                glfw.wait_events_timeout(1.0/60.0);
+
                 // engine.flush_pending_tasks_now();
                 for (_, event) in glfw::flush_messages(&events) {
                     handle_window_event(window, event);
+                }
+
+                // process ui thread callback queue
+                for v in self.rx.try_recv() {
+                   v();
                 }
             }
         }
@@ -392,8 +404,9 @@ impl FlutterEngineInner {
         }
     }
 
-    fn handle_platform_msg(&self, msg: PlatformMessage, window: &mut glfw::Window) {
-        self.registry.borrow_mut().handle(msg, self, window);
+    fn handle_platform_msg(msg: PlatformMessage, engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
+        let mut registry = engine.registry.borrow_mut();
+        registry.handle(msg, engine.clone(), window);
     }
 }
 
@@ -447,6 +460,7 @@ impl FlutterEngine {
         info!("Project args {:?}", proj_args);
         info!("OpenGL config {:?}", config);
 
+        let (tx, rx) = mpsc::channel();
         let inner = Arc::new(FlutterEngineInner {
             args,
             config,
@@ -455,6 +469,8 @@ impl FlutterEngine {
             registry: RefCell::new(PluginRegistry::new()),
             glfw: RefCell::new(None),
             rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
+            tx,
+            rx,
         });
         inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {

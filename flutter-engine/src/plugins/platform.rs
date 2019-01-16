@@ -3,6 +3,7 @@ use super::{Plugin, PlatformMessage, PluginRegistry};
 use serde_json::Value;
 use channel::{ Channel, JsonMethodChannel };
 use codec::MethodCallResult;
+use std::sync::Arc;
 
 pub struct PlatformPlugin {
     channel: JsonMethodChannel,
@@ -21,7 +22,7 @@ impl Plugin for PlatformPlugin {
         self.channel.init(registry);
         return self.channel.get_name();
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, window: &mut glfw::Window) {
+    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
         match decoded.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {

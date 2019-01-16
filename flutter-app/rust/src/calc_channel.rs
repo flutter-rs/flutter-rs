@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use flutter_engine::{
     Window,
     PluginRegistry,
@@ -30,7 +31,7 @@ impl Plugin for CalcPlugin {
         self.channel.init(registry);
         self.channel.get_name()
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: &FlutterEngineInner, _window: &mut Window) {
+    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, _window: &mut Window) {
         let decoded = self.channel.decode_method_call(msg);
         match decoded.method.as_str() {
             "fibonacci" => {

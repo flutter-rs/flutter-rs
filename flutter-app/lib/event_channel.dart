@@ -37,10 +37,20 @@ class _EventChannelDemoState extends State<EventChannelDemo> {
   }
 
   cancelStream() async {
-    await sub.cancel();
-    setState(() {
+    if (sub != null) {
+      var s = sub;
       sub = null;
-    });
+      await s.cancel();
+      if (this.mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    cancelStream();
+    super.dispose();
   }
 
   @override

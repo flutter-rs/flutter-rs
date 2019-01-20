@@ -108,6 +108,22 @@ extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *c
     }
 }
 
+extern fn window_refreshed(ptr: *mut glfw::ffi::GLFWwindow) {
+    if let Some(engine) = FlutterEngine::get_engine(ptr) {
+        let mut w: i32 = 0;
+        let mut h: i32 = 0;
+        let mut w2: i32 = 0;
+        let mut h2: i32 = 0;
+
+        unsafe {
+            glfw::ffi::glfwGetWindowSize(ptr, &mut w, &mut h);
+            glfw::ffi::glfwGetFramebufferSize(ptr, &mut w2, &mut h2);
+        }
+
+        engine.send_window_metrics_change((w, h), (w2, h2));
+    }
+}
+
 /// consider refactor this with TryFrom trait？
 fn into_platform_message(msg: &FlutterPlatformMessage) -> PlatformMessage {
     unsafe {
@@ -289,6 +305,15 @@ impl FlutterEngineInner {
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
         window.make_current();
+
+        // poll_events is blocked during window resize. This callback fix redraw freeze during window resize.
+        // See https://github.com/glfw/glfw/issues/408 for details
+        unsafe {
+            glfw::ffi::glfwSetWindowRefreshCallback(
+                window.window_ptr(),
+                Some(window_refreshed)
+            );
+        }
 
         self.glfw.replace(Some((glfw, window, events)));
 

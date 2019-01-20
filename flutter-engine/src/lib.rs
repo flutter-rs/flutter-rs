@@ -49,8 +49,8 @@ pub use self::plugins::{
     platform::PlatformPlugin,
     dialog::DialogPlugin,
 };
-use utils::{CStringVec};
-use glfw::{Context, Action, Key, Modifiers};
+use utils::{ CStringVec };
+use glfw::{ Context, Action, Key, Modifiers };
 use tokio::runtime::Runtime;
 
 pub use glfw::Window;
@@ -277,7 +277,6 @@ pub struct FlutterEngineInner {
     ptr: *const ffi::FlutterEngine,
     registry: RefCell<PluginRegistry>,
     glfw: RefCell<Option<(
-        glfw::Glfw,
         glfw::Window,
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
@@ -315,11 +314,11 @@ impl FlutterEngineInner {
             );
         }
 
-        self.glfw.replace(Some((glfw, window, events)));
+        self.glfw.replace(Some((window, events)));
 
         unsafe {
             let pack = &*self.glfw.borrow();
-            let (_, window, _) = pack.as_ref().unwrap();
+            let (window, _) = pack.as_ref().unwrap();
 
             let w = window as *const glfw::Window;
             let ret = FlutterEngineRun(
@@ -329,11 +328,11 @@ impl FlutterEngineInner {
                 w as *const c_void,
                 &self.ptr as *const *const ffi::FlutterEngine);
 
-            assert!(ret == FlutterResult::Success);
+            assert!(ret == FlutterResult::Success, "Cannot start flutter engine");
 
-            let w_size = window.get_size();
-            let size = window.get_framebuffer_size();
-            self.send_window_metrics_change(w_size, size);
+            let window_size = window.get_size();
+            let buf_size = window.get_framebuffer_size();
+            self.send_window_metrics_change(window_size, buf_size);
         }
     }
     pub fn with_async(&self, cbk: impl FnOnce(&mut Runtime)) {
@@ -356,10 +355,10 @@ impl FlutterEngineInner {
         registry.add_plugin(Box::new(plugin));
     }
     fn event_loop(&self) {
-        if let Some((glfw, window, events)) = &mut *self.glfw.borrow_mut() {
+        if let Some((window, events)) = &mut *self.glfw.borrow_mut() {
             while !window.should_close() {
                 // glfw.poll_events();
-                glfw.wait_events_timeout(1.0/60.0);
+                window.glfw.wait_events_timeout(1.0/60.0);
 
                 // engine.flush_pending_tasks_now();
                 for (_, event) in glfw::flush_messages(&events) {
@@ -373,12 +372,12 @@ impl FlutterEngineInner {
             }
         }
     }
-    fn send_window_metrics_change(&self, w_size: (i32, i32), size: (i32, i32)) {
+    fn send_window_metrics_change(&self, window_size: (i32, i32), buf_size: (i32, i32)) {
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
-            width: size.0 as usize,
-            height: size.1 as usize,
-            pixel_ratio: size.0 as f64/ w_size.0 as f64,
+            width: buf_size.0 as usize,
+            height: buf_size.1 as usize,
+            pixel_ratio: buf_size.0 as f64/ window_size.0 as f64,
         };
         unsafe {
             FlutterEngineSendWindowMetricsEvent(self.ptr, &evt as *const FlutterWindowMetricsEvent);
@@ -507,7 +506,7 @@ impl FlutterEngine {
         self.inner.run();
         {
             let glfw = &*self.inner.glfw.borrow();
-            let (_, window, _) = glfw.as_ref().unwrap();
+            let (window, _) = glfw.as_ref().unwrap();
             let mut guard = ENGINES.lock().unwrap();
             guard.insert(WindowKey(window.window_ptr()), Arc::downgrade(&self.inner));
         }

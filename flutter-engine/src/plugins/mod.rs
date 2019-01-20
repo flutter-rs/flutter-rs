@@ -2,7 +2,6 @@ pub mod platform;
 pub mod textinput;
 pub mod dialog;
 
-use channel::Channel;
 use super::{ffi, FlutterEngineInner};
 use std::{
     ptr::null,
@@ -43,7 +42,6 @@ impl PluginRegistry {
                 plugin.handle(&msg, engine.clone(), window);
             }
         }
-        // TODO: send empty response if no hanlder is registered?
     }
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
         self.map.get(channel)

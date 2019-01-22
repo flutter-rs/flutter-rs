@@ -1,7 +1,7 @@
 [package]
 name = "flutter-engine"
 description = "Flutter engine embedder in rust"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["juju <gliheng@foxmail.com>"]
 keywords = ["flutter", "GUI"]
 license = "MIT"

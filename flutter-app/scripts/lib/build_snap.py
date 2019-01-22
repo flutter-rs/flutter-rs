@@ -1,6 +1,9 @@
 import os
-from shutil import copyfile, copytree, rmtree
 import subprocess
+from shutil import copyfile, copytree, rmtree
+
+def prepare(envs):
+    pass
 
 def build(envs):
     print(envs)

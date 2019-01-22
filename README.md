@@ -31,7 +31,7 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 - System dialogs
 - Clipboard support
 - Cross platform support (mac & linux)
-- Support distribution format: (only mac app now)
+- Support distribution format: (mac app, mac dmg)
 
 # Roadmap:
 

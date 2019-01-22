@@ -8,6 +8,7 @@ import subprocess
 def collect_env(args):
     PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__), 'pubspec.yaml')
     RUST_PROJ_DIR = os.path.join(PROJ_DIR, 'rust')
+    RUST_ASSETS_DIR = os.path.join(RUST_PROJ_DIR, 'assets')
     TOML_FILE = os.path.join(RUST_PROJ_DIR, 'Cargo.toml')
     META = toml.loads(open(TOML_FILE).read())
     NAME = META['package']['name']
@@ -21,6 +22,7 @@ def collect_env(args):
         TARGET_DIR = os.path.join(WORKSPACE, 'target')
     else:
         TARGET_DIR = os.path.join(RUST_PROJ_DIR, 'target')
+    OUTPUT_DIR = os.path.join(TARGET_DIR, 'debug' if DEBUG else 'release')
     FLUTTER_CONFIG = META['package']['metadata']['flutter']
     IDENTIFIER =  FLUTTER_CONFIG['identifier'] if 'identifier' in FLUTTER_CONFIG else 'one.juju.flutter-app'
     FLUTTER_LIB_VER = META['package']['metadata']['flutter']['version']
@@ -38,7 +40,7 @@ def build_flutter(envs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='build', description='rust app distribution builder')
-    parser.add_argument('dist', choices=['mac', 'snap'], help='distribution type')
+    parser.add_argument('dist', choices=['mac', 'dmg', 'snap'], help='distribution type')
     parser.add_argument('--release', action='store_true', help='build release package')
 
     args = parser.parse_args()
@@ -52,8 +54,17 @@ if __name__ == '__main__':
 
     print('>>> Building package')
     if args.dist == 'mac':
-        from lib.build_mac import build
+        from lib.build_mac import prepare, build
+        prepare(envs)
         build(envs)
     elif args.dist == 'snap':
-        from lib.build_snap import build
+        from lib.build_snap import prepare, build
+        prepare(envs)
+        build(envs)
+    elif args.dist == 'dmg':
+        from lib.build_mac import prepare
+        prepare(envs)
+
+        from lib.build_dmg import prepare, build
+        prepare(envs)
         build(envs)

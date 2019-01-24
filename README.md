@@ -1,6 +1,9 @@
 # flutter-rs [![Join Gitter Chat Channel](https://badges.gitter.im/flutter-rs/community.svg)](https://gitter.im/flutter-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+<center><img src="https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.png" width="200" height="200" /></center>
+
 **Build flutter desktop app in dart & rust**
+
 
 This is the development repo. Head to [flutter-app-template](https://github.com/gliheng/flutter-app-template) for a running demo.
 
@@ -44,3 +47,5 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 
 # Contribution
 Contribution and PR are welcome.
+
+[flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg

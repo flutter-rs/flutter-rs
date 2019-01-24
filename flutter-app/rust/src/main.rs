@@ -54,6 +54,7 @@ fn main() {
         title: String::from("Flutter Demo"),
         width: 1024,
         height: 768,
+        bg_color: (255, 255, 255),
     };
 
     let engine = FlutterEngine::new(args);

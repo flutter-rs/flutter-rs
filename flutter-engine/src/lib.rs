@@ -12,11 +12,13 @@ extern crate env_logger;
 extern crate futures;
 extern crate tokio;
 extern crate tinyfiledialogs;
+extern crate gl;
 
 pub mod ffi;
 pub mod plugins;
 pub mod codec;
 pub mod channel;
+mod draw;
 mod utils;
 
 use std::{
@@ -61,6 +63,7 @@ pub struct FlutterEngineArgs {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    pub bg_color: (u8, u8, u8),
 }
 
 extern fn present(data: *const c_void) -> bool {
@@ -87,7 +90,11 @@ extern fn clear_current(_data: *const c_void) -> bool {
     true
 }
 
+static mut first_frame_drawn: bool = false;
 extern fn fbo_callback(_data: *const c_void) -> u32 {
+    unsafe {
+        first_frame_drawn = true;
+    }
     trace!("fbo_callback");
     0
 }
@@ -280,7 +287,7 @@ pub struct FlutterEngineInner {
         glfw::Window,
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
-    rt: RefCell<Runtime>,
+    rt: RefCell<Runtime>, // A tokio async runtime
     tx: Sender<Box<dyn Fn() + Send>>,
     rx: Receiver<Box<dyn Fn() + Send>>,
 }
@@ -313,6 +320,10 @@ impl FlutterEngineInner {
                 Some(window_refreshed)
             );
         }
+
+        // draw inital background color
+        draw::init_gl(&mut window);
+        draw::draw_bg(&mut window, &self.args);
 
         self.glfw.replace(Some((window, events)));
 

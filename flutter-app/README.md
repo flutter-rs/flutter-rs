@@ -37,6 +37,7 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 # Distribute
 - To build distribution, use:
     `./scripts/build.py mac`
+    `./scripts/build.py dmg`
 
 **Note:**
 Build scripts are written in python3. Install python depenendencies using `pip3 install -r scripts/requirements.txt`

@@ -321,38 +321,46 @@ impl FlutterEngineInner {
             );
         }
 
-        // draw inital background color
-        draw::init_gl(&mut window);
-        draw::draw_bg(&mut window, &self.args);
-
+        // move window and events to FlutterEngineInner struct
         self.glfw.replace(Some((window, events)));
 
-        unsafe {
-            let pack = &*self.glfw.borrow();
-            let (window, _) = pack.as_ref().unwrap();
+        self.with_window_mut(|window| {
+            // draw inital background color
+            draw::init_gl(window);
+            draw::draw_bg(window, &self.args);
 
-            let w = window as *const glfw::Window;
-            let ret = FlutterEngineRun(
-                1,
-                &self.config,
-                &self.proj_args,
-                w as *const c_void,
-                &self.ptr as *const *const ffi::FlutterEngine);
+            unsafe {
+                let ret = FlutterEngineRun(
+                    1,
+                    &self.config,
+                    &self.proj_args,
+                    window as *const glfw::Window as *const c_void,
+                    &self.ptr as *const *const ffi::FlutterEngine);
 
-            assert!(ret == FlutterResult::Success, "Cannot start flutter engine");
+                assert!(ret == FlutterResult::Success, "Cannot start flutter engine");
+            }
 
             let window_size = window.get_size();
             let buf_size = window.get_framebuffer_size();
             self.send_window_metrics_change(window_size, buf_size);
-        }
+        });
     }
+
+    fn with_window_mut(&self, cbk: impl FnOnce(&mut glfw::Window)) {
+        let mut pack = self.glfw.borrow_mut();
+        let (window, _) = pack.as_mut().unwrap();
+        cbk(window);
+    }
+
     pub fn with_async(&self, cbk: impl FnOnce(&mut Runtime)) {
         let rt = &mut *self.rt.borrow_mut();
         cbk(rt);
     }
+
     pub fn ui_thread(&self, f: Box<dyn Fn() + Send>) {
         let _ = self.tx.send(f);
     }
+
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
         

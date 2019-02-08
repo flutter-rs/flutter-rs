@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride
 import 'method_channel.dart';
 import 'event_channel.dart';
 import 'file_dialog.dart';
+import 'textfield.dart';
 
 void main() {
   // Override is necessary to prevent Unknown platform' flutter startup error.
@@ -47,6 +48,10 @@ List<Demo> demos = [
     'File Dialogs',
     'Open system file dialogs',
     (BuildContext context) => FileDialogDemo()),
+  Demo(
+    'TextField',
+    'TextField Demo',
+    (BuildContext context) => TextFieldDemo()),
 ];
 
 class MyHomePage extends StatefulWidget {

@@ -111,21 +111,43 @@ impl TextInputPlugin {
             self.notify_changes();
         }
     }
+    pub fn move_cursor_up(&self, modifiers: Modifiers) {
+        self.with_state(|s: &mut TextEditingState| {
+            let (lo, _) = self.get_lo_and_hi_idx(s);
+
+            let p = s.get_next_line_pos(lo as usize, false) as i64;
+            if modifiers.contains(Modifiers::Shift) {
+                s.select_to(p);
+            } else {
+                s.move_to(p);
+            }
+        });
+        self.notify_changes();
+    }
+    pub fn move_cursor_down(&self, modifiers: Modifiers) {
+        self.with_state(|s: &mut TextEditingState| {
+            let (_, hi) = self.get_lo_and_hi_idx(s);
+
+            let p = s.get_next_line_pos(hi as usize, true) as i64;
+            if modifiers.contains(Modifiers::Shift) {
+                s.select_to(p);
+            } else {
+                s.move_to(p);
+            }
+        });
+        self.notify_changes();
+    }
     pub fn move_cursor_left(&self, modifiers: Modifiers) {
         self.with_state(|s: &mut TextEditingState| {
             let (lo, _) = self.get_lo_and_hi_idx(s);
 
             if modifiers.contains(Modifiers::Shift) {
-                s.selection_is_directional = true;
-                s.selection_extent = (s.selection_extent - 1).max(0);
+                let p = (s.selection_extent - 1).max(0);
+                s.select_to(p);
             } else if s.selection_base != s.selection_extent {
-                s.selection_base = lo;
-                s.selection_extent = lo;
-                s.selection_is_directional = false;
+                s.move_to(lo);
             } else {
-                s.selection_extent = (lo - 1).max(0);
-                s.selection_base = s.selection_extent;
-                s.selection_is_directional = false;
+                s.move_to((lo - 1).max(0));
             }
         });
         self.notify_changes();
@@ -135,16 +157,13 @@ impl TextInputPlugin {
             let (_, hi) = self.get_lo_and_hi_idx(s);
 
             if modifiers.contains(Modifiers::Shift) {
-                s.selection_is_directional = true;
-                s.selection_extent = (s.selection_extent + 1).min(s.text.count() as i64);
+                let p = (s.selection_extent + 1).min(s.text.count() as i64);
+                s.select_to(p);
             } else if s.selection_base != s.selection_extent {
-                s.selection_base = hi;
-                s.selection_extent = hi;
-                s.selection_is_directional = false;
+                s.move_to(hi);
             } else {
-                s.selection_extent = (hi + 1).min(s.text.count() as i64);
-                s.selection_base = s.selection_extent;
-                s.selection_is_directional = false;
+                let p = (hi + 1).min(s.text.count() as i64);
+                s.move_to(p);
             }
         });
         self.notify_changes();
@@ -209,8 +228,10 @@ impl Plugin for TextInputPlugin {
     }
     fn handle(&mut self, msg: &PlatformMessage, _: Arc<FlutterEngineInner>, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
-        // info!("textinput mehod {:?}", decoded.method);
-        // info!("textinput mehod {:?}", decoded.args);
+
+        info!("textinput mehod {:?}", decoded.method);
+        info!("textinput mehod {:?}", decoded.args);
+
         match decoded.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::Array(v) = &decoded.args {
@@ -264,6 +285,48 @@ impl TextEditingState {
             })
         } else {
             None
+        }
+    }
+
+    fn move_to(&mut self, p: i64) {
+        self.selection_base = p;
+        self.selection_extent = p;
+        self.selection_is_directional = false;
+    }
+
+    fn select_to(&mut self, p: i64) {
+        self.selection_is_directional = true;
+        self.selection_extent = p;
+    }
+
+    /// Naive implementation, since rust does not know font metrics.
+    /// It's hard to predict column position when caret jumps across lines.
+    /// Official android implementation does not have a solution so far:
+    /// https://github.com/flutter/engine/blob/395937380c26c7f7e3e0d781d111667daad2c47d/shell/platform/android/io/flutter/plugin/editing/InputConnectionAdaptor.java
+    fn get_next_line_pos(&self, start: usize, forward: bool) -> usize {
+        let v: Vec<char> = self.text.chars().collect();
+        if forward {
+            // search forward
+            let max = self.text.count();
+            if start >= max {
+                return max;
+            }
+            let s = &v[start + 1..];
+            s.iter().position(|&c| c == '\n').map_or(max, |n| {
+                // end of line pos
+                start + n + 1
+            })
+        } else {
+            // search backward
+            if start < 1 {
+                return 0;
+            }
+            let s = &v[..start - 1];
+            let len = s.iter().count();
+            s.iter().rposition(|&c| c == '\n').map_or(0, |n| {
+                // start of line pos
+                start - len + n
+            })
         }
     }
 }

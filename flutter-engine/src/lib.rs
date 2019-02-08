@@ -90,11 +90,7 @@ extern fn clear_current(_data: *const c_void) -> bool {
     true
 }
 
-static mut first_frame_drawn: bool = false;
 extern fn fbo_callback(_data: *const c_void) -> u32 {
-    unsafe {
-        first_frame_drawn = true;
-    }
     trace!("fbo_callback");
     0
 }
@@ -178,6 +174,16 @@ fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 Key::Delete => {
                     FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
                         p.delete();
+                    });
+                },
+                Key::Up => {
+                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                        p.move_cursor_up(modifiers);
+                    });
+                },
+                Key::Down => {
+                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                        p.move_cursor_down(modifiers);
                     });
                 },
                 Key::Left => {

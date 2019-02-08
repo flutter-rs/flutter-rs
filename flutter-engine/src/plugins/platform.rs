@@ -1,3 +1,6 @@
+//! Plugin to work with clipboard and various system related functions.
+//! It handles flutter/platform type message.
+
 use crate::{FlutterEngineInner};
 use super::{Plugin, PlatformMessage, PluginRegistry};
 use serde_json::Value;

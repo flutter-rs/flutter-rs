@@ -1,3 +1,6 @@
+//! Plugin to handle system dialogs.
+//! It handles flutter-rs/dialog type message.
+
 use crate::{FlutterEngineInner};
 use super::{Plugin, PlatformMessage, PluginRegistry, ffi::FlutterPlatformMessageResponseHandle};
 use channel::{ Channel, JsonMethodChannel };

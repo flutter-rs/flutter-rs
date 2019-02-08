@@ -1,3 +1,5 @@
+//! ffi interface based on libflutter.h
+
 use libc::{c_int, size_t, c_char, c_void, uint8_t};
 use std::{ffi::CString};
 use utils::CStringVec;

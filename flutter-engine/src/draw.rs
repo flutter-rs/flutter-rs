@@ -8,6 +8,7 @@ pub fn init_gl(window: &mut glfw::Window) {
     gl::load_with(|s| window.get_proc_address(s));
 }
 
+/// Draw blank background before flutter engine starts.
 pub fn draw_bg(window: &mut glfw::Window, args: &FlutterEngineArgs) {
     unsafe {
         let r = args.bg_color.0 as f32 / u8::MAX as f32;

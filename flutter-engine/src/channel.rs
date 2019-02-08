@@ -1,3 +1,7 @@
+//! Plugins use MethodChannel to interop with flutter/dart.
+//! It contains two implementations StandardMethodChannel using binary encoding 
+//! and JsonMethodChannel using json encoding.
+
 use std::{
     sync::Weak,
     borrow::Cow,
@@ -24,7 +28,7 @@ pub trait Channel {
     fn init(&self, registry: *const PluginRegistry);
     fn get_engine(&self) -> Option<Weak<FlutterEngineInner>>;
 
-    /// Invoke a dart method using this channel
+    /// Invoke a flutter method using this channel
     fn invoke_method(&self, method_call: MethodCall<Self::R>) {
         let buf = Self::Codec::encode_method_call(&method_call);
         self.send_platform_message(&PlatformMessage {
@@ -39,7 +43,9 @@ pub trait Channel {
         Self::Codec::decode_method_call(msg.message).unwrap()
     }
 
-    /// Send an EventChannel success event
+    /// When flutter listen to a stream of events using EventChannel.
+    /// This method send back a success event.
+    /// It can be call multiple times to simulate stream.
     fn send_success_event(&self, data: &Self::R) {
         let buf = Self::Codec::encode_success_envelope(data);
         self.send_platform_message(&PlatformMessage {
@@ -49,7 +55,9 @@ pub trait Channel {
         });
     }
 
-    /// Send an EventChannel error event
+    /// When flutter listen to a stream of events using EventChannel.
+    /// This method send back a error event.
+    /// It can be call multiple times to simulate stream.
     fn send_error_event(&self, code: &str, message: &str, data: &Self::R) {
         let buf = Self::Codec::encode_error_envelope(code, message, data);
         self.send_platform_message(&PlatformMessage {
@@ -77,7 +85,10 @@ pub trait Channel {
         }
     }
 
-    /// Send a method call response. This is a low level method. Please use send_method_call_response
+    /// When flutter call a method using MethodChannel,
+    /// it can wait for rust response using await syntax.
+    /// This method send a response to flutter. This is a low level method.
+    /// Please use send_method_call_response if that will work.
     fn send_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, buf: &[u8]) {
         if let Some(engine) = self.get_engine() {
             engine.upgrade().unwrap().send_platform_message_response(
@@ -87,7 +98,7 @@ pub trait Channel {
         }
     }
 
-    /// Send platform message
+    /// Send a platform message over this channel. This is a low level method.
     fn send_platform_message(&self, msg: &PlatformMessage) {
         if let Some(engine) = self.get_engine() {
             engine.upgrade().unwrap().send_platform_message(msg);

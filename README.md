@@ -46,7 +46,7 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 - Download dll from web?
 
 # Contribution
-Contribution and PR are welcome.
+To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
 [gitter-badge]: https://badges.gitter.im/flutter-rs/community.svg

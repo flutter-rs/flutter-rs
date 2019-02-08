@@ -308,7 +308,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flutter-app"
+name = "flutter-app-demo"
 version = "0.1.0"
 dependencies = [
  "cargo_toml 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",

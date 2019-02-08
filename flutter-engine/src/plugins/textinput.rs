@@ -1,3 +1,6 @@
+//! This plugin is used by TextField to edit text and control caret movement.
+//! It handles flutter/textinput type message.
+
 use std::{
     cell::RefCell,
     sync::Arc,

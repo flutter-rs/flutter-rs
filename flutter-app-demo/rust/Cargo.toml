@@ -1,5 +1,5 @@
 [package]
-name = "flutter-app"
+name = "flutter-app-demo"
 description = "Amazing desktop flutter app"
 version = "0.1.0"
 authors = ["juju <gliheng@foxmail.com>"]

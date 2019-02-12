@@ -71,6 +71,17 @@ extern fn present(data: *const c_void) -> bool {
     unsafe {
         let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
         window.swap_buffers();
+
+        // A work around for black screen on window start in macOS Mojave (10.14)
+        if cfg!(target_os = "macos") {
+            static mut is_initially_visible: bool = false;
+            if !is_initially_visible {
+                let pos = window.get_pos();
+                window.set_pos(pos.0 + 1, pos.1);
+                window.set_pos(pos.0, pos.1);
+                is_initially_visible = true;
+            }
+        }
     }
     true
 }

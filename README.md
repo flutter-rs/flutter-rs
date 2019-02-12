@@ -1,4 +1,4 @@
-# flutter-rs [![Gitter chat][gitter-badge]][gitter-url] [![Crates.io][crates-badge]][crates-url] [![MIT licensed][mit-badge]][mit-url]
+# flutter-rs [![Build status][ci-badge]][ci-url] [![Crates.io][crates-badge]][crates-url] [![Gitter chat][gitter-badge]][gitter-url] [![MIT licensed][mit-badge]][mit-url]
 
 <center><img src="https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.png" width="200" height="200" /></center>
 
@@ -49,6 +49,8 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
+[ci-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
+[ci-url]: https://ci.appveyor.com/project/gliheng/flutter-rs
 [gitter-badge]: https://badges.gitter.im/flutter-rs/community.svg
 [gitter-url]: https://gitter.im/flutter-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 [crates-badge]: https://img.shields.io/crates/v/flutter-engine.svg

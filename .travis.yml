@@ -1,0 +1,7 @@
+language: rust
+os: osx
+addons:
+  homebrew:
+    packages:
+    - glfw
+    update: true

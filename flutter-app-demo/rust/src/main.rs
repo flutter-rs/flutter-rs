@@ -7,7 +7,11 @@ use std::{
 };
 use log::{info};
 use env_logger;
-use flutter_engine::{FlutterEngineArgs, FlutterEngine};
+use flutter_engine::{
+    FlutterEngineArgs,
+    FlutterEngine,
+    WindowMode,
+};
 
 #[cfg(target_os = "macos")]
 use core_foundation::bundle;
@@ -48,13 +52,14 @@ fn main() {
         },
     };
 
-    let args = FlutterEngineArgs{
+    let args = FlutterEngineArgs {
         assets_path: assets_path.to_string_lossy().into_owned(),
         icu_data_path: icu_data_path.to_string_lossy().into_owned(),
         title: String::from("Flutter Demo"),
         width: 1024,
         height: 768,
-        bg_color: (255, 255, 255),
+        window_mode: WindowMode::Windowed,
+        ..Default::default()
     };
 
     let engine = FlutterEngine::new(args);

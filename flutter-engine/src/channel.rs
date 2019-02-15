@@ -69,6 +69,7 @@ pub trait Channel {
 
     /// Send a method call response
     fn send_method_call_response(&self, response_handle: Option<&ffi::FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<Self::R>) -> bool {
+        // TODO: This is too long, need a short version
         if let Some(handle) = response_handle {
             let buf = match ret {
                 MethodCallResult::Ok(data) => (

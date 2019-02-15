@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:async';
+import 'ui/widgets.dart' as UI;
 
 class EventChannelDemo extends StatefulWidget {
   @override
@@ -38,9 +39,7 @@ class _EventChannelDemoState extends State<EventChannelDemo> {
 
   cancelStream() async {
     if (sub != null) {
-      var s = sub;
-      sub = null;
-      await s.cancel();
+      await sub.cancel();
       if (this.mounted) {
         setState(() {});
       }
@@ -63,7 +62,7 @@ class _EventChannelDemoState extends State<EventChannelDemo> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('EventChannel Demo')),
+      appBar: UI.AppBar(title: Text('EventChannel Demo')),
       body: ListView.builder(
         itemBuilder: (context, i) {
           return ListTile(title: Text(data[i].toString()));

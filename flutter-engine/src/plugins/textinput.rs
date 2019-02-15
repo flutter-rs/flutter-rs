@@ -258,6 +258,7 @@ impl Plugin for TextInputPlugin {
             "TextInput.hide" => {},
             _ => {}
         }
+        // TODO: call response handle no matter what
     }
 }
 

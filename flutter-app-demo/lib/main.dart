@@ -4,6 +4,7 @@ import 'method_channel.dart';
 import 'event_channel.dart';
 import 'file_dialog.dart';
 import 'textfield.dart';
+import 'window.dart';
 
 void main() {
   // Override is necessary to prevent Unknown platform' flutter startup error.
@@ -52,6 +53,10 @@ List<Demo> demos = [
     'TextField',
     'TextField Demo',
     (BuildContext context) => TextFieldDemo()),
+  Demo(
+    'Window',
+    'Control native window',
+    (BuildContext context) => WindowDemo()),
 ];
 
 class MyHomePage extends StatefulWidget {

@@ -48,6 +48,7 @@ pub use self::plugins::{
     PluginRegistry,
     Plugin,
     textinput::TextInputPlugin,
+    window::WindowPlugin,
     platform::PlatformPlugin,
     dialog::DialogPlugin,
 };
@@ -64,6 +65,27 @@ pub struct FlutterEngineArgs {
     pub width: u32,
     pub height: u32,
     pub bg_color: (u8, u8, u8),
+    pub window_mode: WindowMode,
+}
+
+impl Default for FlutterEngineArgs {
+    fn default() -> Self {
+        FlutterEngineArgs {
+            assets_path: String::from(""),
+            icu_data_path: String::from(""),
+            title: String::from(""),
+            width: 800,
+            height: 600,
+            bg_color: (255, 255, 255),
+            window_mode: WindowMode::Windowed,
+        }
+    }
+}
+
+pub enum WindowMode {
+    FullScreen(usize), // monitor index
+    Windowed,
+    Frameless,
 }
 
 extern fn present(data: *const c_void) -> bool {
@@ -311,16 +333,43 @@ pub struct FlutterEngineInner {
 
 impl FlutterEngineInner {
     fn run(&self) {
-        let glfw = glfw::Glfw;
+        let mut g = glfw::Glfw;
 
-        let (mut window, events) = glfw.create_window(
-            self.args.width,
-            self.args.height,
-            &self.args.title,
-            glfw::WindowMode::Windowed,
-        ).expect("Failed to create GLFW window.");
+        // setup window
+        let (mut window, events) = {
+            let tip = "Failed to create GLFW window.";
+            match self.args.window_mode {
+                WindowMode::Frameless => {
+                    g.window_hint(glfw::WindowHint::Decorated(false));
+                    g.create_window(
+                        self.args.width,
+                        self.args.height,
+                        &self.args.title,
+                        glfw::WindowMode::Windowed,
+                    ).expect(tip)
+                },
+                WindowMode::FullScreen(idx) => {
+                    g.with_connected_monitors(|g, monitors| {
+                        let monitor = monitors.get(idx).expect("Cannot find specified monitor");
+                        g.create_window(
+                            self.args.width,
+                            self.args.height,
+                            &self.args.title,
+                            glfw::WindowMode::FullScreen(&monitor),
+                        ).expect(tip)
+                    })
+                },
+                _ => {
+                    g.create_window(
+                        self.args.width,
+                        self.args.height,
+                        &self.args.title,
+                        glfw::WindowMode::Windowed,
+                    ).expect(tip)
+                },
+            }
+        };
 
-        self.add_system_plugins();
         window.set_key_polling(true);
         window.set_framebuffer_size_polling(true);
         window.set_size_polling(true);
@@ -328,6 +377,8 @@ impl FlutterEngineInner {
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
         window.make_current();
+
+        self.add_system_plugins();
 
         // poll_events is blocked during window resize. This callback fix redraw freeze during window resize.
         // See https://github.com/glfw/glfw/issues/408 for details
@@ -388,6 +439,9 @@ impl FlutterEngineInner {
         registry.add_plugin(Box::new(plugin));
         
         let plugin = DialogPlugin::new();
+        registry.add_plugin(Box::new(plugin));
+
+        let plugin = WindowPlugin::new();
         registry.add_plugin(Box::new(plugin));
     }
     fn event_loop(&self) {

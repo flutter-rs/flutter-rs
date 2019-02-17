@@ -561,11 +561,18 @@ impl FlutterEngine {
 
         let main_path = CString::new("").unwrap();
         let packages_path = CString::new("").unwrap();
-        let vm_args = if let Some(cli_args) = &args.command_line_args {
-            CStringVec::new(cli_args.as_slice())
-        } else {
-            // use default args
-            CStringVec::new(&["--dart-non-checked-mode", "--observatory-port=50300"])
+        // FlutterProjectArgs is expecting a full argv, so when processing it for flags the first
+        // item is treated as the executable and ignored. Add a dummy value so that all provided arguments
+        // are used.
+        let vm_args = {
+            let mut cli_args = vec!["placeholder"];
+            if let Some(a) = &args.command_line_args {
+                cli_args.extend(a.iter().map(|v| v.as_str()));
+            } else {
+                // use default args
+                cli_args.push("--observatory-port=50300");
+            };
+            CStringVec::new(&cli_args)
         };
         let proj_args = ffi::FlutterProjectArgs {
             struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),

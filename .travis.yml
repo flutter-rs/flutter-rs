@@ -1,4 +1,6 @@
 language: rust
+rust:
+  - stable
 os: osx
 addons:
   homebrew:

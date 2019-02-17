@@ -7,10 +7,10 @@ pub struct CStringVec {
 }
 
 impl CStringVec {
-    pub fn new(v: &[&str]) -> CStringVec {
+    pub fn new<'a, T: AsRef<str>>(v: &'a [T]) -> CStringVec {
         let mut ptrs: Vec<*mut c_char> = Vec::with_capacity(v.len());
-        for &s in v {
-            let c = CString::new(s).unwrap();
+        for s in v {
+            let c = CString::new(s.as_ref()).unwrap();
             ptrs.push(c.into_raw());
         }
         CStringVec {

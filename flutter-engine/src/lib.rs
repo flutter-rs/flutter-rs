@@ -66,6 +66,7 @@ pub struct FlutterEngineArgs {
     pub height: u32,
     pub bg_color: (u8, u8, u8),
     pub window_mode: WindowMode,
+    pub command_line_args: Option<Vec<String>>
 }
 
 impl Default for FlutterEngineArgs {
@@ -78,6 +79,7 @@ impl Default for FlutterEngineArgs {
             height: 600,
             bg_color: (255, 255, 255),
             window_mode: WindowMode::Windowed,
+            command_line_args: None,
         }
     }
 }
@@ -559,7 +561,12 @@ impl FlutterEngine {
 
         let main_path = CString::new("").unwrap();
         let packages_path = CString::new("").unwrap();
-        let vm_args = CStringVec::new(&["--dart-non-checked-mode", "--observatory-port=50300"]);
+        let vm_args = if let Some(cli_args) = &args.command_line_args {
+            CStringVec::new(cli_args.as_slice())
+        } else {
+            // use default args
+            CStringVec::new(&["--dart-non-checked-mode", "--observatory-port=50300"])
+        };
         let proj_args = ffi::FlutterProjectArgs {
             struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),
             assets_path: CString::new(args.assets_path.to_string()).unwrap().into_raw(),

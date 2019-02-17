@@ -98,12 +98,12 @@ extern fn present(data: *const c_void) -> bool {
 
         // A work around for black screen on window start in macOS Mojave (10.14)
         if cfg!(target_os = "macos") {
-            static mut is_initially_visible: bool = false;
-            if !is_initially_visible {
+            static mut IS_INITIALLY_VISIBLE: bool = false;
+            if !IS_INITIALLY_VISIBLE {
                 let pos = window.get_pos();
                 window.set_pos(pos.0 + 1, pos.1);
                 window.set_pos(pos.0, pos.1);
-                is_initially_visible = true;
+                IS_INITIALLY_VISIBLE = true;
             }
         }
     }

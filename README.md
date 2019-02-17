@@ -4,6 +4,7 @@
 
 **Build flutter desktop app in dart & rust**
 
+![demo ui](https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png "Flutter app demo screenshot")
 
 This is the development repo. Head to [flutter-app-template](https://github.com/gliheng/flutter-app-template) for a running demo.
 
@@ -57,3 +58,4 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [crates-url]: https://crates.io/crates/flutter-engine
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: LICENSE-MIT
+[demo-ui]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png

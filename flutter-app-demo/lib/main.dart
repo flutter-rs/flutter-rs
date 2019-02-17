@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
-import 'method_channel.dart';
-import 'event_channel.dart';
-import 'file_dialog.dart';
-import 'textfield.dart';
-import 'window.dart';
+import 'demos/demos.dart';
+
+var LIGHT_THEME = ThemeData(
+  primarySwatch: Colors.blue,
+  brightness: Brightness.light,
+);
+
+var DARK_THEME = ThemeData(
+  primarySwatch: Colors.blue,
+  accentColor: Colors.lightBlue.shade200,
+  brightness: Brightness.dark,
+);
 
 void main() {
   // Override is necessary to prevent Unknown platform' flutter startup error.
@@ -21,51 +29,129 @@ class MyApp extends StatelessWidget {
       // Since flutter tool is unable to generate AOT code for desktop,
       // our only option is to hide this banner and use JIT
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: Material(child: MyHomePage()),
+      theme: LIGHT_THEME,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => Material(child: GetStartedPage()),
+        '/demo': (context) => Material(child: DemoPage()),
+      },
     );
   }
 }
 
-class Demo {
-  String name;
-  String description;
-  Function(BuildContext) builder;
-  Demo(this.name, this.description, this.builder);
+var cmd = 'git clone https://github.com/gliheng/flutter-app-template.git flutter_app\n./flutter_app/scripts/init.py';
+
+class GetStartedPage extends StatelessWidget {
+  final MethodChannel channel = MethodChannel('flutter/platform', JSONMethodCodec());
+
+  void _showToast(BuildContext context, String text) {
+    final scaffold = Scaffold.of(context);
+    scaffold.showSnackBar(
+      SnackBar(
+        content: Text(text),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    var theme = Theme.of(context);
+    return Container(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Container(
+            height: 480,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.red,
+                image: DecorationImage(
+                  fit: BoxFit.cover,
+                  alignment: Alignment.bottomCenter,
+                  image: AssetImage('assets/header.png'),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: SizedBox(
+                width: 700,
+                height: 100,
+                child: FlatButton(
+                  color: Colors.black12,
+                  child: Center(
+                    child: Text(
+                      cmd, style: TextStyle(
+                        fontSize: 20,
+                      ),
+                    ),
+                  ),
+                  onPressed: () {
+                    channel.invokeMethod('Clipboard.setData', {
+                      'text': cmd,
+                    });
+                    _showToast(context, 'Copied to clipboard');
+                  },
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                RaisedButton(
+                  color: theme.primaryColor,
+                  padding: EdgeInsets.all(14.0),
+                  textTheme: ButtonTextTheme.primary,
+                  child: Text('Show Demos', style:TextStyle(
+                    fontSize: 30
+                  )),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/demo');
+                  },
+                )
+              ]
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Builder(
+        builder: (context) => _buildBody(context)
+      )
+    );
+  }
 }
 
-List<Demo> demos = [
-  Demo(
-    'MethodChannel',
-    'Use MethodChannel to invoke rust',
-    (BuildContext context) => MethodChannelDemo()),
-  Demo(
-    'EventChannel',
-    'Use EventChannel to listen to rust stream',
-    (BuildContext context) => EventChannelDemo()),
-  Demo(
-    'File Dialogs',
-    'Open system file dialogs',
-    (BuildContext context) => FileDialogDemo()),
-  Demo(
-    'TextField',
-    'TextField Demo',
-    (BuildContext context) => TextFieldDemo()),
-  Demo(
-    'Window',
-    'Control native window',
-    (BuildContext context) => WindowDemo()),
-];
-
-class MyHomePage extends StatefulWidget {
+class DemoPage extends StatefulWidget {
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _DemoPageState createState() => _DemoPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _DemoPageState extends State<DemoPage> {
   int currentIdx = 0;
+
+  Widget _buildList() {
+    return ListView.builder(itemBuilder: (BuildContext context, int i) {
+      return ListTile(
+        leading: Icon(demos[i].icon),
+        selected: i == currentIdx,
+        title: Text(demos[i].name),
+        subtitle: Text(demos[i].description),
+        onTap: () {
+          setState(() {
+            currentIdx = i;
+          });
+        },
+      );
+    }, itemCount: demos.length);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,18 +159,15 @@ class _MyHomePageState extends State<MyHomePage> {
       children: <Widget>[
         SizedBox(
           width: 300,
-          child: ListView.builder(itemBuilder: (BuildContext context, int i) {
-            return ListTile(
-              selected: i == currentIdx,
-              title: Text(demos[i].name),
-              subtitle: Text(demos[i].description),
-              onTap: () {
-                setState(() {
-                  currentIdx = i;
-                });
-              },
-            );
-          }, itemCount: demos.length)
+          child: Container(
+            decoration: BoxDecoration(
+              color: Color.fromARGB(255, 50, 50, 50),
+            ),
+            child: Theme(
+              data: DARK_THEME,
+              child: _buildList()
+            ),
+          ),
         ),
         Expanded(
           child: demos[currentIdx].builder(context)

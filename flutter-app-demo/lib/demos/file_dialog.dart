@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'ui/widgets.dart' as UI;
+import '../ui/widgets.dart' as UI;
 
 class FileDialogDemo extends StatefulWidget {
   @override

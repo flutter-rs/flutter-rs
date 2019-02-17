@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'ui/widgets.dart' as UI;
+import '../ui/widgets.dart' as UI;
 
 class EventChannelDemo extends StatefulWidget {
   @override

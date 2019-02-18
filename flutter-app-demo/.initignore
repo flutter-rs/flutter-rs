@@ -1,0 +1,5 @@
+.git
+.initignore
+*.pyc
+*.dart
+rust/assets/

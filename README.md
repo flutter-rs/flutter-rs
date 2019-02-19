@@ -1,12 +1,9 @@
 # flutter-rs [![Build status][ci-badge]][ci-url] [![Crates.io][crates-badge]][crates-url] [![Gitter chat][gitter-badge]][gitter-url] [![MIT licensed][mit-badge]][mit-url]
 
-<center><img src="https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.png" width="200" height="200" /></center>
 
-**Build flutter desktop app in dart & rust**
+Build flutter desktop app in dart & rust.
 
 ![demo ui](https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png "Flutter app demo screenshot")
-
-This is the development repo. Head to [flutter-app-template](https://github.com/gliheng/flutter-app-template) for a running demo.
 
 # Install
 - Install latest [Rust](https://www.rust-lang.org)

@@ -48,7 +48,7 @@ def cargo_run():
 if __name__ == '__main__':
     print('>>> Building flutter bundle')
     subprocess.run(['flutter', 'build', 'bundle'],
-        shell = True, cwd = PROJ_DIR, check = True)
+        cwd = PROJ_DIR, check = True)
 
     print('>>> Building rust project')
     port = cargo_run()
@@ -57,4 +57,4 @@ if __name__ == '__main__':
 
     print('>>> Attaching dart debugger')
     subprocess.run(['flutter', 'attach', '--device-id=flutter-tester', '--debug-port=50300'],
-        shell = True, cwd = PROJ_DIR, check = True)
+        cwd = PROJ_DIR, check = True)

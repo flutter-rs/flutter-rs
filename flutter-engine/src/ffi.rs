@@ -112,8 +112,8 @@ pub struct FlutterProjectArgs {
 impl Drop for FlutterProjectArgs {
     fn drop(&mut self) {
         unsafe {
-            let _ = CString::from_raw(self.assets_path);
-            let _ = CString::from_raw(self.main_path);
+            // let _ = CString::from_raw(self.assets_path);
+            // let _ = CString::from_raw(self.main_path);
             let _ = CString::from_raw(self.packages_path);
             let _ = CString::from_raw(self.icu_data_path);
             let _ = CStringVec::from_raw(self.command_line_argc as usize, self.command_line_argv);

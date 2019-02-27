@@ -30,9 +30,16 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 
 # Develop
 - To develop with hot-reloading, simple run:
+
     `./scripts/run.py`
 
-    To show rust logs, add these environment variables: `RUST_LOG=flutter_engine=trace,flutter_app_demo=trace ./scripts/run.py`
+- To show rust logs, add these environment variables:
+
+    `RUST_LOG=flutter_engine=trace,flutter_app_demo=trace ./scripts/run.py`
+
+- On windows powershell, set environment variables as:
+
+    `$env:RUST_LOG=RUST_LOG=flutter_engine=trace,flutter_app_demo=trace`
 
 # Distribute
 - To build distribution, use:

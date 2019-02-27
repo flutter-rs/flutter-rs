@@ -107,6 +107,14 @@ pub struct FlutterProjectArgs {
     pub command_line_argc: c_int,
     pub command_line_argv: *mut *mut c_char,
     pub platform_message_callback: FlutterPlatformMessageCallback,
+    pub vm_snapshot_data: *const u8,
+    pub vm_snapshot_data_size: size_t,
+    pub vm_snapshot_instructions: *const u8,
+    pub vm_snapshot_instructions_size: size_t,
+    pub isolate_snapshot_data: *const u8,
+    pub isolate_snapshot_data_size: size_t,
+    pub isolate_snapshot_instructions: *const u8,
+    pub isolate_snapshot_instructions_size: size_t,
 }
 
 impl Drop for FlutterProjectArgs {

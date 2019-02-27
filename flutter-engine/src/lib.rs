@@ -581,6 +581,14 @@ impl FlutterEngine {
             command_line_argc: vm_args.len() as i32,
             command_line_argv: vm_args.into_raw(),
             platform_message_callback: platform_message_callback,
+            vm_snapshot_data: std::ptr::null(),
+            vm_snapshot_data_size: 0,
+            vm_snapshot_instructions: std::ptr::null(),
+            vm_snapshot_instructions_size: 0,
+            isolate_snapshot_data: std::ptr::null(),
+            isolate_snapshot_data_size: 0,
+            isolate_snapshot_instructions: std::ptr::null(),
+            isolate_snapshot_instructions_size: 0,
         };
 
         info!("Project args {:?}", proj_args);

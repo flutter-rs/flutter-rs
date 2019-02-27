@@ -10,6 +10,7 @@ def get_config():
         proj_dir = look_for_proj_dir(os.path.abspath(__file__), 'pubspec.yaml')
         name = input('What\'s the name of the project?\n')
         lib_name = name.replace('-', '_')
+
         try:
             with open(os.path.join(proj_dir, '.initignore')) as f:
                 ignore_list = []
@@ -38,7 +39,7 @@ def install_py_deps(config):
         ['pip3', 'install', '-r', './scripts/requirements.txt'],
         cwd = config['proj_dir'], check = True)
 
-def rename_proj(config):
+def tmpl_proj(config):
     proj_dir = config['proj_dir']
     for root, _, files in os.walk(proj_dir):
         for name in files:
@@ -62,11 +63,13 @@ def run():
     if not config:
         return
 
-    print('>>> Installing build dependencies')
-    install_py_deps(config)
+    # if a name is not specified, skip templating process
+    if config['name']:
+        print('>>> Creating files')
+        tmpl_proj(config)
 
     print('>>> Installing build dependencies')
-    rename_proj(config)
+    install_py_deps(config)
 
     print('>>> Done! Happy coding.')
 

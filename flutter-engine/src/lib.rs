@@ -75,8 +75,8 @@ impl Default for FlutterEngineArgs {
             assets_path: String::from(""),
             icu_data_path: String::from(""),
             title: String::from(""),
-            width: 800,
-            height: 600,
+            width: 1024,
+            height: 768,
             bg_color: (255, 255, 255),
             window_mode: WindowMode::Windowed,
             command_line_args: None,
@@ -559,8 +559,6 @@ impl FlutterEngine {
             },
         };
 
-        let main_path = CString::new("").unwrap();
-        let packages_path = CString::new("").unwrap();
         // FlutterProjectArgs is expecting a full argv, so when processing it for flags the first
         // item is treated as the executable and ignored. Add a dummy value so that all provided arguments
         // are used.
@@ -577,8 +575,8 @@ impl FlutterEngine {
         let proj_args = ffi::FlutterProjectArgs {
             struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),
             assets_path: CString::new(args.assets_path.to_string()).unwrap().into_raw(),
-            main_path: main_path.into_raw(),
-            packages_path: packages_path.into_raw(),
+            main_path: std::ptr::null_mut(),
+            packages_path: std::ptr::null_mut(),
             icu_data_path: CString::new(args.icu_data_path.to_string()).unwrap().into_raw(),
             command_line_argc: vm_args.len() as i32,
             command_line_argv: vm_args.into_raw(),

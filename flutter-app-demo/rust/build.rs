@@ -44,6 +44,10 @@ fn main() {
     #[cfg(target_os="macos")] {
         println!("cargo:rustc-link-search=framework={}", libs_dir.to_str().expect("libs_dir invalid"));
     }
+    
+    #[cfg(target_os="windows")] {
+        println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
+    }
 }
 
 fn write_cargo_config(project_dir: &Path, libs_dir: &Path) {
@@ -58,6 +62,17 @@ rustflags = ["-C", "link-args=-Wl,-rpath,{libs}"]"#, libs = libs_dir.to_string_l
     } else if cfg!(target_os="macos") {
         format!(r#"[target.x86_64-apple-darwin]
 rustflags = ["-C", "link-args=-Wl,-rpath,{libs},-rpath,@executable_path/../Frameworks/"]"#, libs = libs_dir.to_string_lossy())
+    } else if cfg!(target_os="windows") {
+        // windows does not use rpath, we have to copy dll to OUT_DIR
+        let src = libs_dir.join("flutter_engine.dll");
+        let tar = Path::new(&std::env::var("OUT_DIR").unwrap())
+            .parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap()
+            .join("flutter_engine.dll");
+
+        let _ = fs::copy(src, tar);
+        format!(r#""#)
     } else {
         format!(r#""#)
     };

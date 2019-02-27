@@ -129,6 +129,10 @@ extern {}
 #[link(name = "FlutterEmbedder", kind = "framework")]
 extern {}
 
+#[cfg(target_os = "windows")]
+#[link(name = "flutter_engine.dll")]
+extern {}
+
 extern {
     pub fn FlutterEngineRun(
         version: size_t,

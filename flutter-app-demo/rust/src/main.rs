@@ -56,8 +56,8 @@ fn main() {
         assets_path: assets_path.to_string_lossy().into_owned(),
         icu_data_path: icu_data_path.to_string_lossy().into_owned(),
         title: String::from("Flutter Demo"),
-        width: 1024,
-        height: 768,
+        width: 1800,
+        height: 1200,
         window_mode: WindowMode::Windowed,
         ..Default::default()
     };

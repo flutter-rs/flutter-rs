@@ -47,7 +47,8 @@ def cargo_run():
 
 if __name__ == '__main__':
     print('>>> Building flutter bundle')
-    subprocess.run(['flutter', 'build', 'bundle'], cwd = PROJ_DIR, check = True)
+    subprocess.run(['flutter', 'build', 'bundle'],
+        shell = True, cwd = PROJ_DIR, check = True)
 
     print('>>> Building rust project')
     port = cargo_run()
@@ -55,4 +56,5 @@ if __name__ == '__main__':
         raise Exception('Launch cargo error')
 
     print('>>> Attaching dart debugger')
-    subprocess.run(['flutter', 'attach', '--device-id=flutter-tester', '--debug-port=50300'], cwd = PROJ_DIR, check = True)
+    subprocess.run(['flutter', 'attach', '--device-id=flutter-tester', '--debug-port=50300'],
+        shell = True, cwd = PROJ_DIR, check = True)

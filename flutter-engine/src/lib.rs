@@ -144,6 +144,7 @@ extern fn make_resource_current(data: *const c_void) -> bool {
 }
 
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
+    trace!("platform_message_callback");
     unsafe {
         let msg = &*ptr;
         let mmsg = into_platform_message(msg);

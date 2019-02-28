@@ -1,4 +1,10 @@
-# flutter-rs [![Build status][ci-badge]][ci-url] [![Crates.io][crates-badge]][crates-url] [![Gitter chat][gitter-badge]][gitter-url] [![MIT licensed][mit-badge]][mit-url]
+# flutter-rs
+
+[![Build status][ci-badge]][ci-url]
+[![Crates.io][crates-badge]][crates-url]
+[![flutter version][flutter-badge]][flutter-url]
+[![Gitter chat][gitter-badge]][gitter-url]
+[![MIT licensed][mit-badge]][mit-url]
 
 
 Build flutter desktop app in dart & rust.
@@ -28,25 +34,17 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 - Support Hot reload
 - MethodChannel, EventChannel
 - Async runtime using tokio
-- Application icons
 - System dialogs
 - Clipboard support
 - Cross platform support (mac & linux)
 - Support distribution format: (mac app, mac dmg)
 
-# Roadmap:
-
-## 0.2
-- Support setting default window background color.
-- Loader UI and rebranding.
-- Desktop integration: App menu, context menu, file dialogs.
-- Flutter scroller should support desktop scroll event.
-- Download dll from web?
-
 # Contribution
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v1.1.0-blueviolet.svg
+[flutter-url]: https://flutter.dev/
 [ci-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
 [ci-url]: https://ci.appveyor.com/project/gliheng/flutter-rs
 [gitter-badge]: https://badges.gitter.im/flutter-rs/community.svg

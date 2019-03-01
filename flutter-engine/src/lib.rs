@@ -130,17 +130,9 @@ extern fn fbo_callback(_data: *const c_void) -> u32 {
     0
 }
 
-extern fn make_resource_current(data: *const c_void) -> bool {
+extern fn make_resource_current(_data: *const c_void) -> bool {
     trace!("make_resource_current");
-    unsafe {
-        let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
-        if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-            let e = &*engine;
-            let mut w = e.dummy.borrow_mut();
-            w.make_current();
-        }
-    }
-    true
+    false
 }
 
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
@@ -333,46 +325,45 @@ pub struct FlutterEngineInner {
     proj_args: ffi::FlutterProjectArgs,
     ptr: *const ffi::FlutterEngine,
     registry: RefCell<PluginRegistry>,
-    glfw0: RefCell<glfw::Glfw>, // the root glfw object
     glfw: RefCell<Option<(
         glfw::Window,
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
-    dummy: RefCell<glfw::Window>, // this hidden window is used by flutter to upload resources
     rt: RefCell<Runtime>, // A tokio async runtime
     tx: Sender<Box<dyn Fn() + Send>>,
     rx: Receiver<Box<dyn Fn() + Send>>,
 }
 
 impl FlutterEngineInner {
-    fn run(&self) {        
-        let tip = "Failed to create GLFW window.";
+    fn run(&self) {
+        let mut g = glfw::Glfw;
 
         // setup window
         let (mut window, events) = {
+            let tip = "Failed to create GLFW window.";
             match self.args.window_mode {
                 WindowMode::Frameless => {
-                    self.glfw0.borrow_mut().window_hint(glfw::WindowHint::Decorated(false));
-                    self.dummy.borrow().create_shared(
+                    g.window_hint(glfw::WindowHint::Decorated(false));
+                    g.create_window(
                         self.args.width,
                         self.args.height,
                         &self.args.title,
                         glfw::WindowMode::Windowed,
                     ).expect(tip)
                 },
-                // WindowMode::FullScreen(idx) => {
-                //     self.glfw0.with_connected_monitors(|g, monitors| {
-                //         let monitor = monitors.get(idx).expect("Cannot find specified monitor");
-                //         self.dummy.borrow().create_shared(
-                //             self.args.width,
-                //             self.args.height,
-                //             &self.args.title,
-                //             glfw::WindowMode::FullScreen(&monitor),
-                //         ).expect(tip)
-                //     })
-                // },
+                WindowMode::FullScreen(idx) => {
+                    g.with_connected_monitors(|g, monitors| {
+                        let monitor = monitors.get(idx).expect("Cannot find specified monitor");
+                        g.create_window(
+                            self.args.width,
+                            self.args.height,
+                            &self.args.title,
+                            glfw::WindowMode::FullScreen(&monitor),
+                        ).expect(tip)
+                    })
+                },
                 _ => {
-                    self.dummy.borrow().create_shared(
+                    g.create_window(
                         self.args.width,
                         self.args.height,
                         &self.args.title,
@@ -605,28 +596,13 @@ impl FlutterEngine {
         info!("OpenGL config {:?}", config);
 
         let (tx, rx) = mpsc::channel();
-        
-        let mut glfw0 = glfw::Glfw;
-
-        // create a hidden window for resource upload
-        glfw0.window_hint(glfw::WindowHint::Visible(false));
-        let (dummy, _) = glfw0.create_window(
-            500,
-            500,
-            "Texture upload",
-            glfw::WindowMode::Windowed,
-        ).expect("Cannot create texture window");
-        glfw0.window_hint(glfw::WindowHint::Visible(true));
-
         let inner = Arc::new(FlutterEngineInner {
             args,
             config,
             proj_args,
             ptr: null(),
             registry: RefCell::new(PluginRegistry::new()),
-            glfw0: RefCell::new(glfw0),
             glfw: RefCell::new(None),
-            dummy: RefCell::new(dummy),
             rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
             tx,
             rx,

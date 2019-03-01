@@ -39,7 +39,7 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 
 - On windows powershell, set environment variables as:
 
-    `$env:RUST_LOG=RUST_LOG=flutter_engine=trace,flutter_app_demo=trace`
+    `$env:RUST_LOG="flutter_engine=trace,flutter_app_demo=trace"`
 
 # Distribute
 - To build distribution, use:

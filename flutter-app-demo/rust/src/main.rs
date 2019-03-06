@@ -66,5 +66,4 @@ fn main() {
     engine.add_plugin(Box::new(calc_channel::CalcPlugin::new()));
     engine.add_plugin(Box::new(msg_stream_channel::MsgStreamPlugin::new()));
     engine.run();
-    engine.shutdown();
 }

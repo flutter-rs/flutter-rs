@@ -18,11 +18,11 @@ Build flutter desktop app in dart & rust.
     - linux: `apt install libglfw3`
 - Install [flutter sdk](https://flutter.io)
 
-- In *flutter-app* project, set flutter sdk version in *Cargo.toml*
+- In *flutter-demo-app* project, set flutter engine version in *rust/Cargo.toml*
 
 ```
 [package.metadata.flutter]
-version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
+version = "3757390fa4b00d2d261bfdf5182d2e87c9113ff9"
 ```
 
     This commit version id can be found in bin/internal/engine.version file in flutter sdk folder.
@@ -36,14 +36,14 @@ version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
 - Async runtime using tokio
 - System dialogs
 - Clipboard support
-- Cross platform support (mac & linux)
+- Cross platform support, Runs on mac, windows, linux
 - Support distribution format: (mac app, mac dmg)
 
 # Contribution
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
-[flutter-badge]: https://img.shields.io/badge/flutter-v1.1.0-blueviolet.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v1.2.1-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [ci-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
 [ci-url]: https://ci.appveyor.com/project/gliheng/flutter-rs

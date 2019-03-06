@@ -135,6 +135,12 @@ extern fn make_resource_current(_data: *const c_void) -> bool {
     false
 }
 
+extern fn gl_proc_resolver(_data: *const c_void, proc: *const libc::c_char) -> *const c_void {
+    unsafe {
+        return glfw::ffi::glfwGetProcAddress(proc);
+    }
+}
+
 extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
     trace!("platform_message_callback");
     unsafe {
@@ -145,6 +151,10 @@ extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *c
             FlutterEngineInner::handle_platform_msg(mmsg, engine, window);
         }
     }
+}
+
+extern fn root_isolate_create_callback(_data: *const c_void) {
+    trace!("root_isolate_create_callback");
 }
 
 extern fn window_refreshed(ptr: *mut glfw::ffi::GLFWwindow) {
@@ -183,7 +193,7 @@ fn into_platform_message(msg: &FlutterPlatformMessage) -> PlatformMessage {
     }
 }
 
-fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
+fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
     match event {
         glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
             window.set_should_close(true)
@@ -451,11 +461,16 @@ impl FlutterEngineInner {
         if let Some((window, events)) = &mut *self.glfw.borrow_mut() {
             while !window.should_close() {
                 // glfw.poll_events();
+                // window.glfw.wait_events();
                 window.glfw.wait_events_timeout(1.0/60.0);
 
-                // engine.flush_pending_tasks_now();
                 for (_, event) in glfw::flush_messages(&events) {
-                    handle_window_event(window, event);
+                    handle_event(window, event);
+                }
+
+                // This is required, otherwise windows won't trigger platform_message_callback
+                unsafe {
+                    ffi::__FlutterEngineFlushPendingTasksNow();
                 }
 
                 // process ui thread callback queue
@@ -557,6 +572,10 @@ impl FlutterEngine {
                 present: present,
                 fbo_callback: fbo_callback,
                 make_resource_current: make_resource_current,
+                fbo_reset_after_present: false,
+                surface_transformation: None,
+                gl_proc_resolver: gl_proc_resolver,
+                gl_external_texture_frame_callback: None,
             },
         };
 
@@ -573,6 +592,7 @@ impl FlutterEngine {
             };
             CStringVec::new(&cli_args)
         };
+
         let proj_args = ffi::FlutterProjectArgs {
             struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),
             assets_path: CString::new(args.assets_path.to_string()).unwrap().into_raw(),
@@ -582,14 +602,15 @@ impl FlutterEngine {
             command_line_argc: vm_args.len() as i32,
             command_line_argv: vm_args.into_raw(),
             platform_message_callback: platform_message_callback,
-            // vm_snapshot_data: std::ptr::null(),
-            // vm_snapshot_data_size: 0,
-            // vm_snapshot_instructions: std::ptr::null(),
-            // vm_snapshot_instructions_size: 0,
-            // isolate_snapshot_data: std::ptr::null(),
-            // isolate_snapshot_data_size: 0,
-            // isolate_snapshot_instructions: std::ptr::null(),
-            // isolate_snapshot_instructions_size: 0,
+            vm_snapshot_data: std::ptr::null(),
+            vm_snapshot_data_size: 0,
+            vm_snapshot_instructions: std::ptr::null(),
+            vm_snapshot_instructions_size: 0,
+            isolate_snapshot_data: std::ptr::null(),
+            isolate_snapshot_data_size: 0,
+            isolate_snapshot_instructions: std::ptr::null(),
+            isolate_snapshot_instructions_size: 0,
+            root_isolate_create_callback: root_isolate_create_callback,
         };
 
         info!("Project args {:?}", proj_args);

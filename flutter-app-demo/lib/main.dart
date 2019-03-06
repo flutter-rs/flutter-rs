@@ -60,61 +60,64 @@ class GetStartedPage extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Container(
-            height: 480,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.red,
-                image: DecorationImage(
-                  fit: BoxFit.cover,
-                  alignment: Alignment.bottomCenter,
-                  image: AssetImage('assets/header.png'),
+          Expanded(
+            flex: 5,
+            child: Container(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  image: DecorationImage(
+                    fit: BoxFit.cover,
+                    alignment: Alignment.bottomCenter,
+                    image: AssetImage('assets/header.png'),
+                  ),
                 ),
               ),
             ),
           ),
           Expanded(
-            child: Center(
-              child: SizedBox(
-                width: 700,
-                height: 100,
-                child: FlatButton(
-                  color: Colors.black12,
-                  child: Center(
-                    child: Text(
-                      cmd, style: TextStyle(
-                        fontSize: 20,
+            flex: 3,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                Center(
+                  child: SizedBox(
+                    width: 700,
+                    height: 100,
+                    child: FlatButton(
+                      color: Colors.black12,
+                      child: Center(
+                        child: Text(
+                          cmd, style: TextStyle(
+                            fontSize: 20,
+                          ),
+                        ),
                       ),
+                      onPressed: () {
+                        channel.invokeMethod('Clipboard.setData', {
+                          'text': cmd,
+                        });
+                        _showToast(context, 'Copied to clipboard');
+                      },
                     ),
                   ),
-                  onPressed: () {
-                    channel.invokeMethod('Clipboard.setData', {
-                      'text': cmd,
-                    });
-                    _showToast(context, 'Copied to clipboard');
-                  },
                 ),
-              ),
-            ),
+                Center(
+                  child: RaisedButton(
+                    color: theme.primaryColor,
+                    padding: EdgeInsets.all(14.0),
+                    textTheme: ButtonTextTheme.primary,
+                    child: Text('Show Demos', style:TextStyle(
+                      fontSize: 30
+                    )),
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/demo');
+                    },
+                  )
+                ),
+              ],
+            )
           ),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                RaisedButton(
-                  color: theme.primaryColor,
-                  padding: EdgeInsets.all(14.0),
-                  textTheme: ButtonTextTheme.primary,
-                  child: Text('Show Demos', style:TextStyle(
-                    fontSize: 30
-                  )),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/demo');
-                  },
-                )
-              ]
-            ),
-          )
         ],
       ),
     );

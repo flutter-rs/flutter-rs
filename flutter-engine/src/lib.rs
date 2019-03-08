@@ -30,7 +30,7 @@ use std::{
     ffi::{CString, CStr},
     sync::{Arc, Weak, Mutex},
     time::{SystemTime, UNIX_EPOCH},
-    cell::RefCell,
+    cell::{Cell, RefCell},
     sync::mpsc:: { self, Sender, Receiver },
 };
 use libc::{c_void};
@@ -83,6 +83,8 @@ impl Default for FlutterEngineArgs {
         }
     }
 }
+
+const DEFAULT_DPI: f64 = 160.0;
 
 pub enum WindowMode {
     FullScreen(usize), // monitor index
@@ -303,8 +305,8 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
                     let w_size = window.get_size();
                     let size = window.get_framebuffer_size();
-                    let pixel_ratio = size.0 as f64 / w_size.0 as f64;
-                    engine.send_cursor_position_at_phase(x * pixel_ratio, y * pixel_ratio, ffi::FlutterPointerPhase::Move);
+                    let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+                    engine.send_cursor_position_at_phase(x * pixels_per_screen_coordinate, y * pixels_per_screen_coordinate, ffi::FlutterPointerPhase::Move);
                 }
             }
         },
@@ -318,10 +320,10 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 };
                 let w_size = window.get_size();
                 let size = window.get_framebuffer_size();
-                let pixel_ratio = size.0 as f64 / w_size.0 as f64;
+                let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
 
                 if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                    engine.send_cursor_position_at_phase(pos.0 * pixel_ratio, pos.1 * pixel_ratio, phase);
+                    engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
                 }
             }
         },
@@ -339,6 +341,7 @@ pub struct FlutterEngineInner {
         glfw::Window,
         std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>
     )>>,
+    dpi: Cell<f64>,
     rt: RefCell<Runtime>, // A tokio async runtime
     tx: Sender<Box<dyn Fn() + Send>>,
     rx: Receiver<Box<dyn Fn() + Send>>,
@@ -349,6 +352,7 @@ impl FlutterEngineInner {
         let mut g = glfw::Glfw;
 
         // setup window
+        let mut monitor_id = 0;
         let (mut window, events) = {
             let tip = "Failed to create GLFW window.";
             match self.args.window_mode {
@@ -362,6 +366,7 @@ impl FlutterEngineInner {
                     ).expect(tip)
                 },
                 WindowMode::FullScreen(idx) => {
+                    monitor_id = idx;
                     g.with_connected_monitors(|g, monitors| {
                         let monitor = monitors.get(idx).expect("Cannot find specified monitor");
                         g.create_window(
@@ -382,6 +387,8 @@ impl FlutterEngineInner {
                 },
             }
         };
+
+        self.dpi.set(self.get_dpi(&mut g, monitor_id));
 
         window.set_key_polling(true);
         window.set_framebuffer_size_polling(true);
@@ -480,12 +487,26 @@ impl FlutterEngineInner {
             }
         }
     }
+
+    fn get_dpi(&self, glfw: &mut glfw::Glfw, monitor_id: usize) -> f64 {
+        glfw.with_connected_monitors(|_, monitors| {
+            let m = monitors.get(monitor_id).unwrap();
+            let mode = m.get_video_mode().unwrap();
+            let physical_size = m.get_physical_size();
+            if physical_size.0 <= 0 {
+                return 160.0;
+            }
+            mode.width as f64 / (physical_size.0 as f64 / 25.4)
+        })
+    }
+
     fn send_window_metrics_change(&self, window_size: (i32, i32), buf_size: (i32, i32)) {
+        let pixel_ratio = buf_size.0 as f64 / window_size.0 as f64 * self.dpi.get() / DEFAULT_DPI;
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
             width: buf_size.0 as usize,
             height: buf_size.1 as usize,
-            pixel_ratio: buf_size.0 as f64/ window_size.0 as f64,
+            pixel_ratio,
         };
         unsafe {
             FlutterEngineSendWindowMetricsEvent(self.ptr, &evt as *const FlutterWindowMetricsEvent);
@@ -624,6 +645,7 @@ impl FlutterEngine {
             ptr: null(),
             registry: RefCell::new(PluginRegistry::new()),
             glfw: RefCell::new(None),
+            dpi: Cell::new(DEFAULT_DPI),
             rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
             tx,
             rx,

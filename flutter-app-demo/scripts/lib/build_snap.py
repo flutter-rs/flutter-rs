@@ -3,7 +3,7 @@ import subprocess
 from shutil import copyfile, copytree, rmtree
 
 def prepare(envs):
-    pass
+    return dict(envs)
 
 def build(envs):
     print(envs)

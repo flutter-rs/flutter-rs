@@ -3,12 +3,14 @@ from shutil import copyfile, copytree, rmtree
 import subprocess
 
 def prepare(envs):
+    envs = dict(envs)
     APP_NAME = envs['NAME'] + '.app'
     APP_PATH = os.path.join(envs['OUTPUT_DIR'], APP_NAME)
     envs.update(
         APP_NAME = APP_NAME,
         APP_PATH = APP_PATH,
     )
+    return envs
 
 def build(envs):
     APP_PATH = envs.get('APP_PATH')

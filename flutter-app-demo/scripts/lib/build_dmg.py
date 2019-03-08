@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 
 def prepare(envs):
-    pass
+    return dict(envs)
 
 def build(envs):
     f = tempfile.NamedTemporaryFile(mode='w+', delete=False)

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-import os
+import os, sys
 import toml
 import argparse
 from lib import look_for_proj_dir, get_workspace_dir
 import subprocess
+
+FLUTTER = 'flutter.bat' if sys.platform == 'win32' else 'flutter'
 
 def collect_env(args):
     PROJ_DIR = look_for_proj_dir(os.path.abspath(__file__), 'pubspec.yaml')
@@ -12,6 +14,8 @@ def collect_env(args):
     TOML_FILE = os.path.join(RUST_PROJ_DIR, 'Cargo.toml')
     META = toml.loads(open(TOML_FILE).read())
     NAME = META['package']['name']
+    VERSION = META['package']['version']
+    DESCRIPTION = META['package']['description']
 
     DEBUG = not args.release
     RELEASE = args.release
@@ -36,16 +40,16 @@ def cargo_build(cwd, release = False):
     subprocess.run(args, cwd = cwd)
 
 def build_flutter(envs):
-    subprocess.run(['flutter', 'build', 'bundle'], cwd = envs['PROJ_DIR'])
+    subprocess.run([FLUTTER, 'build', 'bundle'], cwd = envs['PROJ_DIR'])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='build', description='rust app distribution builder')
-    parser.add_argument('dist', choices=['mac', 'dmg', 'snap'], help='distribution type')
+    parser.add_argument('dist', choices=['mac', 'dmg', 'nsis', 'snap'], help='distribution type')
     parser.add_argument('--release', action='store_true', help='build release package')
 
     args = parser.parse_args()
     envs = collect_env(args)
-    
+
     print('>>> Building rust project')
     cargo_build(envs['RUST_PROJ_DIR'], envs['RELEASE'])
 
@@ -53,18 +57,23 @@ if __name__ == '__main__':
     build_flutter(envs)
 
     print('>>> Building package')
+    # prepare has a chance to modify envs
     if args.dist == 'mac':
         from lib.build_mac import prepare, build
-        prepare(envs)
-        build(envs)
-    elif args.dist == 'snap':
-        from lib.build_snap import prepare, build
-        prepare(envs)
+        envs = prepare(envs)
         build(envs)
     elif args.dist == 'dmg':
         from lib.build_mac import prepare
-        prepare(envs)
+        envs = prepare(envs)
 
         from lib.build_dmg import prepare, build
-        prepare(envs)
+        envs = prepare(envs)
+        build(envs)
+    elif args.dist == 'snap':
+        from lib.build_snap import prepare, build
+        envs = prepare(envs)
+        build(envs)
+    elif args.dist == 'nsis':
+        from lib.build_nsis import prepare, build
+        envs = prepare(envs)
         build(envs)

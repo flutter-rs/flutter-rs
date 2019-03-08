@@ -19,7 +19,7 @@ tokio-timer = "0.2.8"
 stream-cancel = "0.4.4"
 flutter-engine = { path = "../../flutter-engine" }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(macos)'.dependencies]
 core-foundation = "0.6.3"
 
 [build-dependencies]
@@ -27,3 +27,6 @@ flutter-download = { path = "../../flutter-download" }
 cargo_toml = "0.4.0"
 serde = "1.0.81"
 serde_derive = "1.0.81"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.8"

@@ -301,6 +301,10 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
             }
         },
         glfw::WindowEvent::CursorPos(x, y) => {
+            FlutterEngine::with_plugin(window.window_ptr(), "flutter-rs/window", |p: &Box<WindowPlugin>| {
+                p.cursor_moved(window, x, y);
+            });
+
             if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
                 if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
                     let w_size = window.get_size();

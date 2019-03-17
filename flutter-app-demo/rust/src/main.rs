@@ -7,7 +7,7 @@ use std::{
     env,
     path::PathBuf,
 };
-use log::{info};
+use log::{info, error};
 use env_logger;
 use flutter_engine::{
     FlutterEngineArgs,

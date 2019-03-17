@@ -24,7 +24,7 @@ impl WindowPlugin {
         }
     }
 
-    pub fn cursor_moved(&self, window: &mut glfw::Window, x: f64, y: f64) {
+    pub fn drag_window(&self, window: &mut glfw::Window, x: f64, y: f64) -> bool {
         let state = self.state.borrow();
         if state.dragging {
             let (wx, wy) = window.get_pos();
@@ -32,6 +32,7 @@ impl WindowPlugin {
             let dy = (y - state.start_cursor_pos.1) as i32;
             window.set_pos(wx + dx, wy + dy);
         }
+        return state.dragging;
     }
 }
 

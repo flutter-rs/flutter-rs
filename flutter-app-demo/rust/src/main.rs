@@ -1,4 +1,5 @@
-#![windows_subsystem = "windows"]
+// This build a windows app without console on windows in release mode
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod calc_channel;
 mod msg_stream_channel;
@@ -31,7 +32,6 @@ fn get_res_dir() -> PathBuf {
         .parent().expect("Cannot get application dir")
         .to_path_buf()
 }
-
 
 fn main() {
     env_logger::init();

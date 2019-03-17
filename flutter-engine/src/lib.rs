@@ -7,8 +7,8 @@ extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
-#[macro_use] extern crate log;
-extern crate env_logger;
+#[macro_use]
+extern crate log;
 extern crate futures;
 extern crate tokio;
 extern crate tinyfiledialogs;
@@ -468,6 +468,7 @@ impl FlutterEngineInner {
         let plugin = WindowPlugin::new();
         registry.add_plugin(Box::new(plugin));
     }
+
     fn event_loop(&self) {
         if let Some((window, events)) = &mut *self.glfw.borrow_mut() {
             while !window.should_close() {

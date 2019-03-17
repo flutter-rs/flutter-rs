@@ -12,7 +12,7 @@ identifier = "one.juju.flutter-app" # This is only used on mac
 
 [dependencies]
 log = "0.4.6"
-env_logger = "0.6.0"
+env_logger = "0.6.1"
 tokio = "0.1.13"
 futures = "0.1.25"
 tokio-timer = "0.2.8"

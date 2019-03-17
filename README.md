@@ -12,7 +12,7 @@ Build flutter desktop app in dart & rust.
 ![demo ui](https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png "Flutter app demo screenshot")
 
 # Install
-- Install latest [Rust](https://www.rust-lang.org)
+- Install [Rust@^1.32.0](https://www.rust-lang.org)
 - Install libglfw:
     - Mac: `brew install glfw`
     - linux: `apt install libglfw3`

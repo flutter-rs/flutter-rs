@@ -113,7 +113,7 @@ impl StandardMethodCodec {
                 panic!("Not implemented")
             },
             VALUE_FLOAT64 => {
-                panic!("Not implemented")
+                Value::F64(reader.read_f64())
             },
             VALUE_STRING => {
                 let len = reader.read_size();
@@ -302,8 +302,6 @@ struct Reader<'a> {
     pos: usize,
 }
 
-// TODO: use int_to_from_bytes when it's stablized
-// Currrent implementation use litte endiness
 impl<'a> Reader<'a> {
     fn new(buf: &'a [u8]) -> Self {
         Reader {
@@ -317,42 +315,35 @@ impl<'a> Reader<'a> {
         n
     }
     fn read_u16(&mut self) -> u16 {
-        let mut n: u16 = 0;
-        n |= (self.buf[self.pos + 0] as u16).rotate_left(0);
-        n |= (self.buf[self.pos + 1] as u16).rotate_left(8);
         self.pos += 2;
-        n
+        let s = &self.buf[self.pos - 2 .. self.pos];
+        u16::from_ne_bytes(clone_into_array(s))
     }
     fn read_u32(&mut self) -> u32 {
-        let mut n: u32 = 0;
-        n |= (self.buf[self.pos + 0] as u32).rotate_left(0);
-        n |= (self.buf[self.pos + 1] as u32).rotate_left(8);
-        n |= (self.buf[self.pos + 2] as u32).rotate_left(16);
-        n |= (self.buf[self.pos + 3] as u32).rotate_left(24);
         self.pos += 4;
-        n
+        let s = &self.buf[self.pos - 4 .. self.pos];
+        u32::from_ne_bytes(clone_into_array(s))
     }
     fn read_i32(&mut self) -> i32 {
-        let mut n: i32 = 0;
-        n |= (self.buf[self.pos + 0] as i32).rotate_left(0);
-        n |= (self.buf[self.pos + 1] as i32).rotate_left(8);
-        n |= (self.buf[self.pos + 2] as i32).rotate_left(16);
-        n |= (self.buf[self.pos + 3] as i32).rotate_left(24);
         self.pos += 4;
-        n
+        let s = &self.buf[self.pos - 4 .. self.pos];
+        i32::from_ne_bytes(clone_into_array(s))
+    }
+    fn read_u64(&mut self) -> u64 {
+        self.pos += 8;
+        let s = &self.buf[self.pos - 8 .. self.pos];
+        u64::from_ne_bytes(clone_into_array(s))
     }
     fn read_i64(&mut self) -> i64 {
-        let mut n: i64 = 0;
-        n |= (self.buf[self.pos + 0] as i64).rotate_left(0);
-        n |= (self.buf[self.pos + 1] as i64).rotate_left(8);
-        n |= (self.buf[self.pos + 2] as i64).rotate_left(16);
-        n |= (self.buf[self.pos + 3] as i64).rotate_left(24);
-        n |= (self.buf[self.pos + 4] as i64).rotate_left(32);
-        n |= (self.buf[self.pos + 5] as i64).rotate_left(40);
-        n |= (self.buf[self.pos + 6] as i64).rotate_left(48);
-        n |= (self.buf[self.pos + 7] as i64).rotate_left(56);
         self.pos += 8;
-        n
+        let s = &self.buf[self.pos - 8 .. self.pos];
+        i64::from_ne_bytes(clone_into_array(s))
+    }
+    fn read_f64(&mut self) -> f64 {
+        let n = self.read_u64();
+        unsafe {
+            mem::transmute::<u64, f64>(n)
+        }
     }
     fn read_size(&mut self) -> usize {
         let n = self.read_u8();
@@ -423,35 +414,19 @@ impl Writer {
         self.0.push(n);
     }
     fn write_u16(&mut self, n: u16) {
-        self.0.push(n.rotate_right(0) as u8);
-        self.0.push(n.rotate_right(8) as u8);
+        self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_u32(&mut self, n: u32) {
-        self.0.push(n.rotate_right(0) as u8);
-        self.0.push(n.rotate_right(8) as u8);
-        self.0.push(n.rotate_right(16) as u8);
-        self.0.push(n.rotate_right(24) as u8);
+        self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_i32(&mut self, n: i32) {
-        unsafe {
-            let n = mem::transmute::<i32, u32>(n);
-            self.write_u32(n);
-        }
+        self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_u64(&mut self, n: u64) {
-        self.0.push(n.rotate_right(0) as u8);
-        self.0.push(n.rotate_right(8) as u8);
-        self.0.push(n.rotate_right(16) as u8);
-        self.0.push(n.rotate_right(24) as u8);
-        self.0.push(n.rotate_right(32) as u8);
-        self.0.push(n.rotate_right(40) as u8);
-        self.0.push(n.rotate_right(48) as u8);
-        self.0.push(n.rotate_right(56) as u8);
+        self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_i64(&mut self, n: i64) {
-        self.write_u64(unsafe {
-            mem::transmute::<i64, u64>(n)
-        });
+        self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_f64(&mut self, n: f64) {
         self.write_u64(unsafe {
@@ -482,8 +457,17 @@ impl Writer {
         }
     }
     fn write_buf(&mut self, list: &[u8]) {
-        for n in list {
-            self.write_u8(*n);
-        }
+        self.0.extend_from_slice(list);
     }
+}
+
+use std::convert::AsMut;
+
+fn clone_into_array<A, T>(slice: &[T]) -> A
+    where A: Sized + Default + AsMut<[T]>,
+          T: Clone
+{
+    let mut a = Default::default();
+    <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
+    a
 }

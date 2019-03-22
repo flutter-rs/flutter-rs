@@ -63,8 +63,9 @@ if __name__ == '__main__':
         envs = prepare(envs)
         build(envs)
     elif args.dist == 'dmg':
-        from lib.build_mac import prepare
+        from lib.build_mac import prepare, build
         envs = prepare(envs)
+        build(envs)
 
         from lib.build_dmg import prepare, build
         envs = prepare(envs)

@@ -37,15 +37,15 @@ fn main() {
 
     write_cargo_config(&project_path, &libs_dir);
 
-    #[cfg(linux)] {
+    #[cfg(target_os="linux")] {
         println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
     }
 
-    #[cfg(macos)] {
+    #[cfg(target_os="macos")] {
         println!("cargo:rustc-link-search=framework={}", libs_dir.to_str().expect("libs_dir invalid"));
     }
     
-    #[cfg(windows)] {
+    #[cfg(target_os="windows")] {
         println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
 
         let mut res = winres::WindowsResource::new();

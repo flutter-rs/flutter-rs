@@ -309,13 +309,13 @@ dependencies = [
 
 [[package]]
 name = "flutter-app-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cargo_toml 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-foundation 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-download 0.1.0",
- "flutter-engine 0.1.2",
+ "flutter-engine 0.2.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -337,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",

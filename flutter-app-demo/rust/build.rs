@@ -49,7 +49,7 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
 
         let mut res = winres::WindowsResource::new();
-        res.set_icon("./assets/icon.ico", Some("GLFW_ICON"));
+        res.set_icon_with_id("./assets/icon.ico", "GLFW_ICON");
         res.compile().unwrap();
     }
 }

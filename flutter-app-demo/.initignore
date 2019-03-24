@@ -1,6 +1,0 @@
-.git
-.initignore
-*.pyc
-*.dart
-rust/libs/
-rust/assets/

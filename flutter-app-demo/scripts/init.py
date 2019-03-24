@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-import fnmatch
+import glob
 import subprocess
 from string import Template
 from lib import look_for_proj_dir
@@ -12,23 +12,23 @@ def get_config():
         lib_name = name.replace('-', '_')
 
         try:
-            with open(os.path.join(proj_dir, '.initignore')) as f:
-                ignore_list = []
+            with open(os.path.join(proj_dir, '.tmplfiles')) as f:
+                tmplfiles = []
                 for line in f.readlines():
-                    ignore = line.strip()
+                    line = line.strip()
 
-                    if os.path.isdir(os.path.join(proj_dir, ignore)):
-                        ignore = os.path.join(ignore, '*')
+                    if os.path.isdir(os.path.join(proj_dir, line)):
+                        line = os.path.join(line, '*')
 
-                    ignore_list.append(ignore)
+                    tmplfiles.append(line)
         except:
-            ignore_list = []
+            tmplfiles = []
 
         return {
             "name": name,
             "lib_name": lib_name, # underlined version of name
             "proj_dir": proj_dir,
-            "ignore_list": ignore_list
+            "tmplfiles": tmplfiles,
         }
     except KeyboardInterrupt:
         return None
@@ -41,17 +41,10 @@ def install_py_deps(config):
 
 def tmpl_proj(config):
     proj_dir = config['proj_dir']
-    for root, _, files in os.walk(proj_dir):
-        for name in files:
-            fp = os.path.join(root, name)
-            fp_r = os.path.relpath(fp, proj_dir) # path relative to proj root
-            ignored = False
-            for ignore in config['ignore_list']:
-                if fnmatch.fnmatch(fp_r, ignore):
-                    ignored = True
-                    break
-
-            if not ignored:
+    for pattern in config['tmplfiles']:
+        for fp in glob.iglob(os.path.join(proj_dir, pattern)):
+            fp = os.path.join(proj_dir, fp)
+            if os.path.isfile(fp):
                 with open(fp, 'r+') as f:
                     s = Template(f.read()).substitute(**config)
                     f.seek(0)

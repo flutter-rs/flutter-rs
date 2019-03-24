@@ -7,7 +7,7 @@ use std::{
     env,
     path::PathBuf,
 };
-use flutter_engine::{FlutterEngineArgs, FlutterEngine};
+use flutter_engine::{FlutterEngineArgs, FlutterEngine, WindowMode};
 
 fn main() {
     flutter_engine::init();
@@ -23,6 +23,8 @@ fn main() {
         title: String::from("Flutter Demo"),
         width: 800,
         height: 600,
+        window_mode: WindowMode::Windowed,
+        ..Default::default()
     };
 
     let engine = FlutterEngine::new(args);

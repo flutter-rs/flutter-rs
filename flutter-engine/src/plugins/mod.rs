@@ -39,11 +39,16 @@ impl PluginRegistry {
         self.map.insert(name, plugin);
     }
     pub fn handle(&mut self, msg: PlatformMessage, engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
+        let mut message_handled = false;
         for (channel, plugin) in &mut self.map {
             if channel == &msg.channel {
                 info!("Processing message from channel: {}", channel);
                 plugin.handle(&msg, engine.clone(), window);
+                message_handled = true;
             }
+        }
+        if !message_handled {
+            warn!("No plugin registered to handle messages from channel: {}", &msg.channel);
         }
     }
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
@@ -84,7 +89,7 @@ impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
             message: message_ptr,
             message_size: message_len,
             response_handle,
-        }            
+        }
     }
 }
 

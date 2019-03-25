@@ -26,6 +26,7 @@ fn main() {
     if let Ok(rx) = flutter_download::download_to(
         &version,
         &libs_dir,
+        flutter_download::default_target(),
     ) {
         // THis is /bin/internal/engine.version file in your flutter sdk
         for (total, done) in rx.iter() {
@@ -44,7 +45,7 @@ fn main() {
     #[cfg(target_os="macos")] {
         println!("cargo:rustc-link-search=framework={}", libs_dir.to_str().expect("libs_dir invalid"));
     }
-    
+
     #[cfg(target_os="windows")] {
         println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
 

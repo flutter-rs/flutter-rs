@@ -26,7 +26,6 @@ fn main() {
     if let Ok(rx) = flutter_download::download_to(
         &version,
         &libs_dir,
-        flutter_download::default_target(),
     ) {
         // THis is /bin/internal/engine.version file in your flutter sdk
         for (total, done) in rx.iter() {

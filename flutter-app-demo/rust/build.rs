@@ -44,7 +44,7 @@ fn main() {
     #[cfg(target_os="macos")] {
         println!("cargo:rustc-link-search=framework={}", libs_dir.to_str().expect("libs_dir invalid"));
     }
-    
+
     #[cfg(target_os="windows")] {
         println!("cargo:rustc-link-search=native={}", libs_dir.to_str().expect("libs_dir invalid"));
 

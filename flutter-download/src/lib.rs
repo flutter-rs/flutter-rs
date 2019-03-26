@@ -38,6 +38,13 @@ impl error::Error for Error {
     }
 }
 
+#[derive(PartialEq, Copy, Clone)]
+enum Target {
+    Linux,
+    Windows,
+    MacOS,
+}
+
 pub fn download(version: &str) -> Result<mpsc::Receiver<(f64, f64)>, Error> {
     let dir = home_download_path();
     download_to(version, &dir)
@@ -63,7 +70,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         fs::create_dir_all(&dir).unwrap();
 
         let download_file = dir.join("engine.zip");
-        
+
         let mut file = File::create(&download_file).unwrap();
 
         let tx = Mutex::new(tx);
@@ -91,7 +98,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         unzipper.unzip().unwrap();
 
         // mac framework file is a double zip file
-        if cfg!(target_os = "macos") {
+        if target() == Target::MacOS {
             Command::new("unzip").args(&["FlutterEmbedder.framework.zip", "-d", "FlutterEmbedder.framework"]).current_dir(&dir).status().unwrap();
 
             // TODO: fixme
@@ -107,39 +114,39 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
 }
 
 pub fn home_download_path() -> PathBuf {
-    let mut dir = dirs::home_dir().unwrap();    
+    let mut dir = dirs::home_dir().unwrap();
     dir.push(".flutter-rs");
     dir
 }
 
-#[cfg(target_os = "macos")]
 pub fn download_url(version: &str) -> String {
-    format!("https://storage.googleapis.com/flutter_infra/flutter/{}/darwin-x64/FlutterEmbedder.framework.zip", version)
+    let url = match target() {
+        Target::Linux => "https://storage.googleapis.com/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
+        Target::MacOS => "https://storage.googleapis.com/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
+        Target::Windows => "https://storage.googleapis.com/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
+    };
+    url.replace("{version}", version)
 }
 
-#[cfg(target_os = "macos")]
 fn should_download(path: &Path) -> bool {
-    !path.join("FlutterEmbedder.framework").exists()
+    match target() {
+        Target::Linux => !path.join("libflutter_engine.so").exists(),
+        Target::MacOS => !path.join("FlutterEmbedder.framework").exists(),
+        Target::Windows => !path.join("flutter_engine.dll").exists(),
+    }
 }
 
-#[cfg(target_os = "linux")]
-pub fn download_url(version: &str) -> String {
-    format!("https://storage.googleapis.com/flutter_infra/flutter/{}/linux-x64/linux-x64-embedder", version)
-}
-
-#[cfg(target_os = "linux")]
-fn should_download(path: &Path) -> bool {
-    !path.join("libflutter_engine.so").exists()
-}
-
-#[cfg(target_os = "windows")]
-pub fn download_url(version: &str) -> String {
-    format!("https://storage.googleapis.com/flutter_infra/flutter/{}/windows-x64/windows-x64-embedder.zip", version)
-}
-
-#[cfg(target_os = "windows")]
-fn should_download(path: &Path) -> bool {
-    !path.join("flutter_engine.dll").exists()
+fn target() -> Target {
+    let target = std::env::var("TARGET").expect("Cannot determine target");
+    if target.contains("linux") {
+        Target::Linux
+    } else if target.contains("apple") {
+        Target::MacOS
+    } else if target.contains("windows") {
+        Target::Windows
+    } else {
+        panic!("Unknown target {}", target)
+    }
 }
 
 #[cfg(test)]

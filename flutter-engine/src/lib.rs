@@ -457,13 +457,13 @@ impl FlutterEngineInner {
 
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
-        
+
         let plugin = TextInputPlugin::new();
         registry.add_plugin(Box::new(plugin));
 
         let plugin = PlatformPlugin::new();
         registry.add_plugin(Box::new(plugin));
-        
+
         let plugin = DialogPlugin::new();
         registry.add_plugin(Box::new(plugin));
 
@@ -528,6 +528,10 @@ impl FlutterEngineInner {
             phase: phase,
             x: x,
             y: y,
+            device: 0,
+            signal_kind: ffi::FlutterPointerSignalKind::None,
+            scroll_delta_x: 0.0,
+            scroll_delta_y: 0.0,
         };
 
         unsafe {

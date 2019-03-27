@@ -305,16 +305,18 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 // window dragging is handled by window plugin
                 if !p.drag_window(window, x, y) {
                     if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                        if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
-                            let w_size = window.get_size();
-                            let size = window.get_framebuffer_size();
-                            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
-                            engine.send_cursor_position_at_phase(x * pixels_per_screen_coordinate, y * pixels_per_screen_coordinate, ffi::FlutterPointerPhase::Move);
-                        }
+                        let phase = if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
+                            ffi::FlutterPointerPhase::Move
+                        } else {
+                            ffi::FlutterPointerPhase::Hover
+                        };
+                        let w_size = window.get_size();
+                        let size = window.get_framebuffer_size();
+                        let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+                        engine.send_cursor_position_at_phase(x * pixels_per_screen_coordinate, y * pixels_per_screen_coordinate, phase);
                     }
                 }
             });
-
         },
         glfw::WindowEvent::MouseButton(button, action, _modifiers) => {
             if button == glfw::MouseButton::Button1 {

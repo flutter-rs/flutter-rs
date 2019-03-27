@@ -333,6 +333,15 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 }
             }
         },
+        glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
+            let pos = window.get_cursor_pos();
+            let w_size = window.get_size();
+            let size = window.get_framebuffer_size();
+            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                engine.send_mouse_scroll(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, scroll_delta_x, scroll_delta_y);
+            }
+        }
         _ => {}
     }
 }
@@ -402,6 +411,7 @@ impl FlutterEngineInner {
         window.set_mouse_button_polling(true);
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
+        window.set_scroll_polling(true);
         window.make_current();
 
         self.add_system_plugins();
@@ -437,6 +447,7 @@ impl FlutterEngineInner {
             let window_size = window.get_size();
             let buf_size = window.get_framebuffer_size();
             self.send_window_metrics_change(window_size, buf_size);
+            self.send_add_pointer_device();
         });
     }
 
@@ -517,6 +528,52 @@ impl FlutterEngineInner {
         };
         unsafe {
             FlutterEngineSendWindowMetricsEvent(self.ptr, &evt as *const FlutterWindowMetricsEvent);
+        }
+    }
+
+    fn send_add_pointer_device(&self) {
+        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let evt = &ffi::FlutterPointerEvent {
+            struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
+            timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
+            phase: ffi::FlutterPointerPhase::Add,
+            x: 0.0,
+            y: 0.0,
+            device: 0,
+            signal_kind: ffi::FlutterPointerSignalKind::None,
+            scroll_delta_x: 0.0,
+            scroll_delta_y: 0.0,
+        };
+
+        unsafe {
+            ffi::FlutterEngineSendPointerEvent(
+                self.ptr,
+                evt,
+                1
+            );
+        }
+    }
+
+    fn send_mouse_scroll(&self, x: f64, y: f64, scroll_delta_x: f64, scroll_delta_y: f64) {
+        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let evt = &ffi::FlutterPointerEvent {
+            struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
+            timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
+            phase: ffi::FlutterPointerPhase::Hover,
+            x,
+            y,
+            device: 0,
+            signal_kind: ffi::FlutterPointerSignalKind::Scroll,
+            scroll_delta_x,
+            scroll_delta_y,
+        };
+
+        unsafe {
+            ffi::FlutterEngineSendPointerEvent(
+                self.ptr,
+                evt,
+                1
+            );
         }
     }
 

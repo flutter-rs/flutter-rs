@@ -7,7 +7,7 @@ publish = false
 edition = "2018"
 
 [package.metadata.flutter]
-version = "3757390fa4b00d2d261bfdf5182d2e87c9113ff9"
+version = "f4951df193a7966f9ed4da43d555eee0913d84d1"
 identifier = "one.juju.flutter-app" # This is only used on mac
 
 [dependencies]

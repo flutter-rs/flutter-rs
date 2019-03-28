@@ -501,7 +501,7 @@ impl FlutterEngineInner {
             let mode = m.get_video_mode().unwrap();
             let physical_size = m.get_physical_size();
             if physical_size.0 <= 0 {
-                return 160.0;
+                return DEFAULT_DPI;
             }
             mode.width as f64 / (physical_size.0 as f64 / 25.4)
         })
@@ -509,6 +509,7 @@ impl FlutterEngineInner {
 
     fn send_window_metrics_change(&self, window_size: (i32, i32), buf_size: (i32, i32)) {
         let pixel_ratio = buf_size.0 as f64 / window_size.0 as f64 * self.dpi.get() / DEFAULT_DPI;
+        let pixel_ratio = pixel_ratio.max(1.0);
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
             width: buf_size.0 as usize,

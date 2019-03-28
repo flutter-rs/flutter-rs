@@ -181,6 +181,7 @@ impl TextInputPlugin {
             }
             s.selection_extent = 0;
         });
+        self.notify_changes();
     }
     pub fn move_cursor_end(&self, modifiers: glfw::Modifiers) {
         self.with_state(|s: &mut TextEditingState| {
@@ -192,6 +193,7 @@ impl TextInputPlugin {
             }
             s.selection_extent = s.text.count() as i64;
         });
+        self.notify_changes();
     }
 
     pub fn get_selected_text(&self) -> String {

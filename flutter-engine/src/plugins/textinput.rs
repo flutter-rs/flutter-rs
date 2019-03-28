@@ -42,6 +42,28 @@ impl TextInputPlugin {
         };
         return (lo, hi);
     }
+    fn get_next_word_boundary(&self, s: &TextEditingState, start: i64, forward: bool) -> i64 {
+        let v: Vec<char> = s.text.chars().collect();
+        if forward {
+            let max = s.text.count() as i64;
+            if start >= max {
+                return max;
+            }
+            let s = &v[(start as usize) + 1..];
+            s.iter().position(|&c| !c.is_alphanumeric()).map_or(max, |n| {
+                start + n as i64 + 1
+            })
+        } else {
+            if start <= 0 {
+                return 0;
+            }
+            let s = &v[..(start as usize) - 1];
+            let len = s.iter().count() as i64;
+            s.iter().rposition(|c| !c.is_alphanumeric()).map_or(0, |n| {
+                start - len + n as i64
+            })
+        }
+    }
     pub fn add_chars(&self, c: &str) {
         self.remove_selected_text();
 
@@ -144,13 +166,23 @@ impl TextInputPlugin {
         self.with_state(|s: &mut TextEditingState| {
             let (lo, _) = self.get_lo_and_hi_idx(s);
 
-            if modifiers.contains(Modifiers::Shift) {
-                let p = (s.selection_extent - 1).max(0);
-                s.select_to(p);
+            let current_pos = if modifiers.contains(Modifiers::Shift) {
+                s.selection_extent
             } else if s.selection_base != s.selection_extent {
-                s.move_to(lo);
+                lo + 1
             } else {
-                s.move_to((lo - 1).max(0));
+                lo
+            };
+            let next_pos = if modifiers.contains(Modifiers::Control) {
+                self.get_next_word_boundary(s, current_pos, false)
+            } else {
+                (current_pos - 1).max(0)
+            };
+
+            if modifiers.contains(Modifiers::Shift) {
+                s.select_to(next_pos);
+            } else {
+                s.move_to(next_pos);
             }
         });
         self.notify_changes();
@@ -159,14 +191,23 @@ impl TextInputPlugin {
         self.with_state(|s: &mut TextEditingState| {
             let (_, hi) = self.get_lo_and_hi_idx(s);
 
-            if modifiers.contains(Modifiers::Shift) {
-                let p = (s.selection_extent + 1).min(s.text.count() as i64);
-                s.select_to(p);
+            let current_pos = if modifiers.contains(Modifiers::Shift) {
+                s.selection_extent
             } else if s.selection_base != s.selection_extent {
-                s.move_to(hi);
+                hi - 1
             } else {
-                let p = (hi + 1).min(s.text.count() as i64);
-                s.move_to(p);
+                hi
+            };
+            let next_pos = if modifiers.contains(Modifiers::Control) {
+                self.get_next_word_boundary(s, current_pos, true)
+            } else {
+                (current_pos + 1).min(s.text.count() as i64)
+            };
+
+            if modifiers.contains(Modifiers::Shift) {
+                s.select_to(next_pos);
+            } else {
+                s.move_to(next_pos);
             }
         });
         self.notify_changes();

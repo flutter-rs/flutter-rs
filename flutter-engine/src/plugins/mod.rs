@@ -4,6 +4,7 @@ pub mod platform;
 pub mod textinput;
 pub mod dialog;
 pub mod window;
+pub mod navigation;
 
 use super::{ffi, FlutterEngineInner};
 use std::{

@@ -51,6 +51,7 @@ pub use self::plugins::{
     window::WindowPlugin,
     platform::PlatformPlugin,
     dialog::DialogPlugin,
+    navigation::NavigationPlugin,
 };
 use utils::{ CStringVec };
 use glfw::{ Context, Action, Key, Modifiers };
@@ -317,20 +318,28 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
 
         },
         glfw::WindowEvent::MouseButton(button, action, _modifiers) => {
-            if button == glfw::MouseButton::Button1 {
-                let pos = window.get_cursor_pos();
-                let phase = if action == glfw::Action::Press {
-                    ffi::FlutterPointerPhase::Down
-                } else {
-                    ffi::FlutterPointerPhase::Up
-                };
-                let w_size = window.get_size();
-                let size = window.get_framebuffer_size();
-                let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            match button {
+                glfw::MouseButton::Button1 => {
+                    let pos = window.get_cursor_pos();
+                    let phase = if action == glfw::Action::Press {
+                        ffi::FlutterPointerPhase::Down
+                    } else {
+                        ffi::FlutterPointerPhase::Up
+                    };
+                    let w_size = window.get_size();
+                    let size = window.get_framebuffer_size();
+                    let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
 
-                if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                    engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
-                }
+                    if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                        engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
+                    }
+                },
+                glfw::MouseButton::Button4 => {
+                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/navigation", |p: &Box<NavigationPlugin>| {
+                        p.pop_route();
+                    });
+                },
+                _ => (),
             }
         },
         _ => {}
@@ -469,6 +478,8 @@ impl FlutterEngineInner {
 
         let plugin = WindowPlugin::new();
         registry.add_plugin(Box::new(plugin));
+
+        registry.add_plugin(Box::new(NavigationPlugin::new()));
     }
 
     fn event_loop(&self) {

@@ -1,17 +1,12 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use std::{
-    cell::RefCell,
-    sync::Arc,
-};
-use glfw::{Modifiers};
-use crate::FlutterEngineInner;
-use super::{ Plugin, PlatformMessage, PluginRegistry};
-use codec::{ MethodCall };
+use std::sync::Arc;
+
+use crate::{FlutterEngineInner, codec::MethodCall, channel::{ Channel, JsonMethodChannel }};
+use super::{PlatformMessage, Plugin, PluginRegistry};
+
 use serde_json::Value;
-use utils::StringUtils;
-use channel::{ Channel, JsonMethodChannel };
 
 pub struct NavigationPlugin {
     channel: JsonMethodChannel,
@@ -41,7 +36,7 @@ impl NavigationPlugin {
     pub fn pop_route(&self) {
         self.channel.invoke_method(MethodCall {
             method: String::from("popRoute"),
-            args: crate::codec::json_codec::Value::Null,
+            args: Value::Null,
         });
     }
 }

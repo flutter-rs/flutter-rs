@@ -200,7 +200,7 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
         glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
             window.set_should_close(true)
         }
-        glfw::WindowEvent::Key(key, _, Action::Press, modifiers) => {
+        glfw::WindowEvent::Key(key, _, Action::Press, modifiers) | glfw::WindowEvent::Key(key, _, Action::Repeat, modifiers) => {
             match key {
                 Key::Enter => {
                     FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
@@ -457,13 +457,13 @@ impl FlutterEngineInner {
 
     fn add_system_plugins(&self) {
         let registry = &mut *self.registry.borrow_mut();
-        
+
         let plugin = TextInputPlugin::new();
         registry.add_plugin(Box::new(plugin));
 
         let plugin = PlatformPlugin::new();
         registry.add_plugin(Box::new(plugin));
-        
+
         let plugin = DialogPlugin::new();
         registry.add_plugin(Box::new(plugin));
 

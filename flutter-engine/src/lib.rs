@@ -57,6 +57,7 @@ use glfw::{ Context, Action, Key, Modifiers };
 use tokio::runtime::Runtime;
 
 pub use glfw::Window;
+use std::ascii::escape_default;
 
 pub struct FlutterEngineArgs {
     pub assets_path: String,
@@ -535,63 +536,29 @@ impl FlutterEngineInner {
     }
 
     fn send_add_pointer_device(&self) {
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let evt = &ffi::FlutterPointerEvent {
-            struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
-            timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
-            phase: ffi::FlutterPointerPhase::Add,
-            x: 0.0,
-            y: 0.0,
-            device: 0,
-            signal_kind: ffi::FlutterPointerSignalKind::None,
-            scroll_delta_x: 0.0,
-            scroll_delta_y: 0.0,
-        };
-
-        unsafe {
-            ffi::FlutterEngineSendPointerEvent(
-                self.ptr,
-                evt,
-                1
-            );
-        }
+        self.send_pointer_event(0.0, 0.0, ffi::FlutterPointerPhase::Add, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
     }
 
     fn send_mouse_scroll(&self, x: f64, y: f64, scroll_delta_x: f64, scroll_delta_y: f64) {
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let evt = &ffi::FlutterPointerEvent {
-            struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
-            timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
-            phase: ffi::FlutterPointerPhase::Hover,
-            x,
-            y,
-            device: 0,
-            signal_kind: ffi::FlutterPointerSignalKind::Scroll,
-            scroll_delta_x,
-            scroll_delta_y,
-        };
-
-        unsafe {
-            ffi::FlutterEngineSendPointerEvent(
-                self.ptr,
-                evt,
-                1
-            );
-        }
+        self.send_pointer_event(x, y, ffi::FlutterPointerPhase::Hover, ffi::FlutterPointerSignalKind::Scroll, scroll_delta_x, scroll_delta_y);
     }
 
     fn send_cursor_position_at_phase(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase) {
+        self.send_pointer_event(x, y, phase, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
+    }
+
+    fn send_pointer_event(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase, signal_kind: ffi::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
         let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let evt = &ffi::FlutterPointerEvent {
             struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
             timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
-            phase: phase,
-            x: x,
-            y: y,
+            phase,
+            x,
+            y,
             device: 0,
-            signal_kind: ffi::FlutterPointerSignalKind::None,
-            scroll_delta_x: 0.0,
-            scroll_delta_y: 0.0,
+            signal_kind,
+            scroll_delta_x,
+            scroll_delta_y,
         };
 
         unsafe {

@@ -345,6 +345,20 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
             if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
                 engine.send_mouse_scroll(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, scroll_delta_x, scroll_delta_y);
             }
+        },
+        glfw::WindowEvent::CursorEnter(entered) => {
+            let pos = window.get_cursor_pos();
+            let w_size = window.get_size();
+            let size = window.get_framebuffer_size();
+            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            let phase = if entered {
+                ffi::FlutterPointerPhase::Add
+            } else {
+                ffi::FlutterPointerPhase::Remove
+            };
+            if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
+            }
         }
         _ => {}
     }
@@ -421,6 +435,7 @@ impl FlutterEngineInner {
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
         window.set_scroll_polling(true);
+        window.set_cursor_enter_polling(true);
         window.make_current();
 
         self.add_system_plugins();

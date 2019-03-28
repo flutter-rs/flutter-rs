@@ -200,7 +200,7 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
         glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
             window.set_should_close(true)
         }
-        glfw::WindowEvent::Key(key, _, Action::Press, modifiers) => {
+        glfw::WindowEvent::Key(key, _, Action::Press, modifiers) | glfw::WindowEvent::Key(key, _, Action::Repeat, modifiers) => {
             match key {
                 Key::Enter => {
                     FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
@@ -514,7 +514,7 @@ impl FlutterEngineInner {
             let mode = m.get_video_mode().unwrap();
             let physical_size = m.get_physical_size();
             if physical_size.0 <= 0 {
-                return 160.0;
+                return DEFAULT_DPI;
             }
             mode.width as f64 / (physical_size.0 as f64 / 25.4)
         })
@@ -522,6 +522,7 @@ impl FlutterEngineInner {
 
     fn send_window_metrics_change(&self, window_size: (i32, i32), buf_size: (i32, i32)) {
         let pixel_ratio = buf_size.0 as f64 / window_size.0 as f64 * self.dpi.get() / DEFAULT_DPI;
+        let pixel_ratio = pixel_ratio.max(1.0);
         let evt = FlutterWindowMetricsEvent {
             struct_size: mem::size_of::<FlutterWindowMetricsEvent>(),
             width: buf_size.0 as usize,

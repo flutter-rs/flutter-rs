@@ -335,9 +335,11 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                     }
                 },
                 glfw::MouseButton::Button4 => {
-                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/navigation", |p: &Box<NavigationPlugin>| {
-                        p.pop_route();
-                    });
+                    if action == glfw::Action::Press {
+                        FlutterEngine::with_plugin(window.window_ptr(), "flutter/navigation", |p: &Box<NavigationPlugin>| {
+                            p.pop_route();
+                        });
+                    }
                 },
                 _ => (),
             }

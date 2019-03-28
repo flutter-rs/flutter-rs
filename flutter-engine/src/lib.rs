@@ -32,6 +32,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     cell::{Cell, RefCell},
     sync::mpsc:: { self, Sender, Receiver },
+    ops::{DerefMut},
 };
 use libc::{c_void};
 use self::ffi::{
@@ -363,6 +364,11 @@ pub struct FlutterEngineInner {
     rt: RefCell<Runtime>, // A tokio async runtime
     tx: Sender<Box<dyn Fn() + Send>>,
     rx: Receiver<Box<dyn Fn() + Send>>,
+    state: Arc<Mutex<FlutterEngineInnerState>>,
+}
+
+struct FlutterEngineInnerState {
+    is_pointer_added: bool,
 }
 
 impl FlutterEngineInner {
@@ -450,7 +456,6 @@ impl FlutterEngineInner {
             let window_size = window.get_size();
             let buf_size = window.get_framebuffer_size();
             self.send_window_metrics_change(window_size, buf_size);
-            self.send_add_pointer_device();
         });
     }
 
@@ -535,10 +540,6 @@ impl FlutterEngineInner {
         }
     }
 
-    fn send_add_pointer_device(&self) {
-        self.send_pointer_event(0.0, 0.0, ffi::FlutterPointerPhase::Add, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
-    }
-
     fn send_mouse_scroll(&self, x: f64, y: f64, scroll_delta_x: f64, scroll_delta_y: f64) {
         self.send_pointer_event(x, y, ffi::FlutterPointerPhase::Hover, ffi::FlutterPointerSignalKind::Scroll, scroll_delta_x, scroll_delta_y);
     }
@@ -548,6 +549,28 @@ impl FlutterEngineInner {
     }
 
     fn send_pointer_event(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase, signal_kind: ffi::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
+        let mut guard = self.state.lock().unwrap();
+        let state = guard.deref_mut();
+        // make sure that a pointer is added before trying to send an event
+        if !state.is_pointer_added && phase != ffi::FlutterPointerPhase::Add {
+            // send using helper function to make sure that the state isn't being accessed again as we still hold the lock
+            self.send_pointer_event_inner(x, y, ffi::FlutterPointerPhase::Add, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
+        }
+        // don't add a pointer if it's already added
+        if state.is_pointer_added && phase == ffi::FlutterPointerPhase::Add {
+            return;
+        }
+
+        self.send_pointer_event_inner(x, y, phase, signal_kind, scroll_delta_x, scroll_delta_y);
+
+        match phase {
+            ffi::FlutterPointerPhase::Add => state.is_pointer_added = true,
+            ffi::FlutterPointerPhase::Remove => state.is_pointer_added = false,
+            _ => (),
+        };
+    }
+
+    fn send_pointer_event_inner(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase, signal_kind: ffi::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
         let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let evt = &ffi::FlutterPointerEvent {
             struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
@@ -687,6 +710,9 @@ impl FlutterEngine {
             rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
             tx,
             rx,
+            state: Arc::new(Mutex::new(FlutterEngineInnerState {
+                is_pointer_added: true
+            }))
         });
         inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {

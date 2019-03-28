@@ -91,6 +91,7 @@ pub struct FlutterWindowMetricsEvent {
 }
 
 #[repr(C)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum FlutterPointerPhase {
     Cancel,
     Up,

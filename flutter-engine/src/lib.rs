@@ -70,7 +70,7 @@ pub struct FlutterEngineArgs {
     pub command_line_args: Option<Vec<String>>,
     /// A custom handler for glfw window events. If not `None`, this handler will be called for every
     /// window event and the default handler will only be called if `true` is returned.
-    pub window_event_handler:Option<Box<fn(&mut glfw::Window, glfw::WindowEvent) -> bool>>,
+    pub window_event_handler:Option<Box<fn(&FlutterEngineInner, &mut glfw::Window, glfw::WindowEvent) -> bool>>,
 }
 
 impl Default for FlutterEngineArgs {
@@ -497,7 +497,7 @@ impl FlutterEngineInner {
 
                 for (_, event) in glfw::flush_messages(&events) {
                     let call_default_handler = match &self.args.window_event_handler {
-                        Some(handler) => handler(window, event.clone()),
+                        Some(handler) => handler(&self, window, event.clone()),
                         None => true,
                     };
                     if call_default_handler {

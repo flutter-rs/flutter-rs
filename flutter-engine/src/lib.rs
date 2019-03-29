@@ -68,6 +68,8 @@ pub struct FlutterEngineArgs {
     pub bg_color: (u8, u8, u8),
     pub window_mode: WindowMode,
     pub command_line_args: Option<Vec<String>>,
+    /// A custom handler for glfw window events. If not `None`, this handler will be called for every
+    /// window event and the default handler will only be called if `true` is returned.
     pub window_event_handler:Option<Box<fn(&mut glfw::Window, glfw::WindowEvent) -> bool>>,
 }
 

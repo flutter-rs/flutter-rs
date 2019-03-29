@@ -67,7 +67,8 @@ pub struct FlutterEngineArgs {
     pub height: u32,
     pub bg_color: (u8, u8, u8),
     pub window_mode: WindowMode,
-    pub command_line_args: Option<Vec<String>>
+    pub command_line_args: Option<Vec<String>>,
+    pub window_event_handler:Option<Box<fn(&mut glfw::Window, glfw::WindowEvent) -> bool>>,
 }
 
 impl Default for FlutterEngineArgs {
@@ -81,6 +82,7 @@ impl Default for FlutterEngineArgs {
             bg_color: (255, 255, 255),
             window_mode: WindowMode::Windowed,
             command_line_args: None,
+            window_event_handler: None,
         }
     }
 }
@@ -492,7 +494,13 @@ impl FlutterEngineInner {
                 window.glfw.wait_events_timeout(1.0/60.0);
 
                 for (_, event) in glfw::flush_messages(&events) {
-                    handle_event(window, event);
+                    let call_default_handler = match &self.args.window_event_handler {
+                        Some(handler) => handler(window, event.clone()),
+                        None => true,
+                    };
+                    if call_default_handler {
+                        handle_event(window, event);
+                    }
                 }
 
                 // This is required, otherwise windows won't trigger platform_message_callback

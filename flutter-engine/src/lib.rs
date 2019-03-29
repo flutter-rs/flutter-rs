@@ -588,6 +588,32 @@ impl FlutterEngineInner {
         }
     }
 
+    pub fn with_plugin<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow().get_plugin(channel) {
+            unsafe {
+                let plugin: &Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
+        }
+    }
+
+    pub fn with_plugin_mut<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&mut Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow_mut().get_plugin_mut(channel) {
+            unsafe {
+                let plugin: &mut Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
+        }
+    }
+
     fn handle_platform_msg(msg: PlatformMessage, engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
         let mut registry = engine.registry.borrow_mut();
         registry.handle(msg, engine.clone(), window);
@@ -718,14 +744,9 @@ impl FlutterEngine {
         }
     }
 
-    fn with_plugin<T, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
+    fn with_plugin<T: Plugin, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
         if let Some(engine) = FlutterEngine::get_engine(window_ptr) {
-            if let Some(plugin) = engine.registry.borrow().get_plugin(channel) {
-                unsafe {
-                    let p = std::mem::transmute::<&Box<dyn Plugin>, &Box<T>>(plugin);
-                    cbk(p);
-                }
-            }
+            engine.with_plugin(channel, cbk);
         }
     }
 }

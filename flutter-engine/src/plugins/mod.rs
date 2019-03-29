@@ -52,8 +52,13 @@ impl PluginRegistry {
             warn!("No plugin registered to handle messages from channel: {}", &msg.channel);
         }
     }
+
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
         self.map.get(channel)
+    }
+
+    pub fn get_plugin_mut(&mut self, channel: &str) -> Option<&mut Box<dyn Plugin>> {
+        self.map.get_mut(channel)
     }
 }
 

@@ -729,4 +729,15 @@ impl Drop for FlutterEngine {
 /// init must be called from the main thread
 pub fn init() {
     glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+    unsafe {
+        glfw::ffi::glfwSetErrorCallback(Some(glfw_error_callback));
+    }
+}
+
+extern fn glfw_error_callback(error: libc::c_int, description: *const libc::c_char) {
+    unsafe {
+        let error: glfw::Error = std::mem::transmute(error);
+        let description = CStr::from_ptr(description).to_string_lossy();
+        error!("GLFW error: {:?}: {}", error, description);
+    }
 }

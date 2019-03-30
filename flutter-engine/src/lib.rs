@@ -67,7 +67,10 @@ pub struct FlutterEngineArgs {
     pub height: u32,
     pub bg_color: (u8, u8, u8),
     pub window_mode: WindowMode,
-    pub command_line_args: Option<Vec<String>>
+    pub command_line_args: Option<Vec<String>>,
+    /// A custom handler for glfw window events. If not `None`, this handler will be called for every
+    /// window event and the default handler will only be called if `true` is returned.
+    pub window_event_handler:Option<Box<fn(&FlutterEngineInner, &mut glfw::Window, glfw::WindowEvent) -> bool>>,
 }
 
 impl Default for FlutterEngineArgs {
@@ -81,6 +84,7 @@ impl Default for FlutterEngineArgs {
             bg_color: (255, 255, 255),
             window_mode: WindowMode::Windowed,
             command_line_args: None,
+            window_event_handler: None,
         }
     }
 }
@@ -492,7 +496,13 @@ impl FlutterEngineInner {
                 window.glfw.wait_events_timeout(1.0/60.0);
 
                 for (_, event) in glfw::flush_messages(&events) {
-                    handle_event(window, event);
+                    let call_default_handler = match &self.args.window_event_handler {
+                        Some(handler) => handler(&self, window, event.clone()),
+                        None => true,
+                    };
+                    if call_default_handler {
+                        handle_event(window, event);
+                    }
                 }
 
                 // This is required, otherwise windows won't trigger platform_message_callback
@@ -575,6 +585,32 @@ impl FlutterEngineInner {
                 bytes as *const [u8] as *const _,
                 bytes.len(),
             );
+        }
+    }
+
+    pub fn with_plugin<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow().get_plugin(channel) {
+            unsafe {
+                let plugin: &Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
+        }
+    }
+
+    pub fn with_plugin_mut<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&mut Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow_mut().get_plugin_mut(channel) {
+            unsafe {
+                let plugin: &mut Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
         }
     }
 
@@ -708,14 +744,9 @@ impl FlutterEngine {
         }
     }
 
-    fn with_plugin<T, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
+    fn with_plugin<T: Plugin, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
         if let Some(engine) = FlutterEngine::get_engine(window_ptr) {
-            if let Some(plugin) = engine.registry.borrow().get_plugin(channel) {
-                unsafe {
-                    let p = std::mem::transmute::<&Box<dyn Plugin>, &Box<T>>(plugin);
-                    cbk(p);
-                }
-            }
+            engine.with_plugin(channel, cbk);
         }
     }
 }

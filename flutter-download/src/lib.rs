@@ -121,11 +121,12 @@ pub fn home_download_path() -> PathBuf {
 
 pub fn download_url(version: &str) -> String {
     let url = match target() {
-        Target::Linux => "https://storage.googleapis.com/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
-        Target::MacOS => "https://storage.googleapis.com/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
-        Target::Windows => "https://storage.googleapis.com/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
+        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
+        Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
+        Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
     };
-    url.replace("{version}", version)
+    let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL").unwrap_or("https://storage.googleapis.com");
+    url.replace("{base_url}", base_url).replace("{version}", version)
 }
 
 fn should_download(path: &Path) -> bool {

@@ -125,8 +125,9 @@ pub fn download_url(version: &str) -> String {
         Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
         Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
     };
-    let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL").unwrap_or("https://storage.googleapis.com");
-    url.replace("{base_url}", &base_url).replace("{version}", version)
+    let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL");
+    let base_url = base_url.as_ref().map(String::as_str).unwrap_or("https://storage.googleapis.com");
+    url.replace("{base_url}", base_url).replace("{version}", version)
 }
 
 fn should_download(path: &Path) -> bool {

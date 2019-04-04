@@ -60,13 +60,13 @@ def run():
 
     # if a name is not specified, skip templating process
     if config['name']:
-        print('>>> Creating files')
+        print('🔮  Creating files')
         tmpl_proj(config)
 
-    print('>>> Installing build dependencies')
+    print('🔦  Installing build dependencies')
     install_py_deps(config)
 
-    print('>>> Done! Happy coding.')
+    print('🍭  Done! Happy coding.')
 
     # remove tmplfile, useless now
     os.remove(config['tmplfile_path'])

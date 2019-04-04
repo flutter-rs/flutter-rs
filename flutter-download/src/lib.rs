@@ -33,7 +33,7 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::AlreadyDownloaded => "AlreadyDownloaded",
-            _ => "",
+            // _ => "",
         }
     }
 }
@@ -79,6 +79,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
 
         println!("Starting download from {}", url);
         easy.url(&url).unwrap();
+        easy.follow_location(true).unwrap();
         easy.progress(true).unwrap();
         easy.progress_function(move |total, done, _, _| {
             tx.lock().unwrap().send((total, done)).unwrap();

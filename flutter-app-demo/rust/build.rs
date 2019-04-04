@@ -20,7 +20,12 @@ fn main() {
     let manifest = TomlManifest::<MetaData>::from_slice_with_metadata(&fs::read(&toml_path).expect("Cannot read Cargo.toml")).expect("Cargo.toml parse error");
     let version = manifest.package.metadata.expect("Flutter config in Cargo.toml invalid").flutter.version;
 
-    let libs_dir = project_path.join("libs");
+    let libs_dir = Path::new(&std::env::var("OUT_DIR").unwrap())
+        .parent().unwrap()
+        .parent().unwrap()
+        .parent().unwrap()
+        .parent().unwrap()
+        .join("flutter-engine");
 
     println!("Check flutter engine status");
     if let Ok(rx) = flutter_download::download_to(

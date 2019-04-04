@@ -7,6 +7,7 @@ def prepare(envs):
 
 def build(envs):
     print(envs)
+    return ''
 
 snap_tmpl = '''name: flutter-app
 version: '0.1'

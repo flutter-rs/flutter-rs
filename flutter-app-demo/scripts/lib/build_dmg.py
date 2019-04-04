@@ -22,9 +22,7 @@ def build(envs):
     ], check = True)
 
     os.unlink(f.name)
-
-    print('>>> dmg generated at', output)
-
+    return output
 
 tmpl = '''
 import os

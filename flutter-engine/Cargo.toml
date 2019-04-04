@@ -9,6 +9,7 @@ repository = "https://github.com/gliheng/flutter-rs"
 readme = "crates-io.md"
 
 [dependencies]
+flutter-engine-sys = { path = "../flutter-engine-sys" }
 glfw = "0.25.0"
 gl = "0.11.0"
 tokio = "0.1.13"

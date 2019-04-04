@@ -18,7 +18,8 @@ use crate::{
     },
     plugins::{ PluginRegistry, PlatformMessage},
 };
-use ffi;
+
+use flutter_engine_sys::FlutterPlatformMessageResponseHandle;
 
 pub trait Channel {
     type R;
@@ -68,7 +69,7 @@ pub trait Channel {
     }
 
     /// Send a method call response
-    fn send_method_call_response(&self, response_handle: Option<&ffi::FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<Self::R>) -> bool {
+    fn send_method_call_response(&self, response_handle: Option<&FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<Self::R>) -> bool {
         // TODO: This is too long, need a short version
         if let Some(handle) = response_handle {
             let buf = match ret {
@@ -90,7 +91,7 @@ pub trait Channel {
     /// it can wait for rust response using await syntax.
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
-    fn send_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, buf: &[u8]) {
+    fn send_response(&self, response_handle: &FlutterPlatformMessageResponseHandle, buf: &[u8]) {
         if let Some(engine) = self.get_engine() {
             engine.upgrade().unwrap().send_platform_message_response(
                 response_handle,

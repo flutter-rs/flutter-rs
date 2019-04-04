@@ -2,7 +2,7 @@
 name = "flutter-app-demo"
 description = "Amazing desktop flutter app"
 version = "0.2.0"
-authors = ["juju <gliheng@foxmail.com>"]
+authors = ["juju <gliheng@gmail.com>"]
 publish = false
 edition = "2018"
 

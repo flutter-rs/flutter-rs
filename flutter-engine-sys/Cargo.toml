@@ -1,7 +1,10 @@
 [package]
 name = "flutter-engine-sys"
+description = "flutter engine sys crate"
 version = "0.1.0"
 authors = ["juju <gliheng@gmail.com>"]
+keywords = ["flutter", "GUI"]
+license = "MIT"
 
 [build-dependencies]
 bindgen = "0.42.2"

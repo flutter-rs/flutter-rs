@@ -769,6 +769,13 @@ impl FlutterEngine {
             isolate_snapshot_instructions: std::ptr::null(),
             isolate_snapshot_instructions_size: 0,
             root_isolate_create_callback: Some(root_isolate_create_callback),
+            update_semantics_node_callback: None,
+            update_semantics_custom_action_callback: None,
+            persistent_cache_path: std::ptr::null(),
+            is_persistent_cache_read_only: false,
+            vsync_callback: None,
+            custom_dart_entrypoint: std::ptr::null(),
+            custom_task_runners: std::ptr::null(),
         };
 
         info!("Project args {:?}", proj_args);

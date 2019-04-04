@@ -47,17 +47,17 @@ def cargo_run():
     return cargo.observatory_port
 
 if __name__ == '__main__':
-    print('>>> Building flutter bundle')
+    print('🍀  Building flutter bundle')
     subprocess.run(
         [FLUTTER, 'build', 'bundle'],
         cwd = PROJ_DIR, check = True)
 
-    print('>>> Building rust project')
+    print('🦀  Building rust project')
     port = cargo_run()
     if not port:
         raise Exception('Launch cargo error')
 
-    print('>>> Attaching dart debugger')
+    print('🍹  Attaching dart debugger')
     subprocess.run(
         [FLUTTER, 'attach', '--device-id=flutter-tester', '--debug-port=50300'],
         cwd = PROJ_DIR, check = True)

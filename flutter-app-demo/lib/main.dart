@@ -2,17 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'demos/demos.dart';
+import 'utils.dart';
 
-var LIGHT_THEME = ThemeData(
-  primarySwatch: Colors.blue,
-  brightness: Brightness.light,
-);
-
-var DARK_THEME = ThemeData(
-  primarySwatch: Colors.blue,
-  accentColor: Colors.lightBlue.shade200,
-  brightness: Brightness.dark,
-);
 
 void main() {
   // Override is necessary to prevent Unknown platform' flutter startup error.
@@ -29,7 +20,7 @@ class MyApp extends StatelessWidget {
       // Since flutter tool is unable to generate AOT code for desktop,
       // our only option is to hide this banner and use JIT
       debugShowCheckedModeBanner: false,
-      theme: LIGHT_THEME,
+      theme: getTheme(ThemeType.Base),
       initialRoute: '/',
       routes: {
         '/': (context) => Material(child: GetStartedPage()),
@@ -167,7 +158,7 @@ class _DemoPageState extends State<DemoPage> {
               color: Color.fromARGB(255, 50, 50, 50),
             ),
             child: Theme(
-              data: DARK_THEME,
+              data: getTheme(ThemeType.Inverted),
               child: _buildList()
             ),
           ),

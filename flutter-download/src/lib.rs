@@ -33,7 +33,7 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::AlreadyDownloaded => "AlreadyDownloaded",
-            _ => "",
+            // _ => "",
         }
     }
 }
@@ -79,6 +79,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
 
         println!("Starting download from {}", url);
         easy.url(&url).unwrap();
+        easy.follow_location(true).unwrap();
         easy.progress(true).unwrap();
         easy.progress_function(move |total, done, _, _| {
             tx.lock().unwrap().send((total, done)).unwrap();
@@ -121,11 +122,13 @@ pub fn home_download_path() -> PathBuf {
 
 pub fn download_url(version: &str) -> String {
     let url = match target() {
-        Target::Linux => "https://storage.googleapis.com/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
-        Target::MacOS => "https://storage.googleapis.com/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
-        Target::Windows => "https://storage.googleapis.com/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
+        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
+        Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
+        Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
     };
-    url.replace("{version}", version)
+    let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL");
+    let base_url = base_url.as_ref().map(String::as_str).unwrap_or("https://storage.googleapis.com");
+    url.replace("{base_url}", base_url).replace("{version}", version)
 }
 
 fn should_download(path: &Path) -> bool {

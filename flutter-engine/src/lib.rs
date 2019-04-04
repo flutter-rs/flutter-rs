@@ -13,8 +13,8 @@ extern crate futures;
 extern crate tokio;
 extern crate tinyfiledialogs;
 extern crate gl;
+extern crate flutter_engine_sys;
 
-pub mod ffi;
 pub mod plugins;
 pub mod codec;
 pub mod channel;
@@ -26,7 +26,7 @@ use std::{
     mem,
     borrow::Cow,
     collections::HashMap,
-    ptr::{null},
+    ptr::{null, null_mut},
     ffi::{CString, CStr},
     sync::{Arc, Weak, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -35,15 +35,24 @@ use std::{
     ops::{DerefMut},
 };
 use libc::{c_void};
-use self::ffi::{
+use flutter_engine_sys::{
     FlutterOpenGLRendererConfig,
     FlutterRendererType,
-    FlutterResult,
+    FlutterRendererConfig,
+    FlutterEngineResult,
+    FlutterProjectArgs,
     FlutterPlatformMessage,
-    FlutterWindowMetricsEvent,
     FlutterEngineRun,
+    FlutterEngineShutdown,
+    FlutterEngineSendPlatformMessage,
+    FlutterEngineSendPointerEvent,
+    FlutterEngineSendPlatformMessageResponse,
     FlutterEngineSendWindowMetricsEvent,
+    __FlutterEngineFlushPendingTasksNow,
+    FlutterPointerEvent,
+    FlutterWindowMetricsEvent,
 };
+
 pub use self::plugins::{
     PlatformMessage,
     PluginRegistry,
@@ -52,6 +61,7 @@ pub use self::plugins::{
     window::WindowPlugin,
     platform::PlatformPlugin,
     dialog::DialogPlugin,
+    navigation::NavigationPlugin,
 };
 use utils::{ CStringVec };
 use glfw::{ Context, Action, Key, Modifiers };
@@ -68,7 +78,10 @@ pub struct FlutterEngineArgs {
     pub height: u32,
     pub bg_color: (u8, u8, u8),
     pub window_mode: WindowMode,
-    pub command_line_args: Option<Vec<String>>
+    pub command_line_args: Option<Vec<String>>,
+    /// A custom handler for glfw window events. If not `None`, this handler will be called for every
+    /// window event and the default handler will only be called if `true` is returned.
+    pub window_event_handler:Option<Box<fn(&FlutterEngineInner, &mut glfw::Window, glfw::WindowEvent) -> bool>>,
 }
 
 impl Default for FlutterEngineArgs {
@@ -82,6 +95,7 @@ impl Default for FlutterEngineArgs {
             bg_color: (255, 255, 255),
             window_mode: WindowMode::Windowed,
             command_line_args: None,
+            window_event_handler: None,
         }
     }
 }
@@ -94,7 +108,7 @@ pub enum WindowMode {
     Frameless,
 }
 
-extern fn present(data: *const c_void) -> bool {
+extern fn present(data: *mut c_void) -> bool {
     trace!("present");
     unsafe {
         let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
@@ -114,7 +128,7 @@ extern fn present(data: *const c_void) -> bool {
     true
 }
 
-extern fn make_current(data: *const c_void) -> bool {
+extern fn make_current(data: *mut c_void) -> bool {
     trace!("make_current");
     unsafe {
         let window: &mut glfw::Window = &mut *(data as *mut glfw::Window);
@@ -123,29 +137,29 @@ extern fn make_current(data: *const c_void) -> bool {
     true
 }
 
-extern fn clear_current(_data: *const c_void) -> bool {
+extern fn clear_current(_data: *mut c_void) -> bool {
     trace!("clear_current");
     glfw::make_context_current(None);
     true
 }
 
-extern fn fbo_callback(_data: *const c_void) -> u32 {
+extern fn fbo_callback(_data: *mut c_void) -> u32 {
     trace!("fbo_callback");
     0
 }
 
-extern fn make_resource_current(_data: *const c_void) -> bool {
+extern fn make_resource_current(_data: *mut c_void) -> bool {
     trace!("make_resource_current");
     false
 }
 
-extern fn gl_proc_resolver(_data: *const c_void, proc: *const libc::c_char) -> *const c_void {
+extern fn gl_proc_resolver(_data: *mut c_void, proc: *const libc::c_char) -> *mut c_void {
     unsafe {
-        return glfw::ffi::glfwGetProcAddress(proc);
+        return glfw::ffi::glfwGetProcAddress(proc) as *mut c_void;
     }
 }
 
-extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *const c_void) {
+extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *mut c_void) {
     trace!("platform_message_callback");
     unsafe {
         let msg = &*ptr;
@@ -157,7 +171,7 @@ extern fn platform_message_callback(ptr: *const FlutterPlatformMessage, data: *c
     }
 }
 
-extern fn root_isolate_create_callback(_data: *const c_void) {
+extern fn root_isolate_create_callback(_data: *mut c_void) {
     trace!("root_isolate_create_callback");
 }
 
@@ -308,9 +322,9 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 if !p.drag_window(window, x, y) {
                     if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
                         let phase = if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
-                            ffi::FlutterPointerPhase::Move
+                            flutter_engine_sys::FlutterPointerPhase::kMove
                         } else {
-                            ffi::FlutterPointerPhase::Hover
+                            flutter_engine_sys::FlutterPointerPhase::kHover
                         };
                         let w_size = window.get_size();
                         let size = window.get_framebuffer_size();
@@ -321,20 +335,30 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
             });
         },
         glfw::WindowEvent::MouseButton(button, action, _modifiers) => {
-            if button == glfw::MouseButton::Button1 {
-                let pos = window.get_cursor_pos();
-                let phase = if action == glfw::Action::Press {
-                    ffi::FlutterPointerPhase::Down
-                } else {
-                    ffi::FlutterPointerPhase::Up
-                };
-                let w_size = window.get_size();
-                let size = window.get_framebuffer_size();
-                let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            match button {
+                glfw::MouseButton::Button1 => {
+                    let pos = window.get_cursor_pos();
+                    let phase = if action == glfw::Action::Press {
+                        flutter_engine_sys::FlutterPointerPhase::kDown
+                    } else {
+                        flutter_engine_sys::FlutterPointerPhase::kUp
+                    };
+                    let w_size = window.get_size();
+                    let size = window.get_framebuffer_size();
+                    let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
 
-                if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                    engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
-                }
+                    if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                        engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
+                    }
+                },
+                glfw::MouseButton::Button4 => {
+                    if action == glfw::Action::Press {
+                        FlutterEngine::with_plugin(window.window_ptr(), "flutter/navigation", |p: &Box<NavigationPlugin>| {
+                            p.pop_route();
+                        });
+                    }
+                },
+                _ => (),
             }
         },
         glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
@@ -352,9 +376,9 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
             let size = window.get_framebuffer_size();
             let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
             let phase = if entered {
-                ffi::FlutterPointerPhase::Add
+                flutter_engine_sys::FlutterPointerPhase::kAdd
             } else {
-                ffi::FlutterPointerPhase::Remove
+                flutter_engine_sys::FlutterPointerPhase::kRemove
             };
             if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
                 engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
@@ -366,9 +390,9 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
 
 pub struct FlutterEngineInner {
     args: FlutterEngineArgs,
-    config: ffi::FlutterRendererConfig,
-    proj_args: ffi::FlutterProjectArgs,
-    ptr: *const ffi::FlutterEngine,
+    config: FlutterRendererConfig,
+    proj_args: FlutterProjectArgs,
+    ptr: flutter_engine_sys::FlutterEngine,
     registry: RefCell<PluginRegistry>,
     glfw: RefCell<Option<(
         glfw::Window,
@@ -462,10 +486,11 @@ impl FlutterEngineInner {
                     1,
                     &self.config,
                     &self.proj_args,
-                    window as *const glfw::Window as *const c_void,
-                    &self.ptr as *const *const ffi::FlutterEngine);
+                    window as *mut glfw::Window as *mut c_void,
+                    &self.ptr as *const flutter_engine_sys::FlutterEngine as *mut flutter_engine_sys::FlutterEngine);
+                // TODO change this run into a mutable method
 
-                assert!(ret == FlutterResult::Success, "Cannot start flutter engine");
+                assert!(ret == FlutterEngineResult::kSuccess, "Cannot start flutter engine");
             }
 
             let window_size = window.get_size();
@@ -503,6 +528,8 @@ impl FlutterEngineInner {
 
         let plugin = WindowPlugin::new();
         registry.add_plugin(Box::new(plugin));
+
+        registry.add_plugin(Box::new(NavigationPlugin::new()));
     }
 
     fn event_loop(&self) {
@@ -513,12 +540,18 @@ impl FlutterEngineInner {
                 window.glfw.wait_events_timeout(1.0/60.0);
 
                 for (_, event) in glfw::flush_messages(&events) {
-                    handle_event(window, event);
+                    let call_default_handler = match &self.args.window_event_handler {
+                        Some(handler) => handler(&self, window, event.clone()),
+                        None => true,
+                    };
+                    if call_default_handler {
+                        handle_event(window, event);
+                    }
                 }
 
                 // This is required, otherwise windows won't trigger platform_message_callback
                 unsafe {
-                    ffi::__FlutterEngineFlushPendingTasksNow();
+                    __FlutterEngineFlushPendingTasksNow();
                 }
 
                 // process ui thread callback queue
@@ -556,39 +589,39 @@ impl FlutterEngineInner {
     }
 
     fn send_mouse_scroll(&self, x: f64, y: f64, scroll_delta_x: f64, scroll_delta_y: f64) {
-        self.send_pointer_event(x, y, ffi::FlutterPointerPhase::Hover, ffi::FlutterPointerSignalKind::Scroll, scroll_delta_x, scroll_delta_y);
+        self.send_pointer_event(x, y, flutter_engine_sys::FlutterPointerPhase::kHover, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindScroll, scroll_delta_x, scroll_delta_y);
     }
 
-    fn send_cursor_position_at_phase(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase) {
-        self.send_pointer_event(x, y, phase, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
+    fn send_cursor_position_at_phase(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase) {
+        self.send_pointer_event(x, y, phase, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindNone, 0.0, 0.0);
     }
 
-    fn send_pointer_event(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase, signal_kind: ffi::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
+    fn send_pointer_event(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase, signal_kind: flutter_engine_sys::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
         let mut guard = self.state.lock().unwrap();
         let state = guard.deref_mut();
         // make sure that a pointer is added before trying to send an event
-        if !state.is_pointer_added && phase != ffi::FlutterPointerPhase::Add {
+        if !state.is_pointer_added && phase != flutter_engine_sys::FlutterPointerPhase::kAdd {
             // send using helper function to make sure that the state isn't being accessed again as we still hold the lock
-            self.send_pointer_event_inner(x, y, ffi::FlutterPointerPhase::Add, ffi::FlutterPointerSignalKind::None, 0.0, 0.0);
+            self.send_pointer_event_inner(x, y, flutter_engine_sys::FlutterPointerPhase::kAdd, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindNone, 0.0, 0.0);
         }
         // don't add a pointer if it's already added
-        if state.is_pointer_added && phase == ffi::FlutterPointerPhase::Add {
+        if state.is_pointer_added && phase == flutter_engine_sys::FlutterPointerPhase::kAdd {
             return;
         }
 
         self.send_pointer_event_inner(x, y, phase, signal_kind, scroll_delta_x, scroll_delta_y);
 
         match phase {
-            ffi::FlutterPointerPhase::Add => state.is_pointer_added = true,
-            ffi::FlutterPointerPhase::Remove => state.is_pointer_added = false,
+            flutter_engine_sys::FlutterPointerPhase::kAdd => state.is_pointer_added = true,
+            flutter_engine_sys::FlutterPointerPhase::kRemove => state.is_pointer_added = false,
             _ => (),
         };
     }
 
-    fn send_pointer_event_inner(&self, x: f64, y: f64, phase: ffi::FlutterPointerPhase, signal_kind: ffi::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
+    fn send_pointer_event_inner(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase, signal_kind: flutter_engine_sys::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
         let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let evt = &ffi::FlutterPointerEvent {
-            struct_size: mem::size_of::<ffi::FlutterPointerEvent>(),
+        let evt = &FlutterPointerEvent {
+            struct_size: mem::size_of::<FlutterPointerEvent>(),
             timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
             phase,
             x,
@@ -600,7 +633,7 @@ impl FlutterEngineInner {
         };
 
         unsafe {
-            ffi::FlutterEngineSendPointerEvent(
+            FlutterEngineSendPointerEvent(
                 self.ptr,
                 evt,
                 1
@@ -612,24 +645,50 @@ impl FlutterEngineInner {
         trace!("Sending message {:?} on channel {}", message, message.channel);
         let msg: FlutterPlatformMessage = message.into();
         unsafe {
-            ffi::FlutterEngineSendPlatformMessage(
+            FlutterEngineSendPlatformMessage(
                 self.ptr,
-                &msg as *const ffi::FlutterPlatformMessage,
+                &msg as *const flutter_engine_sys::FlutterPlatformMessage,
             );
         }
         // we need to manually drop this message
         // msg.drop();
     }
 
-    pub fn send_platform_message_response(&self, response_handle: &ffi::FlutterPlatformMessageResponseHandle, bytes: &[u8]) {
+    pub fn send_platform_message_response(&self, response_handle: &flutter_engine_sys::FlutterPlatformMessageResponseHandle, bytes: &[u8]) {
         trace!("Sending message response");
         unsafe {
-            ffi::FlutterEngineSendPlatformMessageResponse(
+            FlutterEngineSendPlatformMessageResponse(
                 self.ptr,
                 response_handle,
                 bytes as *const [u8] as *const _,
                 bytes.len(),
             );
+        }
+    }
+
+    pub fn with_plugin<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow().get_plugin(channel) {
+            unsafe {
+                let plugin: &Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
+        }
+    }
+
+    pub fn with_plugin_mut<T, F>(&self, channel: &str, mut f: F)
+        where
+            F: FnMut(&mut Box<T>),
+            T: Plugin,
+    {
+        if let Some(plugin) = self.registry.borrow_mut().get_plugin_mut(channel) {
+            unsafe {
+                let plugin: &mut Box<T> = mem::transmute(plugin);
+                f(plugin);
+            }
         }
     }
 
@@ -660,20 +719,22 @@ pub struct FlutterEngine {
 
 impl FlutterEngine {
     pub fn new(args: FlutterEngineArgs) -> FlutterEngine {
-        let config: ffi::FlutterRendererConfig = ffi::FlutterRendererConfig {
-            kind: FlutterRendererType::OpenGL,
-            open_gl: FlutterOpenGLRendererConfig {
-                struct_size: mem::size_of::<FlutterOpenGLRendererConfig>(),
-                make_current: make_current,
-                clear_current: clear_current,
-                present: present,
-                fbo_callback: fbo_callback,
-                make_resource_current: make_resource_current,
-                fbo_reset_after_present: false,
-                surface_transformation: None,
-                gl_proc_resolver: gl_proc_resolver,
-                gl_external_texture_frame_callback: None,
-            },
+        let config: FlutterRendererConfig = FlutterRendererConfig {
+            type_: FlutterRendererType::kOpenGL,
+            __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
+                open_gl: FlutterOpenGLRendererConfig {
+                    struct_size: mem::size_of::<FlutterOpenGLRendererConfig>(),
+                    make_current: Some(make_current),
+                    clear_current: Some(clear_current),
+                    present: Some(present),
+                    fbo_callback: Some(fbo_callback),
+                    make_resource_current: Some(make_resource_current),
+                    fbo_reset_after_present: false,
+                    surface_transformation: None,
+                    gl_proc_resolver: Some(gl_proc_resolver),
+                    gl_external_texture_frame_callback: None,
+                }
+            }
         };
 
         // FlutterProjectArgs is expecting a full argv, so when processing it for flags the first
@@ -690,15 +751,15 @@ impl FlutterEngine {
             CStringVec::new(&cli_args)
         };
 
-        let proj_args = ffi::FlutterProjectArgs {
-            struct_size: mem::size_of::<ffi::FlutterProjectArgs>(),
+        let proj_args = FlutterProjectArgs {
+            struct_size: mem::size_of::<FlutterProjectArgs>(),
             assets_path: CString::new(args.assets_path.to_string()).unwrap().into_raw(),
-            main_path: CString::new("").unwrap().into_raw(),
-            packages_path: CString::new("").unwrap().into_raw(),
+            main_path__unused__: CString::new("").unwrap().into_raw(),
+            packages_path__unused__: CString::new("").unwrap().into_raw(),
             icu_data_path: CString::new(args.icu_data_path.to_string()).unwrap().into_raw(),
             command_line_argc: vm_args.len() as i32,
             command_line_argv: vm_args.into_raw(),
-            platform_message_callback: platform_message_callback,
+            platform_message_callback: Some(platform_message_callback),
             vm_snapshot_data: std::ptr::null(),
             vm_snapshot_data_size: 0,
             vm_snapshot_instructions: std::ptr::null(),
@@ -707,18 +768,20 @@ impl FlutterEngine {
             isolate_snapshot_data_size: 0,
             isolate_snapshot_instructions: std::ptr::null(),
             isolate_snapshot_instructions_size: 0,
-            root_isolate_create_callback: root_isolate_create_callback,
+            root_isolate_create_callback: Some(root_isolate_create_callback),
         };
 
         info!("Project args {:?}", proj_args);
-        info!("OpenGL config {:?}", config);
+        unsafe {
+            info!("OpenGL config {:?}", config.__bindgen_anon_1.open_gl);
+        }
 
         let (tx, rx) = mpsc::channel();
         let inner = Arc::new(FlutterEngineInner {
             args,
             config,
             proj_args,
-            ptr: null(),
+            ptr: null_mut(),
             registry: RefCell::new(PluginRegistry::new()),
             glfw: RefCell::new(None),
             dpi: Cell::new(DEFAULT_DPI),
@@ -748,7 +811,7 @@ impl FlutterEngine {
 
     pub fn shutdown(&self) {
         unsafe {
-            ffi::FlutterEngineShutdown(self.inner.ptr);
+            FlutterEngineShutdown(self.inner.ptr);
         }
     }
 
@@ -766,14 +829,9 @@ impl FlutterEngine {
         }
     }
 
-    fn with_plugin<T, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, mut cbk: F) {
+    fn with_plugin<T: Plugin, F: FnMut(&Box<T>)>(window_ptr: *mut glfw::ffi::GLFWwindow, channel: &str, cbk: F) {
         if let Some(engine) = FlutterEngine::get_engine(window_ptr) {
-            if let Some(plugin) = engine.registry.borrow().get_plugin(channel) {
-                unsafe {
-                    let p = std::mem::transmute::<&Box<dyn Plugin>, &Box<T>>(plugin);
-                    cbk(p);
-                }
-            }
+            engine.with_plugin(channel, cbk);
         }
     }
 }
@@ -787,4 +845,15 @@ impl Drop for FlutterEngine {
 /// init must be called from the main thread
 pub fn init() {
     glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+    unsafe {
+        glfw::ffi::glfwSetErrorCallback(Some(glfw_error_callback));
+    }
+}
+
+extern fn glfw_error_callback(error: libc::c_int, description: *const libc::c_char) {
+    unsafe {
+        let error: glfw::Error = std::mem::transmute(error);
+        let description = CStr::from_ptr(description).to_string_lossy();
+        error!("GLFW error: {:?}: {}", error, description);
+    }
 }

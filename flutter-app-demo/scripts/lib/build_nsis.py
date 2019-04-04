@@ -24,5 +24,5 @@ def build(envs):
         os.path.join(os.path.dirname(__file__), 'installer.nsi')
     ], env = envs)
 
-    print('>>> Installer generated at', envs['OUTPUT_FILE'])
+    return envs['OUTPUT_FILE']
 

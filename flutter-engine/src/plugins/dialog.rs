@@ -2,7 +2,8 @@
 //! It handles flutter-rs/dialog type message.
 
 use crate::{FlutterEngineInner};
-use super::{Plugin, PlatformMessage, PluginRegistry, ffi::FlutterPlatformMessageResponseHandle};
+use super::{Plugin, PlatformMessage, PluginRegistry};
+use flutter_engine_sys::FlutterPlatformMessageResponseHandle;
 use channel::{ Channel, JsonMethodChannel };
 use codec::MethodCallResult;
 use std::sync::{ Arc, Mutex };

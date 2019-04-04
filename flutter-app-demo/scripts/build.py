@@ -50,18 +50,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
     envs = collect_env(args)
 
-    print('>>> Building rust project')
-    cargo_build(envs['RUST_PROJ_DIR'], envs['RELEASE'])
-
-    print('>>> Building flutter bundle')
+    print('🍀  Building flutter bundle')
     build_flutter(envs)
 
-    print('>>> Building package')
+    print('🦀  Building rust project')
+    cargo_build(envs['RUST_PROJ_DIR'], envs['RELEASE'])
+
+    print('🐶  Creating distribution')
     # prepare has a chance to modify envs
     if args.dist == 'mac':
         from lib.build_mac import prepare, build
         envs = prepare(envs)
-        build(envs)
+        output = build(envs)
     elif args.dist == 'dmg':
         from lib.build_mac import prepare, build
         envs = prepare(envs)
@@ -69,12 +69,13 @@ if __name__ == '__main__':
 
         from lib.build_dmg import prepare, build
         envs = prepare(envs)
-        build(envs)
+        output = build(envs)
     elif args.dist == 'snap':
         from lib.build_snap import prepare, build
         envs = prepare(envs)
-        build(envs)
+        output = build(envs)
     elif args.dist == 'nsis':
         from lib.build_nsis import prepare, build
         envs = prepare(envs)
-        build(envs)
+        output = build(envs)
+    print('🍭  {} distribution generated at {}'.format(args.dist, output))

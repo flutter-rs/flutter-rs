@@ -4,8 +4,13 @@ pub mod platform;
 pub mod textinput;
 pub mod dialog;
 pub mod window;
+pub mod navigation;
 
-use super::{ffi, FlutterEngineInner};
+use super::{FlutterEngineInner};
+use flutter_engine_sys::{
+    FlutterPlatformMessageResponseHandle,
+    FlutterPlatformMessage,
+};
 use std::{
     ptr::null,
     mem,
@@ -51,8 +56,13 @@ impl PluginRegistry {
             warn!("No plugin registered to handle messages from channel: {}", &msg.channel);
         }
     }
+
     pub fn get_plugin(&self, channel: &str) -> Option<&Box<dyn Plugin>> {
         self.map.get(channel)
+    }
+
+    pub fn get_plugin_mut(&mut self, channel: &str) -> Option<&mut Box<dyn Plugin>> {
+        self.map.get_mut(channel)
     }
 }
 
@@ -60,31 +70,31 @@ impl PluginRegistry {
 pub struct PlatformMessage<'a, 'b> {
     pub channel: Cow<'a, str>,
     pub message: &'b [u8],
-    pub response_handle: Option<&'a ffi::FlutterPlatformMessageResponseHandle>,
+    pub response_handle: Option<&'a FlutterPlatformMessageResponseHandle>,
 }
 
 impl<'a, 'b> PlatformMessage<'a, 'b> {
     fn get_response_handle(&self) -> Option<usize> {
         self.response_handle.map(|r| {
-            r as *const ffi::FlutterPlatformMessageResponseHandle as usize
+            r as *const FlutterPlatformMessageResponseHandle as usize
         })
     }
 }
 
-impl<'a, 'b> Into<ffi::FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
-    fn into(self) -> ffi::FlutterPlatformMessage {
+impl<'a, 'b> Into<FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
+    fn into(self) -> FlutterPlatformMessage {
         let channel = CString::new(&*self.channel).unwrap();
         let message_ptr = self.message.as_ptr();
         let message_len = self.message.len();
 
         let response_handle = if let Some(h) = self.response_handle {
-            h as *const ffi::FlutterPlatformMessageResponseHandle
+            h as *const FlutterPlatformMessageResponseHandle
         } else {
             null()
         };
 
-        ffi::FlutterPlatformMessage {
-            struct_size: mem::size_of::<ffi::FlutterPlatformMessage>(),
+        FlutterPlatformMessage {
+            struct_size: mem::size_of::<FlutterPlatformMessage>(),
             channel: channel.into_raw(),
             message: message_ptr,
             message_size: message_len,

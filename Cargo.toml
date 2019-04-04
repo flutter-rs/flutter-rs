@@ -2,5 +2,6 @@
 members = [
     "flutter-app-demo/rust",
     "flutter-engine",
+    "flutter-engine-sys",
     "flutter-download",
 ]

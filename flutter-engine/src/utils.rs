@@ -19,17 +19,17 @@ impl CStringVec {
     }
 
     /// Bypass "move out of struct which implements [`Drop`] trait" restriction.
-    pub fn into_raw(self) -> *mut *mut c_char {
+    pub fn into_raw(self) -> *const *const c_char {
         unsafe {
             let p = ptr::read(&self.inner);
             mem::forget(self);
-            Box::into_raw(p) as *mut *mut c_char
+            Box::into_raw(p) as *const *const c_char
         }
     }
 
-    pub fn from_raw(len: usize, ptr: *mut *mut c_char) -> CStringVec {
+    pub fn from_raw(len: usize, ptr: *const *const c_char) -> CStringVec {
         unsafe {
-            let data = slice::from_raw_parts_mut(ptr, len as usize);
+            let data = slice::from_raw_parts_mut(ptr as *mut _, len as usize);
             let inner = Box::from_raw(data);
             CStringVec {
                 inner: inner,

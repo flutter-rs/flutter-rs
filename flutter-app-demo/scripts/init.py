@@ -11,8 +11,9 @@ def get_config():
         name = input('What\'s the name of the project?\n')
         lib_name = name.replace('-', '_')
 
+        tmplfile_path = os.path.join(proj_dir, '.tmplfiles')
         try:
-            with open(os.path.join(proj_dir, '.tmplfiles')) as f:
+            with open(tmplfile_path) as f:
                 tmplfiles = []
                 for line in f.readlines():
                     line = line.strip()
@@ -29,6 +30,7 @@ def get_config():
             "lib_name": lib_name, # underlined version of name
             "proj_dir": proj_dir,
             "tmplfiles": tmplfiles,
+            "tmplfile_path": tmplfile_path
         }
     except KeyboardInterrupt:
         return None
@@ -58,13 +60,16 @@ def run():
 
     # if a name is not specified, skip templating process
     if config['name']:
-        print('>>> Creating files')
+        print('🔮  Creating files')
         tmpl_proj(config)
 
-    print('>>> Installing build dependencies')
+    print('🔦  Installing build dependencies')
     install_py_deps(config)
 
-    print('>>> Done! Happy coding.')
+    print('🍭  Done! Happy coding.')
+
+    # remove tmplfile, useless now
+    os.remove(config['tmplfile_path'])
 
 if __name__ == '__main__':
     run()

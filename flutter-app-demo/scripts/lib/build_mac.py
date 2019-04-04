@@ -26,7 +26,7 @@ def build(envs):
     os.makedirs(res_dir, exist_ok = True)
     copyfile(os.path.join(envs['TARGET_DIR'], 'debug' if envs['DEBUG'] else 'release' , envs['NAME']), os.path.join(bin_dir, envs['NAME']))
     subprocess.run(['chmod', '+x', os.path.join(bin_dir, envs['NAME'])], check = True)
-    copytree(os.path.join(envs['RUST_PROJ_DIR'], 'libs', envs['FLUTTER_LIB_VER'], 'FlutterEmbedder.framework'), os.path.join(frm_dir, 'FlutterEmbedder.framework'), symlinks = True)
+    copytree(os.path.join(envs['TARGET_DIR'], 'flutter-engine', envs['FLUTTER_LIB_VER'], 'FlutterEmbedder.framework'), os.path.join(frm_dir, 'FlutterEmbedder.framework'), symlinks = True)
 
     # copy resources
     copyfile(os.path.join(envs['RUST_ASSETS_DIR'], 'icon.icns'), os.path.join(res_dir, 'icon.icns'))
@@ -39,6 +39,8 @@ def build(envs):
     )
     plist_file = open(os.path.join(APP_PATH, 'Contents', 'Info.plist'), 'w+')
     plist_file.write(plist)
+
+    return APP_PATH
 
 
 plist_tmpl = '''<?xml version="1.0" encoding="UTF-8"?>

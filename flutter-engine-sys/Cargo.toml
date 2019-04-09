@@ -5,6 +5,8 @@ version = "0.1.0"
 authors = ["juju <gliheng@gmail.com>"]
 keywords = ["flutter", "GUI"]
 license = "MIT"
+build = "build.rs"
 
 [build-dependencies]
 bindgen = "0.42.2"
+flutter-download = { path = "../flutter-download" }

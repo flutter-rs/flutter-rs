@@ -2,7 +2,7 @@
 import os, sys
 import toml
 import argparse
-from lib import look_for_proj_dir, get_workspace_dir
+from lib import look_for_proj_dir, get_workspace_dir, get_flutter_version
 import subprocess
 
 FLUTTER = 'flutter.bat' if sys.platform == 'win32' else 'flutter'
@@ -29,7 +29,7 @@ def collect_env(args):
     OUTPUT_DIR = os.path.join(TARGET_DIR, 'debug' if DEBUG else 'release')
     FLUTTER_CONFIG = META['package']['metadata']['flutter']
     IDENTIFIER =  FLUTTER_CONFIG['identifier'] if 'identifier' in FLUTTER_CONFIG else 'one.juju.flutter-app'
-    FLUTTER_LIB_VER = META['package']['metadata']['flutter']['version']
+    FLUTTER_LIB_VER = get_flutter_version()
     FLUTTER_ASSETS = os.path.join(os.path.dirname(RUST_PROJ_DIR), 'build', 'flutter_assets')
     return locals()
 

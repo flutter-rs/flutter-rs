@@ -7,7 +7,6 @@ publish = false
 edition = "2018"
 
 [package.metadata.flutter]
-version = "3757390fa4b00d2d261bfdf5182d2e87c9113ff9"
 identifier = "one.juju.flutter-app" # This is only used on mac
 
 [dependencies]
@@ -23,10 +22,6 @@ flutter-engine = { path = "../../flutter-engine" }
 core-foundation = "0.6.3"
 
 [build-dependencies]
-flutter-download = { path = "../../flutter-download" }
-cargo_toml = "0.4.0"
-serde = "1.0.81"
-serde_derive = "1.0.81"
 
 [target.'cfg(target_os="windows")'.build-dependencies]
 winres = "0.1.9"

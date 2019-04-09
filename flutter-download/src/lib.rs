@@ -2,41 +2,28 @@ extern crate curl;
 extern crate dirs;
 extern crate unzip;
 
-use std::process::Command;
-use std::sync::mpsc;
-use std::io::{Write};
 use curl::easy::Easy;
 use std::{
     thread,
-    io::BufReader,
+    process::Command,
+    sync::{
+        mpsc,
+        Mutex,
+    },
+    io::{
+        BufReader,
+        Write,
+    },
+    path::{ Path, PathBuf },
     fs::{ self, File }
 };
-use std::sync::Mutex;
-use std::path::{ Path, PathBuf };
-use std::error;
-use std::fmt;
 
-#[derive(Debug)]
-pub enum Error {
-    AlreadyDownloaded,
-}
+pub mod util;
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use std::error::Error;
-
-        f.write_str(self.description())
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::AlreadyDownloaded => "AlreadyDownloaded",
-            // _ => "",
-        }
-    }
-}
+pub use util::{
+    Error,
+    get_flutter_version,
+};
 
 #[derive(PartialEq, Copy, Clone)]
 enum Target {

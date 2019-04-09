@@ -9,24 +9,22 @@ A desktop app built using flutter & rust.
 - Build distribution only works on mac.
 - Windows will be supported.
 
-# Install requirement
+# Install requirements
 
 - [Rust](https://www.rust-lang.org/tools/install)
+
 - libglfw:
     - Install on Mac with: `brew install glfw`
     - Install on linux with `apt install libglfw3`
     
 - [flutter sdk](https://flutter.io)
 
-# Config
-- Set flutter engine version in *Cargo.toml*
+# Config flutter engine version
+flutter-rs need to know your flutter engine version.
+You can set this using either of the following methods.
 
-```
-[package.metadata.flutter]
-version = "5af435098d340237c5e3a69bce6aaffd4e3bfe84"
-```
-
-    This commit version id can be found in bin/internal/engine.version file in flutter sdk folder.
+- Set FLUTTER_ROOT environment variable to your flutter sdk path
+- Set FLUTTER_ENGINE_VERSION environment variable to your engine version
 
 # Develop
 - To develop with hot-reloading, simple run:

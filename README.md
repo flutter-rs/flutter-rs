@@ -18,14 +18,10 @@ Build flutter desktop app in dart & rust.
     - linux: `apt install libglfw3`
 - Install [flutter sdk](https://flutter.io)
 
-- In *flutter-demo-app* project, set flutter engine version in *rust/Cargo.toml*
+- Set flutter engine version. You can set this using either of the following methods.
 
-```
-[package.metadata.flutter]
-version = "3757390fa4b00d2d261bfdf5182d2e87c9113ff9"
-```
-
-    This commit version id can be found in bin/internal/engine.version file in flutter sdk folder.
+    - Set FLUTTER_ROOT environment variable to your flutter sdk path
+    - Set FLUTTER_ENGINE_VERSION environment variable to your engine version. This commit version id can be found in `bin/internal/engine.version` file in flutter sdk folder.
 
 - Run `scripts/run.py` to get a running example.
     Note: The first run is going to take a while to download rust dependecies and flutter engine.

@@ -2,8 +2,6 @@ language: rust
 rust:
   - stable
 os: osx
-before_script:
-  - cargo install rustfmt
 addons:
   homebrew:
     packages:

@@ -47,7 +47,7 @@ impl PluginRegistry {
         let mut message_handled = false;
         for (channel, plugin) in &mut self.map {
             if channel == &msg.channel {
-                info!("Processing message from channel: {}", channel);
+                trace!("Processing message from channel: {}", channel);
                 plugin.handle(&msg, engine.clone(), window);
                 message_handled = true;
             }

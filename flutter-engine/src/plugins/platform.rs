@@ -59,7 +59,7 @@ impl Plugin for PlatformPlugin {
                     }
                 }
             ),
-            _ => (),
+            method => warn!("Unknown method {} called", method),
         }
     }
 }

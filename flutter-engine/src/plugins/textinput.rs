@@ -275,8 +275,8 @@ impl Plugin for TextInputPlugin {
     fn handle(&mut self, msg: &PlatformMessage, _: Arc<FlutterEngineInner>, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
 
-        info!("textinput mehod {:?}", decoded.method);
-        info!("textinput mehod {:?}", decoded.args);
+        debug!("textinput mehod {:?}", decoded.method);
+        trace!("textinput mehod {:?}", decoded.args);
 
         match decoded.method.as_str() {
             "TextInput.setClient" => {
@@ -299,7 +299,9 @@ impl Plugin for TextInputPlugin {
             },
             "TextInput.show" => {},
             "TextInput.hide" => {},
-            _ => {}
+            method => {
+                warn!("Unknown method {} called", method);
+            }
         }
         // TODO: call response handle no matter what
     }

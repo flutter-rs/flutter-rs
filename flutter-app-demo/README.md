@@ -21,8 +21,8 @@ A desktop app built using flutter & rust.
 
 # Config flutter engine version
 flutter-rs need to know your flutter engine version.
-You can set this using either of the following methods.
-
+You can set this using any of the following methods.
+- If you have flutter cli in your PATH, you're set.
 - Set FLUTTER_ROOT environment variable to your flutter sdk path
 - Set FLUTTER_ENGINE_VERSION environment variable to your engine version
 

@@ -1,6 +1,7 @@
 # flutter-rs
 
-[![Build status][ci-badge]][ci-url]
+[![Appveyor status][appveyor-badge]][appveyor-url]
+[![Travis status][travis-badge]][travis-url]
 [![Crates.io][crates-badge]][crates-url]
 [![flutter version][flutter-badge]][flutter-url]
 [![Gitter chat][gitter-badge]][gitter-url]
@@ -41,8 +42,10 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
 [flutter-badge]: https://img.shields.io/badge/flutter-v1.2.1-blueviolet.svg
 [flutter-url]: https://flutter.dev/
-[ci-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
-[ci-url]: https://ci.appveyor.com/project/gliheng/flutter-rs
+[appveyor-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
+[appveyor-url]: https://ci.appveyor.com/project/gliheng/flutter-rs
+[travis-badge]: https://travis-ci.com/gliheng/flutter-rs.svg?branch=master
+[travis-url]: https://travis-ci.com/gliheng/flutter-rs
 [gitter-badge]: https://badges.gitter.im/flutter-rs/community.svg
 [gitter-url]: https://gitter.im/flutter-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 [crates-badge]: https://img.shields.io/crates/v/flutter-engine.svg

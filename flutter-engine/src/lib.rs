@@ -80,6 +80,8 @@ pub struct FlutterEngineArgs {
     /// A custom handler for glfw window events. If not `None`, this handler will be called for every
     /// window event and the default handler will only be called if `true` is returned.
     pub window_event_handler:Option<Box<fn(&FlutterEngineInner, &mut glfw::Window, glfw::WindowEvent) -> bool>>,
+    #[cfg(feature = "images")]
+    pub window_icons: Option<Vec<image::RgbaImage>>,
 }
 
 impl Default for FlutterEngineArgs {
@@ -94,6 +96,8 @@ impl Default for FlutterEngineArgs {
             window_mode: WindowMode::Windowed,
             command_line_args: None,
             window_event_handler: None,
+            #[cfg(feature = "images")]
+            window_icons: None,
         }
     }
 }
@@ -427,6 +431,14 @@ impl FlutterEngineInner {
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
         window.make_current();
+
+        #[cfg(feature = "images")]
+        {
+            if let Some(icons) = &self.args.window_icons {
+                let icons = icons.clone();
+                window.set_icon(icons);
+            }
+        }
 
         self.add_system_plugins();
 

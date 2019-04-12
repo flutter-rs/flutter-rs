@@ -50,6 +50,6 @@ impl Plugin for NavigationPlugin {
     fn handle(&mut self, msg: &PlatformMessage, _: Arc<FlutterEngineInner>, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
 
-        debug!("navigation methoid {:?} called with args {:?}", decoded.method, decoded.args);
+        info!("navigation methoid {:?} called with args {:?}", decoded.method, decoded.args);
     }
 }

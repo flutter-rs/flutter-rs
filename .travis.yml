@@ -1,6 +1,11 @@
 language: rust
 rust:
   - stable
+cache: cargo
+before_script:
+  - rustup component add rustfmt
+env:
+  - FLUTTER_ENGINE_VERSION=3757390fa4b00d2d261bfdf5182d2e87c9113ff9
 os: osx
 addons:
   homebrew:

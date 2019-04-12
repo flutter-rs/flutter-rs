@@ -275,9 +275,6 @@ impl Plugin for TextInputPlugin {
     fn handle(&mut self, msg: &PlatformMessage, _: Arc<FlutterEngineInner>, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg);
 
-        debug!("textinput mehod {:?}", decoded.method);
-        trace!("textinput mehod {:?}", decoded.args);
-
         match decoded.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::Array(v) = &decoded.args {

@@ -302,7 +302,7 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                             if let Some(s) = window.get_clipboard_string() {
                                 p.add_chars(&s);
                             } else {
-                                info!("Tried to past non-text data");
+                                info!("Tried to paste non-text data");
                             }
                         });
                     }

@@ -67,7 +67,7 @@ pub struct FlutterOpenGLRendererConfig {
     pub fbo_callback: UIntCallback,
     pub make_resource_current: BoolCallback,
     pub fbo_reset_after_present: bool,
-    pub surface_transformation: Option<TransformationCallback>, 
+    pub surface_transformation: Option<TransformationCallback>,
     pub gl_proc_resolver: ProcResolver,
     pub gl_external_texture_frame_callback: Option<TextureFrameCallback>,
 }
@@ -91,11 +91,21 @@ pub struct FlutterWindowMetricsEvent {
 }
 
 #[repr(C)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum FlutterPointerPhase {
     Cancel,
     Up,
     Down,
     Move,
+    Add,
+    Remove,
+    Hover
+}
+
+#[repr(C)]
+pub enum FlutterPointerSignalKind {
+    None,
+    Scroll,
 }
 
 #[repr(C)]
@@ -105,6 +115,11 @@ pub struct FlutterPointerEvent {
     pub timestamp: size_t,  // in microseconds.
     pub x: f64,
     pub y: f64,
+    // optional device identifier
+    pub device: i32,
+    pub signal_kind: FlutterPointerSignalKind,
+    pub scroll_delta_x: f64,
+    pub scroll_delta_y: f64,
 }
 
 #[derive(Debug)]

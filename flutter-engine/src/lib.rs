@@ -32,6 +32,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     cell::{Cell, RefCell},
     sync::mpsc:: { self, Sender, Receiver },
+    ops::{DerefMut},
 };
 use libc::{c_void};
 use flutter_engine_sys::{
@@ -67,6 +68,7 @@ use glfw::{ Context, Action, Key, Modifiers };
 use tokio::runtime::Runtime;
 
 pub use glfw::Window;
+use std::ascii::escape_default;
 
 pub struct FlutterEngineArgs {
     pub assets_path: String,
@@ -323,16 +325,18 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 // window dragging is handled by window plugin
                 if !p.drag_window(window, x, y) {
                     if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
-                        if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
-                            let w_size = window.get_size();
-                            let size = window.get_framebuffer_size();
-                            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
-                            engine.send_cursor_position_at_phase(x * pixels_per_screen_coordinate, y * pixels_per_screen_coordinate, flutter_engine_sys::FlutterPointerPhase::kMove);
-                        }
+                        let phase = if window.get_mouse_button(glfw::MouseButton::Button1) == glfw::Action::Press {
+                            flutter_engine_sys::FlutterPointerPhase::kMove
+                        } else {
+                            flutter_engine_sys::FlutterPointerPhase::kHover
+                        };
+                        let w_size = window.get_size();
+                        let size = window.get_framebuffer_size();
+                        let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+                        engine.send_cursor_position_at_phase(x * pixels_per_screen_coordinate, y * pixels_per_screen_coordinate, phase);
                     }
                 }
             });
-
         },
         glfw::WindowEvent::MouseButton(button, action, _modifiers) => {
             match button {
@@ -361,6 +365,29 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 _ => (),
             }
         },
+        glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
+            let pos = window.get_cursor_pos();
+            let w_size = window.get_size();
+            let size = window.get_framebuffer_size();
+            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                engine.send_mouse_scroll(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, scroll_delta_x, scroll_delta_y);
+            }
+        },
+        glfw::WindowEvent::CursorEnter(entered) => {
+            let pos = window.get_cursor_pos();
+            let w_size = window.get_size();
+            let size = window.get_framebuffer_size();
+            let pixels_per_screen_coordinate = size.0 as f64 / w_size.0 as f64;
+            let phase = if entered {
+                flutter_engine_sys::FlutterPointerPhase::kAdd
+            } else {
+                flutter_engine_sys::FlutterPointerPhase::kRemove
+            };
+            if let Some(engine) = FlutterEngine::get_engine(window.window_ptr()) {
+                engine.send_cursor_position_at_phase(pos.0 * pixels_per_screen_coordinate, pos.1 * pixels_per_screen_coordinate, phase);
+            }
+        }
         _ => {}
     }
 }
@@ -379,6 +406,11 @@ pub struct FlutterEngineInner {
     rt: RefCell<Runtime>, // A tokio async runtime
     tx: Sender<Box<dyn Fn() + Send>>,
     rx: Receiver<Box<dyn Fn() + Send>>,
+    state: Arc<Mutex<FlutterEngineInnerState>>,
+}
+
+struct FlutterEngineInnerState {
+    is_pointer_added: bool,
 }
 
 impl FlutterEngineInner {
@@ -430,6 +462,8 @@ impl FlutterEngineInner {
         window.set_mouse_button_polling(true);
         window.set_cursor_pos_polling(true);
         window.set_char_polling(true);
+        window.set_scroll_polling(true);
+        window.set_cursor_enter_polling(true);
         window.make_current();
 
         #[cfg(feature = "images")]
@@ -566,15 +600,48 @@ impl FlutterEngineInner {
         }
     }
 
+    fn send_mouse_scroll(&self, x: f64, y: f64, scroll_delta_x: f64, scroll_delta_y: f64) {
+        self.send_pointer_event(x, y, flutter_engine_sys::FlutterPointerPhase::kHover, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindScroll, scroll_delta_x, scroll_delta_y);
+    }
+
     fn send_cursor_position_at_phase(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase) {
+        self.send_pointer_event(x, y, phase, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindNone, 0.0, 0.0);
+    }
+
+    fn send_pointer_event(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase, signal_kind: flutter_engine_sys::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
+        let mut guard = self.state.lock().unwrap();
+        let state = guard.deref_mut();
+        // make sure that a pointer is added before trying to send an event
+        if !state.is_pointer_added && phase != flutter_engine_sys::FlutterPointerPhase::kAdd {
+            // send using helper function to make sure that the state isn't being accessed again as we still hold the lock
+            self.send_pointer_event_inner(x, y, flutter_engine_sys::FlutterPointerPhase::kAdd, flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindNone, 0.0, 0.0);
+        }
+        // don't add a pointer if it's already added
+        if state.is_pointer_added && phase == flutter_engine_sys::FlutterPointerPhase::kAdd {
+            return;
+        }
+
+        self.send_pointer_event_inner(x, y, phase, signal_kind, scroll_delta_x, scroll_delta_y);
+
+        match phase {
+            flutter_engine_sys::FlutterPointerPhase::kAdd => state.is_pointer_added = true,
+            flutter_engine_sys::FlutterPointerPhase::kRemove => state.is_pointer_added = false,
+            _ => (),
+        };
+    }
+
+    fn send_pointer_event_inner(&self, x: f64, y: f64, phase: flutter_engine_sys::FlutterPointerPhase, signal_kind: flutter_engine_sys::FlutterPointerSignalKind, scroll_delta_x: f64, scroll_delta_y: f64) {
         let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let evt = &FlutterPointerEvent {
             struct_size: mem::size_of::<FlutterPointerEvent>(),
             timestamp: (duration.as_secs() as f64 * 1e6 + duration.subsec_nanos() as f64 / 1e3) as usize,
-            phase: phase,
-            x: x,
-            y: y,
+            phase,
+            x,
+            y,
             device: 0,
+            signal_kind,
+            scroll_delta_x,
+            scroll_delta_y,
         };
 
         unsafe {
@@ -714,6 +781,13 @@ impl FlutterEngine {
             isolate_snapshot_instructions: std::ptr::null(),
             isolate_snapshot_instructions_size: 0,
             root_isolate_create_callback: Some(root_isolate_create_callback),
+            update_semantics_node_callback: None,
+            update_semantics_custom_action_callback: None,
+            persistent_cache_path: std::ptr::null(),
+            is_persistent_cache_read_only: false,
+            vsync_callback: None,
+            custom_dart_entrypoint: std::ptr::null(),
+            custom_task_runners: std::ptr::null(),
         };
 
         info!("Project args {:?}", proj_args);
@@ -733,6 +807,9 @@ impl FlutterEngine {
             rt: RefCell::new(Runtime::new().expect("Cannot init tokio runtime")),
             tx,
             rx,
+            state: Arc::new(Mutex::new(FlutterEngineInnerState {
+                is_pointer_added: true
+            }))
         });
         inner.registry.borrow_mut().set_engine(Arc::downgrade(&inner));
         FlutterEngine {

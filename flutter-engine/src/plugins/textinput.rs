@@ -173,7 +173,7 @@ impl TextInputPlugin {
             } else {
                 lo
             };
-            let next_pos = if modifiers.contains(Modifiers::Control) {
+            let next_pos = if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Alt) || modifiers.contains(Modifiers::Control) {
                 self.get_next_word_boundary(s, current_pos, false)
             } else {
                 (current_pos - 1).max(0)
@@ -198,7 +198,7 @@ impl TextInputPlugin {
             } else {
                 hi
             };
-            let next_pos = if modifiers.contains(Modifiers::Control) {
+            let next_pos = if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Alt) || modifiers.contains(Modifiers::Control) {
                 self.get_next_word_boundary(s, current_pos, true)
             } else {
                 (current_pos + 1).min(s.text.count() as i64)

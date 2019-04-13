@@ -299,8 +299,11 @@ fn handle_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
                 Key::V => {
                     if cfg!(target_os = "macos") && modifiers.contains(Modifiers::Super) || modifiers.contains(Modifiers::Control) {
                         FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
-                            let s = window.get_clipboard_string();
-                            p.add_chars(&s);
+                            if let Some(s) = window.get_clipboard_string() {
+                                p.add_chars(&s);
+                            } else {
+                                info!("Tried to paste non-text data");
+                            }
                         });
                     }
                 },

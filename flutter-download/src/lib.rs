@@ -109,9 +109,9 @@ pub fn home_download_path() -> PathBuf {
 
 pub fn download_url(version: &str) -> String {
     let url = match target() {
-        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
-        Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip",
-        Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip",
+        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-flutter.zip",
+        Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterMacOS.framework.zip",
+        Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-flutter.zip",
     };
     let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL");
     let base_url = base_url.as_ref().map(String::as_str).unwrap_or("https://storage.googleapis.com");
@@ -120,9 +120,9 @@ pub fn download_url(version: &str) -> String {
 
 fn should_download(path: &Path) -> bool {
     match target() {
-        Target::Linux => !path.join("libflutter_engine.so").exists(),
-        Target::MacOS => !path.join("FlutterEmbedder.framework").exists(),
-        Target::Windows => !path.join("flutter_engine.dll").exists(),
+        Target::Linux => !path.join("libflutter_linux.so").exists(),
+        Target::MacOS => !path.join("FlutterMacOS.framework").exists(),
+        Target::Windows => !path.join("flutter_windows.dll").exists(),
     }
 }
 

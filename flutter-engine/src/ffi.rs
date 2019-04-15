@@ -7,6 +7,7 @@ use std::{
 };
 
 use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
+use log::trace;
 
 #[derive(Debug, Copy, Clone)]
 pub struct PlatformMessageResponseHandle {
@@ -69,6 +70,62 @@ impl<'a, 'b> From<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
                 message,
                 response_handle,
             }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FlutterEngine {
+    engine_ptr: flutter_engine_sys::FlutterEngine,
+}
+
+impl FlutterEngine {
+    pub fn new(engine_ptr: flutter_engine_sys::FlutterEngine) -> Option<Self> {
+        if engine_ptr.is_null() {
+            None
+        } else {
+            Some(Self { engine_ptr })
+        }
+    }
+
+    pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
+        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
+            width: width as usize,
+            height: height as usize,
+            pixel_ratio,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr, &event);
+        }
+    }
+
+    pub fn send_platform_message(&self, message: &PlatformMessage) {
+        trace!("Sending message on channel {}", message.channel);
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr, &message.into());
+        }
+    }
+
+    pub fn send_platform_message_response(
+        &self,
+        response_handle: &PlatformMessageResponseHandle,
+        bytes: &[u8],
+    ) {
+        trace!("Sending message response");
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
+                self.engine_ptr,
+                (*response_handle).into(),
+                bytes.as_ptr(),
+                bytes.len(),
+            );
+        }
+    }
+
+    pub fn shutdown(self) {
+        unsafe {
+            flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr);
         }
     }
 }

@@ -1,3 +1,4 @@
+mod channel;
 mod codec;
 mod desktop_window_state;
 mod ffi;
@@ -189,9 +190,7 @@ impl FlutterEngine {
             }
         }
 
-        unsafe {
-            flutter_engine_sys::FlutterEngineShutdown(engine);
-        }
+        engine.shutdown();
     }
 }
 

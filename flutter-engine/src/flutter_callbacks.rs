@@ -63,6 +63,14 @@ pub extern "C" fn platform_message_callback(
     user_data: *mut c_void,
 ) {
     trace!("platform_message_callback");
+    unsafe {
+        let engine = &mut *(user_data as *mut FlutterEngine);
+        if let Some(window_state) = &mut engine.window_state {
+            window_state
+                .plugin_registrar
+                .handle((*platform_message).into());
+        }
+    }
 }
 
 pub extern "C" fn root_isolate_create_callback(user_data: *mut c_void) {

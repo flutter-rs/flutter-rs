@@ -1,5 +1,8 @@
+use super::{MethodCall, MethodCallResult, MethodCodec};
+
+use log::error;
+use serde_json::json;
 pub use serde_json::Value;
-use codec::{ MethodCodec, MethodCall, MethodCallResult };
 
 pub struct JsonMethodCodec;
 
@@ -21,13 +24,13 @@ impl MethodCodec for JsonMethodCodec {
                 if v.len() == 1 {
                     return Some(MethodCallResult::Ok(v.swap_remove(0)));
                 } else if v.len() == 3 {
-                    return Some(MethodCallResult::Err{
+                    return Some(MethodCallResult::Err {
                         code: v[0].as_str().unwrap().to_owned(),
                         message: v[1].as_str().unwrap().to_owned(),
-                        details: v.swap_remove(2)
+                        details: v.swap_remove(2),
                     });
                 }
-            } 
+            }
             error!("Invalid envelope: {}", s);
             None
         }
@@ -50,5 +53,4 @@ impl MethodCodec for JsonMethodCodec {
         let s = serde_json::to_string(&json).unwrap();
         s.into_bytes()
     }
-
 }

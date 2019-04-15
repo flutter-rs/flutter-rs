@@ -1,6 +1,8 @@
 pub mod json_codec;
 pub mod standard_codec;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MethodCall<T> {
     pub method: String,
@@ -14,7 +16,11 @@ pub enum CodecTypes {
 
 pub enum MethodCallResult<R> {
     Ok(R),
-    Err { code: String, message: String, details: R }
+    Err {
+        code: String,
+        message: String,
+        details: R,
+    },
 }
 
 pub trait MethodCodec {

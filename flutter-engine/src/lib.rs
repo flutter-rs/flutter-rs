@@ -1,5 +1,8 @@
+mod codec;
 mod desktop_window_state;
+mod ffi;
 mod flutter_callbacks;
+mod plugins;
 mod utils;
 
 use self::desktop_window_state::DesktopWindowState;
@@ -76,7 +79,15 @@ impl FlutterEngine {
         // send initial size callback to engine
         window_state.send_framebuffer_size_change(window_state.window.get_framebuffer_size());
 
-        // TODO: set up plugin stuff
+        // enable event polling
+        window_state.window.set_char_polling(true);
+        window_state.window.set_cursor_pos_polling(true);
+        window_state.window.set_cursor_enter_polling(true);
+        window_state.window.set_framebuffer_size_polling(true);
+        window_state.window.set_key_polling(true);
+        window_state.window.set_mouse_button_polling(true);
+        window_state.window.set_scroll_polling(true);
+        window_state.window.set_size_polling(true);
 
         Ok(())
     }

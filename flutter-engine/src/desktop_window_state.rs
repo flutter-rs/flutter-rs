@@ -1,4 +1,9 @@
+use crate::ffi::{PlatformMessage, PlatformMessageResponseHandle};
+use crate::plugins::PluginRegistrar;
+
 use std::sync::mpsc::Receiver;
+
+use log::trace;
 
 const DP_PER_INCH: f64 = 160.0;
 
@@ -6,10 +11,10 @@ pub struct DesktopWindowState {
     pub window: glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     engine: flutter_engine_sys::FlutterEngine,
-    hover_tracking_enabled: bool,
     pointer_currently_added: bool,
     monitor_screen_coordinates_per_inch: f64,
     window_pixels_per_screen_coordinate: f64,
+    pub plugin_registrar: PluginRegistrar,
 }
 
 impl DesktopWindowState {
@@ -25,10 +30,10 @@ impl DesktopWindowState {
             // this has to be set to NULL because the first callbacks that need this state will already be invoked
             // before the engine pointer is returned from FlutterEngineRun
             engine: std::ptr::null_mut(),
-            hover_tracking_enabled: false,
             pointer_currently_added: false,
             monitor_screen_coordinates_per_inch,
             window_pixels_per_screen_coordinate: 0.0,
+            plugin_registrar: PluginRegistrar::new(),
         }
     }
 
@@ -66,6 +71,31 @@ impl DesktopWindowState {
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine, &event);
+        }
+    }
+
+    pub fn send_platform_message(&self, message: &PlatformMessage) {
+        self.check_engine();
+        trace!("Sending message on channel {}", message.channel);
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine, &message.into());
+        }
+    }
+
+    pub fn send_platform_message_response(
+        &self,
+        response_handle: PlatformMessageResponseHandle,
+        bytes: &[u8],
+    ) {
+        self.check_engine();
+        trace!("Sending message response");
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
+                self.engine,
+                response_handle.into(),
+                bytes.as_ptr(),
+                bytes.len(),
+            );
         }
     }
 

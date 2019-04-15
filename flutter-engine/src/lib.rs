@@ -10,7 +10,7 @@ use crate::{desktop_window_state::DesktopWindowState, ffi::FlutterEngine};
 
 use std::{cell::RefCell, ffi::CString, rc::Rc};
 
-use log::{debug, error};
+use log::{debug, error, trace};
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -104,6 +104,10 @@ impl FlutterDesktop {
                 .get_framebuffer_size();
             // send initial size callback to engine
             window_state.send_framebuffer_size_change(framebuffer_size);
+
+            window_state
+                .plugin_registrar
+                .add_plugin(plugins::platform::PlatformPlugin::new());
 
             let mut window = window_state.runtime_data.window.borrow_mut();
             // enable event polling

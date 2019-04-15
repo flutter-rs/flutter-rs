@@ -9,7 +9,7 @@ use std::{
 use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
 use log::trace;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlatformMessageResponseHandle {
     handle: *const FlutterPlatformMessageResponseHandle,
 }

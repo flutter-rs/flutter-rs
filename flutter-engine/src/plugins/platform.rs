@@ -1,12 +1,19 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
 
-use crate::{FlutterEngineInner};
-use super::{Plugin, PlatformMessage, PluginRegistry};
-use serde_json::Value;
-use channel::{ Channel, JsonMethodChannel };
-use codec::MethodCallResult;
-use std::sync::Arc;
+use super::{PlatformMessage, Plugin, PluginChannel};
+use crate::{
+    channel::{Channel, JsonMethodChannel},
+    codec::MethodCallResult,
+    desktop_window_state::RuntimeData,
+};
+
+use std::rc::Weak;
+
+use log::{error, warn};
+use serde_json::{json, Value};
+
+pub const CHANNEL_NAME: &str = "flutter/platform";
 
 pub struct PlatformPlugin {
     channel: JsonMethodChannel,
@@ -14,24 +21,39 @@ pub struct PlatformPlugin {
 
 impl PlatformPlugin {
     pub fn new() -> Self {
-        PlatformPlugin {
-            channel: JsonMethodChannel::new("flutter/platform")
+        Self {
+            channel: JsonMethodChannel::new(CHANNEL_NAME),
         }
     }
 }
 
-impl Plugin for PlatformPlugin {
-    fn init_channel(&self, registry: &PluginRegistry) -> &str {
-        self.channel.init(registry);
-        return self.channel.get_name();
+impl PluginChannel for PlatformPlugin {
+    fn channel_name() -> &'static str {
+        CHANNEL_NAME
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
-        let decoded = self.channel.decode_method_call(msg);
+}
+
+impl Plugin for PlatformPlugin {
+    fn init_channel(&mut self, runtime_data: Weak<RuntimeData>) {
+        self.channel.init(runtime_data);
+    }
+
+    fn handle(&mut self, msg: &PlatformMessage, window: &mut glfw::Window) {
+        let decoded = self.channel.decode_method_call(msg).unwrap();
         match decoded.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 // label and primaryColor
-                window.set_title(decoded.args.as_object().unwrap().get("label").unwrap().as_str().unwrap());
-            },
+                window.set_title(
+                    decoded
+                        .args
+                        .as_object()
+                        .unwrap()
+                        .get("label")
+                        .unwrap()
+                        .as_str()
+                        .unwrap(),
+                );
+            }
             "Clipboard.setData" => {
                 if let Value::Object(v) = &decoded.args {
                     if let Some(v) = &v.get("text") {
@@ -40,25 +62,23 @@ impl Plugin for PlatformPlugin {
                         }
                     }
                 }
-            },
-            "Clipboard.getData" => (
+            }
+            "Clipboard.getData" => {
                 if let Value::String(mime) = &decoded.args {
                     match mime.as_str() {
-                        "text/plain" => {
-                            self.channel.send_method_call_response(
-                                msg.response_handle,
-                                MethodCallResult::Ok(json!({
-                                    "text": window.get_clipboard_string(),
-                                })),
-                            );
-                        },
-                        _ => {
-                            error!("Dont know how to handle {} clipboard message", mime.as_str());
-                            ()
-                        },
+                        "text/plain" => self.channel.send_method_call_response(
+                            msg.response_handle.unwrap(),
+                            MethodCallResult::Ok(json!({
+                                "text": window.get_clipboard_string(),
+                            })),
+                        ),
+                        _ => error!(
+                            "Don't know how to handle {} clipboard message",
+                            mime.as_str()
+                        ),
                     }
                 }
-            ),
+            }
             method => warn!("Unknown method {} called", method),
         }
     }

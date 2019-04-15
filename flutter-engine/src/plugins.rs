@@ -1,6 +1,6 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-//pub mod platform;
+pub mod platform;
 //pub mod textinput;
 //pub mod dialog;
 //pub mod window;
@@ -10,15 +10,14 @@
 //use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
 //use std::{borrow::Cow, collections::HashMap, ffi::CString, mem, ptr::null, sync::Arc, sync::Weak};
 
-use crate::{
-    desktop_window_state::RuntimeData,
-    ffi::{FlutterEngine, PlatformMessage},
-};
+use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    cell::RefCell,
     collections::HashMap,
-    rc::{Rc, Weak},
+    ops::DerefMut,
+    rc::Weak,
 };
 
 use log::{trace, warn};
@@ -36,25 +35,23 @@ impl PluginRegistrar {
         }
     }
 
-    pub fn engine(&self) -> Rc<FlutterEngine> {
-        Rc::clone(&self.runtime_data.upgrade().unwrap().engine)
-    }
-
     pub fn add_plugin<P>(&mut self, mut plugin: P)
     where
         P: Plugin + PluginChannel + 'static,
     {
-        plugin.init_channel(self);
+        plugin.init_channel(Weak::clone(&self.runtime_data));
         self.plugins
             .insert(P::channel_name().to_owned(), Box::new(plugin));
     }
 
     pub fn handle(&mut self, message: PlatformMessage) {
         let mut message_handled = false;
+        let runtime_data = self.runtime_data.upgrade().unwrap();
+        let mut window = RefCell::borrow_mut(&runtime_data.window);
         for (channel, plugin) in &mut self.plugins {
             if channel == &message.channel {
                 trace!("Processing message from channel: {}", channel);
-                plugin.handle(&message);
+                plugin.handle(&message, window.deref_mut());
                 message_handled = true;
                 break;
             }
@@ -70,7 +67,7 @@ impl PluginRegistrar {
     pub fn get_plugin<P>(&self) -> Option<&P>
     where
         P: Plugin + PluginChannel + 'static,
-        Box<dyn Plugin>: BorrowMut<P>,
+        Box<dyn Plugin>: Borrow<P>,
     {
         self.plugins.get(P::channel_name()).map(Box::borrow)
     }
@@ -89,6 +86,6 @@ pub trait PluginChannel {
 }
 
 pub trait Plugin {
-    fn init_channel(&mut self, registar: &PluginRegistrar);
-    fn handle(&mut self, message: &PlatformMessage);
+    fn init_channel(&mut self, registar: Weak<RuntimeData>);
+    fn handle(&mut self, message: &PlatformMessage, window: &mut glfw::Window);
 }

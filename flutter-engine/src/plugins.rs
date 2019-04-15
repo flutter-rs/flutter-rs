@@ -10,27 +10,37 @@
 //use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
 //use std::{borrow::Cow, collections::HashMap, ffi::CString, mem, ptr::null, sync::Arc, sync::Weak};
 
-use crate::ffi::PlatformMessage;
+use crate::{
+    desktop_window_state::RuntimeData,
+    ffi::{FlutterEngine, PlatformMessage},
+};
 
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
+    rc::{Rc, Weak},
 };
 
 use log::{trace, warn};
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Box<dyn Plugin>>,
+    runtime_data: Weak<RuntimeData>,
 }
 
 impl PluginRegistrar {
-    pub fn new() -> Self {
+    pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
         Self {
             plugins: HashMap::new(),
+            runtime_data,
         }
     }
 
-    pub fn add_plugin<P>(&mut self, plugin: P)
+    pub fn engine(&self) -> Rc<FlutterEngine> {
+        Rc::clone(&self.runtime_data.upgrade().unwrap().engine)
+    }
+
+    pub fn add_plugin<P>(&mut self, mut plugin: P)
     where
         P: Plugin + PluginChannel + 'static,
     {
@@ -79,6 +89,6 @@ pub trait PluginChannel {
 }
 
 pub trait Plugin {
-    fn init_channel(&self, plugin_registrar: &PluginRegistrar);
+    fn init_channel(&mut self, registar: &PluginRegistrar);
     fn handle(&mut self, message: &PlatformMessage);
 }

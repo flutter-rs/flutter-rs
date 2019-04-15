@@ -1,68 +1,52 @@
-use crate::ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle};
-use crate::plugins::PluginRegistrar;
+use crate::{ffi::FlutterEngine, plugins::PluginRegistrar};
 
-use std::sync::mpsc::Receiver;
-
-use log::trace;
+use std::{cell::RefCell, rc::Rc, sync::mpsc::Receiver};
 
 const DP_PER_INCH: f64 = 160.0;
 
 pub struct DesktopWindowState {
-    pub window: glfw::Window,
-    pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
-    engine: Option<FlutterEngine>,
+    pub runtime_data: Rc<RuntimeData>,
     pointer_currently_added: bool,
     monitor_screen_coordinates_per_inch: f64,
     window_pixels_per_screen_coordinate: f64,
     pub plugin_registrar: PluginRegistrar,
 }
 
+pub struct RuntimeData {
+    pub window: Rc<RefCell<glfw::Window>>,
+    pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    pub engine: Rc<FlutterEngine>,
+}
+
 impl DesktopWindowState {
     pub fn new(
-        mut window: glfw::Window,
+        window: Rc<RefCell<glfw::Window>>,
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+        engine: FlutterEngine,
     ) -> Self {
         let monitor_screen_coordinates_per_inch =
-            Self::get_screen_coordinates_per_inch(&mut window.glfw);
-        Self {
+            Self::get_screen_coordinates_per_inch(&mut window.borrow_mut().glfw);
+        let runtime_data = Rc::new(RuntimeData {
             window,
             window_event_receiver,
-            // this has to be set to None because the first callbacks that need this state will already be invoked
-            // before the engine pointer is returned from FlutterEngineRun
-            engine: None,
+            engine: Rc::new(engine),
+        });
+        Self {
             pointer_currently_added: false,
             monitor_screen_coordinates_per_inch,
             window_pixels_per_screen_coordinate: 0.0,
-            plugin_registrar: PluginRegistrar::new(),
+            plugin_registrar: PluginRegistrar::new(Rc::downgrade(&runtime_data)),
+            runtime_data,
         }
-    }
-
-    fn check_engine(&self) {
-        if self.engine.is_none() {
-            panic!("Engine was not set!");
-        }
-    }
-
-    pub fn set_engine(&mut self, engine: flutter_engine_sys::FlutterEngine) {
-        if self.engine.is_some() {
-            panic!("Engine was already set!");
-        }
-        self.engine = FlutterEngine::new(engine);
-    }
-
-    pub fn get_engine(&self) -> FlutterEngine {
-        self.check_engine();
-        self.engine.unwrap()
     }
 
     pub fn send_framebuffer_size_change(&mut self, framebuffer_size: (i32, i32)) {
-        self.check_engine();
-        let window_size = self.window.get_size();
+        let window_size = self.runtime_data.window.borrow().get_size();
         self.window_pixels_per_screen_coordinate = framebuffer_size.0 as f64 / window_size.0 as f64;
         let dpi =
             self.window_pixels_per_screen_coordinate * self.monitor_screen_coordinates_per_inch;
         let pixel_ratio = (dpi / DP_PER_INCH).max(1.0);
-        self.engine.unwrap().send_window_metrics_event(
+        self.runtime_data.engine.send_window_metrics_event(
             framebuffer_size.0,
             framebuffer_size.1,
             pixel_ratio,

@@ -7,19 +7,26 @@ use crate::{
     ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle},
 };
 
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    rc::{Rc, Weak},
+};
+
+use crate::plugins::PluginRegistrar;
+use log::error;
 
 pub trait Channel {
     type R;
     type Codec: MethodCodec<R = Self::R>;
 
     fn name(&self) -> &str;
-    fn engine(&self) -> &FlutterEngine;
+    fn registrar(&self) -> Option<Rc<PluginRegistrar>>;
+    fn init(&mut self, registrar: Weak<PluginRegistrar>);
 
     /// Invoke a flutter method using this channel
     fn invoke_method(&self, method_call: MethodCall<Self::R>) {
         let buf = Self::Codec::encode_method_call(&method_call);
-        self.send_platform_message(&PlatformMessage {
+        self.send_platform_message(PlatformMessage {
             channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
@@ -36,7 +43,7 @@ pub trait Channel {
     /// It can be call multiple times to simulate stream.
     fn send_success_event(&self, data: &Self::R) {
         let buf = Self::Codec::encode_success_envelope(data);
-        self.send_platform_message(&PlatformMessage {
+        self.send_platform_message(PlatformMessage {
             channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
@@ -48,7 +55,7 @@ pub trait Channel {
     /// It can be call multiple times to simulate stream.
     fn send_error_event(&self, code: &str, message: &str, data: &Self::R) {
         let buf = Self::Codec::encode_error_envelope(code, message, data);
-        self.send_platform_message(&PlatformMessage {
+        self.send_platform_message(PlatformMessage {
             channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
@@ -58,7 +65,7 @@ pub trait Channel {
     /// Send a method call response
     fn send_method_call_response(
         &self,
-        response_handle: &PlatformMessageResponseHandle,
+        response_handle: PlatformMessageResponseHandle,
         response: MethodCallResult<Self::R>,
     ) {
         let buf = match response {
@@ -76,27 +83,36 @@ pub trait Channel {
     /// it can wait for rust response using await syntax.
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
-    fn send_response(&self, response_handle: &PlatformMessageResponseHandle, buf: &[u8]) {
-        self.engine()
-            .send_platform_message_response(response_handle, buf);
+    fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
+        if let Some(registrar) = self.registrar() {
+            registrar
+                .engine()
+                .send_platform_message_response(response_handle, buf);
+        } else {
+            error!("Channel {} was not initialized", self.name());
+        }
     }
 
     /// Send a platform message over this channel. This is a low level method.
-    fn send_platform_message(&self, message: &PlatformMessage) {
-        self.engine().send_platform_message(message);
+    fn send_platform_message(&self, message: PlatformMessage) {
+        if let Some(registrar) = self.registrar() {
+            registrar.engine().send_platform_message(message);
+        } else {
+            error!("Channel {} was not initialized", self.name());
+        }
     }
 }
 
 pub struct JsonMethodChannel {
     name: String,
-    engine: FlutterEngine,
+    registrar: Option<Weak<PluginRegistrar>>,
 }
 
 impl JsonMethodChannel {
-    pub fn new(name: &str, engine: FlutterEngine) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
             name: name.to_owned(),
-            engine,
+            registrar: None,
         }
     }
 }
@@ -109,21 +125,31 @@ impl Channel for JsonMethodChannel {
         &self.name
     }
 
-    fn engine(&self) -> &FlutterEngine {
-        &self.engine
+    fn registrar(&self) -> Option<Rc<PluginRegistrar>> {
+        match &self.registrar {
+            Some(registrar) => registrar.upgrade(),
+            None => None,
+        }
+    }
+
+    fn init(&mut self, registrar: Weak<PluginRegistrar>) {
+        if self.registrar.is_some() {
+            error!("Channel {} was already initialized", self.name);
+        }
+        self.registrar = Some(registrar);
     }
 }
 
 pub struct StandardMethodChannel {
     name: String,
-    engine: FlutterEngine,
+    registrar: Option<Weak<PluginRegistrar>>,
 }
 
 impl StandardMethodChannel {
-    pub fn new(name: &str, engine: FlutterEngine) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
             name: name.to_owned(),
-            engine,
+            registrar: None,
         }
     }
 }
@@ -136,7 +162,17 @@ impl Channel for StandardMethodChannel {
         &self.name
     }
 
-    fn engine(&self) -> &FlutterEngine {
-        &self.engine
+    fn registrar(&self) -> Option<Rc<PluginRegistrar>> {
+        match &self.registrar {
+            Some(registrar) => registrar.upgrade(),
+            None => None,
+        }
+    }
+
+    fn init(&mut self, registrar: Weak<PluginRegistrar>) {
+        if self.registrar.is_some() {
+            error!("Channel {} was already initialized", self.name);
+        }
+        self.registrar = Some(registrar);
     }
 }

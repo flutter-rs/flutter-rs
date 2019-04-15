@@ -1,4 +1,4 @@
-use super::FlutterEngine;
+use super::DesktopUserData;
 
 use glfw::Context;
 use libc::{c_char, c_uint, c_void};
@@ -7,13 +7,12 @@ use log::trace;
 pub extern "C" fn present(user_data: *mut c_void) -> bool {
     trace!("present");
     unsafe {
-        let engine = &mut *(user_data as *mut FlutterEngine);
-        match &mut engine.window_state {
-            None => false,
-            Some(window_state) => {
-                window_state.window.swap_buffers();
-                true
-            }
+        let user_data = &*(user_data as *mut DesktopUserData);
+        if let Some(window) = user_data.get_window() {
+            window.borrow_mut().swap_buffers();
+            true
+        } else {
+            false
         }
     }
 }
@@ -21,13 +20,12 @@ pub extern "C" fn present(user_data: *mut c_void) -> bool {
 pub extern "C" fn make_current(user_data: *mut c_void) -> bool {
     trace!("make_current");
     unsafe {
-        let engine = &mut *(user_data as *mut FlutterEngine);
-        match &mut engine.window_state {
-            None => false,
-            Some(window_state) => {
-                window_state.window.make_current();
-                true
-            }
+        let user_data = &*(user_data as *mut DesktopUserData);
+        if let Some(window) = user_data.get_window() {
+            window.borrow_mut().make_current();
+            true
+        } else {
+            false
         }
     }
 }
@@ -51,10 +49,15 @@ pub extern "C" fn make_resource_current(user_data: *mut c_void) -> bool {
 pub extern "C" fn gl_proc_resolver(user_data: *mut c_void, proc: *const c_char) -> *mut c_void {
     trace!("gl_proc_resolver");
     unsafe {
-        let engine = &mut *(user_data as *mut FlutterEngine);
-        engine
-            .glfw
-            .get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
+        let user_data = &*(user_data as *mut DesktopUserData);
+        if let Some(window) = user_data.get_window() {
+            window
+                .borrow()
+                .glfw
+                .get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
+        } else {
+            std::ptr::null_mut()
+        }
     }
 }
 
@@ -64,8 +67,8 @@ pub extern "C" fn platform_message_callback(
 ) {
     trace!("platform_message_callback");
     unsafe {
-        let engine = &mut *(user_data as *mut FlutterEngine);
-        if let Some(window_state) = &mut engine.window_state {
+        let user_data = &mut *(user_data as *mut DesktopUserData);
+        if let DesktopUserData::WindowState(window_state) = user_data {
             window_state
                 .plugin_registrar
                 .handle((*platform_message).into());

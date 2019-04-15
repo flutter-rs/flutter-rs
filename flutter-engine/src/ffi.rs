@@ -9,7 +9,7 @@ use std::{
 use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
 use log::trace;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct PlatformMessageResponseHandle {
     handle: *const FlutterPlatformMessageResponseHandle,
 }
@@ -33,19 +33,14 @@ pub struct PlatformMessage<'a, 'b> {
     pub response_handle: Option<PlatformMessageResponseHandle>,
 }
 
-impl<'a, 'b> Into<FlutterPlatformMessage> for &PlatformMessage<'a, 'b> {
-    fn into(self) -> FlutterPlatformMessage {
-        let response_handle = if let Some(h) = self.response_handle {
-            h.into()
-        } else {
-            ptr::null()
-        };
+impl<'a, 'b> Into<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
+    fn into(mut self) -> FlutterPlatformMessage {
         FlutterPlatformMessage {
             struct_size: mem::size_of::<FlutterPlatformMessage>(),
             channel: CString::new(&*self.channel).unwrap().into_raw(),
             message: self.message.as_ptr(),
             message_size: self.message.len(),
-            response_handle,
+            response_handle: self.response_handle.take().map_or(ptr::null(), Into::into),
         }
     }
 }
@@ -74,7 +69,7 @@ impl<'a, 'b> From<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub struct FlutterEngine {
     engine_ptr: flutter_engine_sys::FlutterEngine,
 }
@@ -100,7 +95,7 @@ impl FlutterEngine {
         }
     }
 
-    pub fn send_platform_message(&self, message: &PlatformMessage) {
+    pub fn send_platform_message(&self, message: PlatformMessage) {
         trace!("Sending message on channel {}", message.channel);
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr, &message.into());
@@ -109,21 +104,21 @@ impl FlutterEngine {
 
     pub fn send_platform_message_response(
         &self,
-        response_handle: &PlatformMessageResponseHandle,
+        response_handle: PlatformMessageResponseHandle,
         bytes: &[u8],
     ) {
         trace!("Sending message response");
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
                 self.engine_ptr,
-                (*response_handle).into(),
+                response_handle.into(),
                 bytes.as_ptr(),
                 bytes.len(),
             );
         }
     }
 
-    pub fn shutdown(self) {
+    pub fn shutdown(&self) {
         unsafe {
             flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr);
         }

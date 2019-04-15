@@ -6,9 +6,9 @@ mod flutter_callbacks;
 mod plugins;
 mod utils;
 
-use self::desktop_window_state::DesktopWindowState;
+use crate::{desktop_window_state::DesktopWindowState, ffi::FlutterEngine};
 
-use std::ffi::CString;
+use std::{cell::RefCell, ffi::CString, rc::Rc};
 
 use log::{debug, error};
 
@@ -36,23 +36,39 @@ impl std::error::Error for Error {
     }
 }
 
-pub struct FlutterEngine {
-    glfw: glfw::Glfw,
-    window_state: Option<DesktopWindowState>,
+enum DesktopUserData {
+    None,
+    Window(Rc<RefCell<glfw::Window>>),
+    WindowState(DesktopWindowState),
 }
 
-pub fn init() -> Result<FlutterEngine, glfw::InitError> {
+impl DesktopUserData {
+    pub fn get_window(&self) -> Option<&Rc<RefCell<glfw::Window>>> {
+        match self {
+            DesktopUserData::Window(window) => Some(window),
+            DesktopUserData::WindowState(window_state) => Some(&window_state.runtime_data.window),
+            DesktopUserData::None => None,
+        }
+    }
+}
+
+pub struct FlutterDesktop {
+    glfw: glfw::Glfw,
+    user_data: DesktopUserData,
+}
+
+pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
     glfw::init(Some(glfw::Callback {
         f: glfw_error_callback,
         data: (),
     }))
-    .map(|glfw| FlutterEngine {
+    .map(|glfw| FlutterDesktop {
         glfw,
-        window_state: None,
+        user_data: DesktopUserData::None,
     })
 }
 
-impl FlutterEngine {
+impl FlutterDesktop {
     pub fn create_window(
         &mut self,
         width: i32,
@@ -61,34 +77,45 @@ impl FlutterEngine {
         icu_data_path: String,
         arguments: Vec<String>,
     ) -> Result<(), Error> {
-        if self.window_state.is_some() {
-            return Err(Error::WindowAlreadyCreated);
+        match self.user_data {
+            DesktopUserData::None => {}
+            _ => return Err(Error::WindowAlreadyCreated),
         }
         let (window, receiver) = self
             .glfw
             .create_window(width as u32, height as u32, "", glfw::WindowMode::Windowed)
             .ok_or(Error::WindowCreationFailed)?;
+        let window = Rc::new(RefCell::new(window));
 
         // TODO: clear window canvas
 
-        // as FlutterEngineRun already calls the make_current callback, the window state must be set before calling run
-        self.window_state = Some(DesktopWindowState::new(window, receiver));
+        // as FlutterEngineRun already calls the make_current callback, user_data must be set now
+        self.user_data = DesktopUserData::Window(Rc::clone(&window));
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
-        // now set the engine
-        let window_state = self.window_state.as_mut().unwrap();
-        window_state.set_engine(engine);
-        // send initial size callback to engine
-        window_state.send_framebuffer_size_change(window_state.window.get_framebuffer_size());
+        // now create the full desktop state
+        self.user_data =
+            DesktopUserData::WindowState(DesktopWindowState::new(window, receiver, engine));
 
-        // enable event polling
-        window_state.window.set_char_polling(true);
-        window_state.window.set_cursor_pos_polling(true);
-        window_state.window.set_cursor_enter_polling(true);
-        window_state.window.set_framebuffer_size_polling(true);
-        window_state.window.set_key_polling(true);
-        window_state.window.set_mouse_button_polling(true);
-        window_state.window.set_scroll_polling(true);
-        window_state.window.set_size_polling(true);
+        if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
+            let framebuffer_size = window_state
+                .runtime_data
+                .window
+                .borrow()
+                .get_framebuffer_size();
+            // send initial size callback to engine
+            window_state.send_framebuffer_size_change(framebuffer_size);
+
+            let mut window = window_state.runtime_data.window.borrow_mut();
+            // enable event polling
+            window.set_char_polling(true);
+            window.set_cursor_pos_polling(true);
+            window.set_cursor_enter_polling(true);
+            window.set_framebuffer_size_polling(true);
+            window.set_key_polling(true);
+            window.set_mouse_button_polling(true);
+            window.set_scroll_polling(true);
+            window.set_size_polling(true);
+        }
 
         Ok(())
     }
@@ -98,7 +125,7 @@ impl FlutterEngine {
         assets_path: String,
         icu_data_path: String,
         mut arguments: Vec<String>,
-    ) -> Result<flutter_engine_sys::FlutterEngine, Error> {
+    ) -> Result<FlutterEngine, Error> {
         arguments.insert(0, "placeholder".into());
         let arguments = utils::CStringVec::new(&arguments);
 
@@ -153,7 +180,7 @@ impl FlutterEngine {
                 1,
                 &renderer_config,
                 &project_args,
-                self as *mut FlutterEngine as *mut std::ffi::c_void,
+                &mut self.user_data as *mut DesktopUserData as *mut std::ffi::c_void,
                 &engine_ptr as *const flutter_engine_sys::FlutterEngine
                     as *mut flutter_engine_sys::FlutterEngine,
             ) != flutter_engine_sys::FlutterEngineResult::kSuccess
@@ -161,36 +188,35 @@ impl FlutterEngine {
             {
                 Err(Error::EngineFailed)
             } else {
-                Ok(engine_ptr)
+                Ok(FlutterEngine::new(engine_ptr).unwrap())
             }
         }
     }
 
     pub fn run_window_loop(mut self) {
-        let window_state = self.window_state.unwrap();
-        let engine = window_state.get_engine();
-        let window = window_state.window;
-        let events = window_state.window_event_receiver;
-        if cfg!(target_os = "linux") {
-            unsafe {
-                x11::xlib::XInitThreads();
+        if let DesktopUserData::WindowState(window_state) = self.user_data {
+            let events = &window_state.runtime_data.window_event_receiver;
+            if cfg!(target_os = "linux") {
+                unsafe {
+                    x11::xlib::XInitThreads();
+                }
             }
+
+            while !window_state.runtime_data.window.borrow().should_close() {
+                self.glfw.poll_events();
+                self.glfw.wait_events_timeout(1.0 / 60.0);
+
+                for (_, event) in glfw::flush_messages(&events) {
+                    debug!("{:?}", event);
+                }
+
+                unsafe {
+                    flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
+                }
+            }
+
+            window_state.runtime_data.engine.shutdown();
         }
-
-        while !window.should_close() {
-            self.glfw.poll_events();
-            self.glfw.wait_events_timeout(1.0 / 60.0);
-
-            for (_, event) in glfw::flush_messages(&events) {
-                debug!("{:?}", event);
-            }
-
-            unsafe {
-                flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
-            }
-        }
-
-        engine.shutdown();
     }
 }
 

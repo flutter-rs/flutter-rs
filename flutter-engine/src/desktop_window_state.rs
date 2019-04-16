@@ -6,6 +6,7 @@ use crate::{
 use std::{rc::Rc, sync::mpsc::Receiver};
 
 const DP_PER_INCH: f64 = 160.0;
+const SCROLL_SPEED: f64 = 20.0;
 
 pub struct DesktopWindowState {
     pub runtime_data: Rc<RuntimeData>,
@@ -153,6 +154,27 @@ impl DesktopWindowState {
                     FlutterPointerPhase::Up
                 };
                 self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0);
+            }
+            glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
+                let (x, y) = self.runtime_data.window().get_cursor_pos();
+                let phase = if self
+                    .runtime_data
+                    .window()
+                    .get_mouse_button(glfw::MouseButtonLeft)
+                    == glfw::Action::Press
+                {
+                    FlutterPointerPhase::Move
+                } else {
+                    FlutterPointerPhase::Hover
+                };
+                self.send_pointer_event(
+                    phase,
+                    x,
+                    y,
+                    FlutterPointerSignalKind::Scroll,
+                    scroll_delta_x * SCROLL_SPEED,
+                    -scroll_delta_y * SCROLL_SPEED,
+                );
             }
             _ => {}
         }

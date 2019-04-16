@@ -110,10 +110,12 @@ impl TextEditingState {
 
     pub fn add_characters(&mut self, c: &str) {
         self.delete_selected();
-        if let Some(index) = self.text.byte_index_of_char(self.selection_extent as usize) {
-            self.text.insert_str(index, c);
-            self.move_to(self.selection_extent as usize + c.char_count());
-        }
+        let index = self
+            .text
+            .byte_index_of_char(self.selection_extent as usize)
+            .unwrap_or_else(|| self.text.len());
+        self.text.insert_str(index, c);
+        self.move_to(self.selection_extent as usize + c.char_count());
     }
 
     pub fn backspace(&mut self) {
@@ -149,7 +151,7 @@ impl TextEditingState {
         let next_pos = if by_word {
             self.get_next_word_boundary(current_pos, Direction::Left)
         } else {
-            (current_pos - 1).max(0)
+            (current_pos as i64 - 1).max(0) as usize
         };
         self.select_or_move_to(next_pos, select);
     }
@@ -167,7 +169,7 @@ impl TextEditingState {
         let next_pos = if by_word {
             self.get_next_word_boundary(current_pos, Direction::Right)
         } else {
-            (current_pos + 1).max(self.text.char_count())
+            (current_pos + 1).min(self.text.char_count())
         };
         self.select_or_move_to(next_pos, select);
     }
@@ -226,6 +228,7 @@ impl TextEditingState {
                 if start >= max {
                     return max;
                 }
+                let start = start + 1;
                 self.text
                     .chars()
                     .skip(start)
@@ -237,12 +240,13 @@ impl TextEditingState {
                     return 0;
                 }
                 let len = self.text.char_count();
+                let start = start - 1;
                 self.text
                     .chars()
                     .rev()
                     .skip(len - start)
                     .position(|c| !c.is_alphanumeric())
-                    .map_or(0, |n| len - start - n)
+                    .map_or(0, |n| start - n)
             }
         }
     }

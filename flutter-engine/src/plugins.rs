@@ -69,20 +69,30 @@ impl PluginRegistrar {
         }
     }
 
-    pub fn get_plugin<P>(&self) -> Option<&P>
+    pub fn with_plugin<F, P>(&self, mut f: F)
     where
+        F: FnMut(&P),
         P: Plugin + PluginChannel + 'static,
-        Box<dyn Plugin>: Borrow<P>,
     {
-        self.plugins.get(P::channel_name()).map(Box::borrow)
+        if let Some(b) = self.plugins.get(P::channel_name()) {
+            unsafe {
+                let plugin: &Box<P> = std::mem::transmute(b);
+                f(plugin);
+            }
+        }
     }
 
-    pub fn get_plugin_mut<P>(&mut self) -> Option<&mut P>
+    pub fn with_plugin_mut<F, P>(&mut self, mut f: F)
     where
+        F: FnMut(&mut P),
         P: Plugin + PluginChannel + 'static,
-        Box<dyn Plugin>: BorrowMut<P>,
     {
-        self.plugins.get_mut(P::channel_name()).map(Box::borrow_mut)
+        if let Some(b) = self.plugins.get_mut(P::channel_name()) {
+            unsafe {
+                let plugin: &mut Box<P> = std::mem::transmute(b);
+                f(plugin);
+            }
+        }
     }
 }
 

@@ -7,6 +7,15 @@ use std::{rc::Rc, sync::mpsc::Receiver};
 
 const DP_PER_INCH: f64 = 160.0;
 const SCROLL_SPEED: f64 = 20.0;
+#[cfg(not(target_os = "macos"))]
+const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
+#[cfg(target_os = "macos")]
+const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Alt;
+const SELECT_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Shift;
+#[cfg(not(target_os = "macos"))]
+const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
+#[cfg(target_os = "macos")]
+const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub struct DesktopWindowState {
     pub runtime_data: Rc<RuntimeData>,
@@ -176,6 +185,133 @@ impl DesktopWindowState {
                     -scroll_delta_y * SCROLL_SPEED,
                 );
             }
+            glfw::WindowEvent::FramebufferSize(width, height) => {
+                self.send_framebuffer_size_change((width, height));
+            }
+            glfw::WindowEvent::Char(char) => {
+                self.plugin_registrar
+                    .with_plugin(|text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.add_characters(&char.to_string());
+                        });
+                        text_input.notify_changes();
+                    })
+            }
+            glfw::WindowEvent::Key(key, _, glfw::Action::Press, modifiers)
+            | glfw::WindowEvent::Key(key, _, glfw::Action::Repeat, modifiers) => match key {
+                glfw::Key::Backspace => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.backspace();
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::Delete => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.delete();
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::Left => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_left(
+                                modifiers.contains(BY_WORD_MODIFIER_KEY),
+                                modifiers.contains(SELECT_MODIFIER_KEY),
+                            );
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::Right => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_right(
+                                modifiers.contains(BY_WORD_MODIFIER_KEY),
+                                modifiers.contains(SELECT_MODIFIER_KEY),
+                            );
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::Home => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_to_beginning(modifiers.contains(SELECT_MODIFIER_KEY));
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::End => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_to_end(modifiers.contains(SELECT_MODIFIER_KEY));
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::A => {
+                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                        self.plugin_registrar.with_plugin(
+                            |text_input: &crate::plugins::TextInputPlugin| {
+                                text_input.with_state(|state| {
+                                    state.select_all();
+                                });
+                                text_input.notify_changes();
+                            },
+                        )
+                    }
+                }
+                glfw::Key::X => {
+                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                        self.plugin_registrar.with_plugin(
+                            |text_input: &crate::plugins::TextInputPlugin| {
+                                text_input.with_state(|state| {
+                                    self.runtime_data
+                                        .window()
+                                        .set_clipboard_string(state.get_selected_text());
+                                    state.delete_selected();
+                                });
+                                text_input.notify_changes();
+                            },
+                        )
+                    }
+                }
+                glfw::Key::C => {
+                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                        self.plugin_registrar.with_plugin(
+                            |text_input: &crate::plugins::TextInputPlugin| {
+                                text_input.with_state(|state| {
+                                    self.runtime_data
+                                        .window()
+                                        .set_clipboard_string(state.get_selected_text());
+                                });
+                                text_input.notify_changes();
+                            },
+                        )
+                    }
+                }
+                glfw::Key::V => {
+                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                        self.plugin_registrar.with_plugin(
+                            |text_input: &crate::plugins::TextInputPlugin| {
+                                text_input.with_state(|state| {
+                                    if let Some(text) =
+                                        self.runtime_data.window().get_clipboard_string()
+                                    {
+                                        state.add_characters(&text);
+                                    }
+                                });
+                                text_input.notify_changes();
+                            },
+                        )
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

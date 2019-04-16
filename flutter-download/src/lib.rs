@@ -4,26 +4,17 @@ extern crate unzip;
 
 use curl::easy::Easy;
 use std::{
-    thread,
+    fs::{self, File},
+    io::{BufReader, Write},
+    path::{Path, PathBuf},
     process::Command,
-    sync::{
-        mpsc,
-        Mutex,
-    },
-    io::{
-        BufReader,
-        Write,
-    },
-    path::{ Path, PathBuf },
-    fs::{ self, File }
+    sync::{mpsc, Mutex},
+    thread,
 };
 
 pub mod util;
 
-pub use util::{
-    Error,
-    get_flutter_version,
-};
+pub use util::{get_flutter_version, Error};
 
 #[derive(PartialEq, Copy, Clone)]
 enum Target {
@@ -71,10 +62,10 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         easy.progress_function(move |total, done, _, _| {
             tx.lock().unwrap().send((total, done)).unwrap();
             true
-        }).unwrap();
-        easy.write_function(move |data| {
-            Ok(file.write(data).unwrap())
-        }).unwrap();
+        })
+        .unwrap();
+        easy.write_function(move |data| Ok(file.write(data).unwrap()))
+            .unwrap();
         easy.perform().unwrap();
 
         println!("Download finished");
@@ -87,7 +78,11 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
 
         // mac framework file is a double zip file
         if target() == Target::MacOS {
-            Command::new("unzip").args(&["FlutterEmbedder.framework.zip", "-d", "FlutterEmbedder.framework"]).current_dir(&dir).status().unwrap();
+            Command::new("unzip")
+                .args(&["FlutterMacOS.framework.zip", "-d", "FlutterMacOS.framework"])
+                .current_dir(&dir)
+                .status()
+                .unwrap();
 
             // TODO: fixme
             // unzip bug! Extracted file corrupted!
@@ -109,13 +104,23 @@ pub fn home_download_path() -> PathBuf {
 
 pub fn download_url(version: &str) -> String {
     let url = match target() {
-        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-flutter.zip",
-        Target::MacOS => "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterMacOS.framework.zip",
-        Target::Windows => "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-flutter.zip",
+        Target::Linux => {
+            "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-flutter.zip"
+        }
+        Target::MacOS => {
+            "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterMacOS.framework.zip"
+        }
+        Target::Windows => {
+            "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-flutter.zip"
+        }
     };
     let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL");
-    let base_url = base_url.as_ref().map(String::as_str).unwrap_or("https://storage.googleapis.com");
-    url.replace("{base_url}", base_url).replace("{version}", version)
+    let base_url = base_url
+        .as_ref()
+        .map(String::as_str)
+        .unwrap_or("https://storage.googleapis.com");
+    url.replace("{base_url}", base_url)
+        .replace("{version}", version)
 }
 
 fn should_download(path: &Path) -> bool {

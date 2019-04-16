@@ -216,7 +216,8 @@ impl FlutterDesktop {
 
     pub fn run_window_loop(mut self) {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
-            if cfg!(target_os = "linux") {
+            #[cfg(target_os = "linux")]
+            {
                 unsafe {
                     x11::xlib::XInitThreads();
                 }

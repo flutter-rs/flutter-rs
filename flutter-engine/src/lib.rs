@@ -8,9 +8,9 @@ mod utils;
 
 use crate::{desktop_window_state::DesktopWindowState, ffi::FlutterEngine};
 
-use std::{cell::RefCell, ffi::CString, rc::Rc};
+use std::ffi::CString;
 
-use log::{debug, error, trace};
+use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -38,22 +38,27 @@ impl std::error::Error for Error {
 
 enum DesktopUserData {
     None,
-    Window(Rc<RefCell<glfw::Window>>),
+    Window(*mut glfw::Window),
     WindowState(DesktopWindowState),
 }
 
 impl DesktopUserData {
-    pub fn get_window(&self) -> Option<&Rc<RefCell<glfw::Window>>> {
-        match self {
-            DesktopUserData::Window(window) => Some(window),
-            DesktopUserData::WindowState(window_state) => Some(&window_state.runtime_data.window),
-            DesktopUserData::None => None,
+    pub fn get_window(&self) -> Option<&mut glfw::Window> {
+        unsafe {
+            match self {
+                DesktopUserData::Window(window) => Some(&mut **window),
+                DesktopUserData::WindowState(window_state) => {
+                    Some(&mut *window_state.runtime_data.window)
+                }
+                DesktopUserData::None => None,
+            }
         }
     }
 }
 
 pub struct FlutterDesktop {
     glfw: glfw::Glfw,
+    window: Option<glfw::Window>,
     user_data: DesktopUserData,
 }
 
@@ -64,6 +69,7 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
     }))
     .map(|glfw| FlutterDesktop {
         glfw,
+        window: None,
         user_data: DesktopUserData::None,
     })
 }
@@ -85,29 +91,30 @@ impl FlutterDesktop {
             .glfw
             .create_window(width as u32, height as u32, "", glfw::WindowMode::Windowed)
             .ok_or(Error::WindowCreationFailed)?;
-        let window = Rc::new(RefCell::new(window));
+        self.window = Some(window);
+        let window_ref = if let Some(window) = &mut self.window {
+            window as *mut glfw::Window
+        } else {
+            panic!("The window has vanished");
+        };
 
         // TODO: clear window canvas
 
         // as FlutterEngineRun already calls the make_current callback, user_data must be set now
-        self.user_data = DesktopUserData::Window(Rc::clone(&window));
+        self.user_data = DesktopUserData::Window(window_ref);
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
         self.user_data =
-            DesktopUserData::WindowState(DesktopWindowState::new(window, receiver, engine));
+            DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine));
 
         if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
-            let framebuffer_size = window_state
-                .runtime_data
-                .window
-                .borrow()
-                .get_framebuffer_size();
+            let framebuffer_size = window_state.runtime_data.window().get_framebuffer_size();
             // send initial size callback to engine
             window_state.send_framebuffer_size_change(framebuffer_size);
 
             window_state.plugin_registrar.add_system_plugins();
 
-            let mut window = window_state.runtime_data.window.borrow_mut();
+            let window = window_state.runtime_data.window();
             // enable event polling
             window.set_char_polling(true);
             window.set_cursor_pos_polling(true);
@@ -196,20 +203,22 @@ impl FlutterDesktop {
     }
 
     pub fn run_window_loop(mut self) {
-        if let DesktopUserData::WindowState(window_state) = self.user_data {
-            let events = &window_state.runtime_data.window_event_receiver;
+        if let DesktopUserData::WindowState(mut window_state) = self.user_data {
             if cfg!(target_os = "linux") {
                 unsafe {
                     x11::xlib::XInitThreads();
                 }
             }
 
-            while !window_state.runtime_data.window.borrow().should_close() {
+            while !window_state.runtime_data.window().should_close() {
                 self.glfw.poll_events();
                 self.glfw.wait_events_timeout(1.0 / 60.0);
 
-                for (_, event) in glfw::flush_messages(&events) {
-                    debug!("{:?}", event);
+                let events: Vec<(f64, glfw::WindowEvent)> =
+                    glfw::flush_messages(&window_state.runtime_data.window_event_receiver)
+                        .collect();
+                for (_, event) in events {
+                    window_state.handle_glfw_event(event);
                 }
 
                 unsafe {

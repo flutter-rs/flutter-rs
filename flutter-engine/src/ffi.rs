@@ -4,6 +4,7 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString},
     mem, ptr,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
@@ -69,6 +70,50 @@ impl<'a, 'b> From<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FlutterPointerPhase {
+    Cancel,
+    Up,
+    Down,
+    Move,
+    Add,
+    Remove,
+    Hover,
+}
+
+impl From<FlutterPointerPhase> for flutter_engine_sys::FlutterPointerPhase {
+    fn from(pointer_phase: FlutterPointerPhase) -> Self {
+        match pointer_phase {
+            FlutterPointerPhase::Cancel => flutter_engine_sys::FlutterPointerPhase::kCancel,
+            FlutterPointerPhase::Up => flutter_engine_sys::FlutterPointerPhase::kUp,
+            FlutterPointerPhase::Down => flutter_engine_sys::FlutterPointerPhase::kDown,
+            FlutterPointerPhase::Move => flutter_engine_sys::FlutterPointerPhase::kMove,
+            FlutterPointerPhase::Add => flutter_engine_sys::FlutterPointerPhase::kAdd,
+            FlutterPointerPhase::Remove => flutter_engine_sys::FlutterPointerPhase::kRemove,
+            FlutterPointerPhase::Hover => flutter_engine_sys::FlutterPointerPhase::kHover,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FlutterPointerSignalKind {
+    None,
+    Scroll,
+}
+
+impl From<FlutterPointerSignalKind> for flutter_engine_sys::FlutterPointerSignalKind {
+    fn from(pointer_signal_kind: FlutterPointerSignalKind) -> Self {
+        match pointer_signal_kind {
+            FlutterPointerSignalKind::None => {
+                flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindNone
+            }
+            FlutterPointerSignalKind::Scroll => {
+                flutter_engine_sys::FlutterPointerSignalKind::kFlutterPointerSignalKindScroll
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FlutterEngine {
     engine_ptr: flutter_engine_sys::FlutterEngine,
@@ -92,6 +137,32 @@ impl FlutterEngine {
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr, &event);
+        }
+    }
+
+    pub fn send_pointer_event(
+        &self,
+        phase: FlutterPointerPhase,
+        x: f64,
+        y: f64,
+        signal_kind: FlutterPointerSignalKind,
+        scroll_delta_x: f64,
+        scroll_delta_y: f64,
+    ) {
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let event = flutter_engine_sys::FlutterPointerEvent {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
+            timestamp: timestamp.as_micros() as usize,
+            phase: phase.into(),
+            x,
+            y,
+            device: 0,
+            signal_kind: signal_kind.into(),
+            scroll_delta_x,
+            scroll_delta_y,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr, &event, 1);
         }
     }
 

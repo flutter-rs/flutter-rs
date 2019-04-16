@@ -9,7 +9,7 @@ pub extern "C" fn present(user_data: *mut c_void) -> bool {
     unsafe {
         let user_data = &*(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
-            window.borrow_mut().swap_buffers();
+            window.swap_buffers();
             true
         } else {
             false
@@ -22,7 +22,7 @@ pub extern "C" fn make_current(user_data: *mut c_void) -> bool {
     unsafe {
         let user_data = &*(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
-            window.borrow_mut().make_current();
+            window.make_current();
             true
         } else {
             false
@@ -52,7 +52,6 @@ pub extern "C" fn gl_proc_resolver(user_data: *mut c_void, proc: *const c_char) 
         let user_data = &*(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
             window
-                .borrow()
                 .glfw
                 .get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
         } else {

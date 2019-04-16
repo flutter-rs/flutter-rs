@@ -14,9 +14,7 @@ use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
 use std::{
     borrow::{Borrow, BorrowMut},
-    cell::RefCell,
     collections::HashMap,
-    ops::DerefMut,
     rc::Weak,
 };
 
@@ -54,11 +52,11 @@ impl PluginRegistrar {
     pub fn handle(&mut self, message: PlatformMessage) {
         let mut message_handled = false;
         let runtime_data = self.runtime_data.upgrade().unwrap();
-        let mut window = RefCell::borrow_mut(&runtime_data.window);
+        let window = runtime_data.window();
         for (channel, plugin) in &mut self.plugins {
             if channel == &message.channel {
                 trace!("Processing message from channel: {}", channel);
-                plugin.handle(&message, window.deref_mut());
+                plugin.handle(&message, window);
                 message_handled = true;
                 break;
             }

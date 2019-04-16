@@ -164,6 +164,17 @@ impl DesktopWindowState {
                 };
                 self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0);
             }
+            glfw::WindowEvent::MouseButton(
+                glfw::MouseButton::Button4,
+                glfw::Action::Press,
+                _modifiers,
+            ) => {
+                self.plugin_registrar.with_plugin(
+                    |navigation: &crate::plugins::NavigationPlugin| {
+                        navigation.pop_route();
+                    },
+                );
+            }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.runtime_data.window().get_cursor_pos();
                 let phase = if self

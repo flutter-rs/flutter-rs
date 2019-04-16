@@ -1,15 +1,18 @@
-mod channel;
-mod codec;
+pub mod channel;
+pub mod codec;
 mod desktop_window_state;
 mod ffi;
 mod flutter_callbacks;
-mod plugins;
+pub mod plugins;
 mod utils;
 
-use crate::{desktop_window_state::DesktopWindowState, ffi::FlutterEngine};
+pub use crate::desktop_window_state::{DesktopWindowState, RuntimeData};
+use crate::ffi::FlutterEngine;
+pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
 
+pub use glfw::Window;
 use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -48,7 +51,7 @@ impl DesktopUserData {
             match self {
                 DesktopUserData::Window(window) => Some(&mut **window),
                 DesktopUserData::WindowState(window_state) => {
-                    Some(&mut *window_state.runtime_data.window)
+                    Some(window_state.runtime_data.window())
                 }
                 DesktopUserData::None => None,
             }
@@ -199,6 +202,15 @@ impl FlutterDesktop {
             } else {
                 Ok(FlutterEngine::new(engine_ptr).unwrap())
             }
+        }
+    }
+
+    pub fn init_with_window_state<F>(&mut self, init_fn: F)
+    where
+        F: FnOnce(&mut DesktopWindowState),
+    {
+        if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
+            init_fn(window_state);
         }
     }
 

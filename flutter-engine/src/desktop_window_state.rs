@@ -16,7 +16,7 @@ pub struct DesktopWindowState {
 }
 
 pub struct RuntimeData {
-    pub window: *mut glfw::Window,
+    window: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     pub engine: Rc<FlutterEngine>,
 }

@@ -1,14 +1,10 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-pub mod platform;
-//pub mod textinput;
+mod platform;
+mod textinput;
 //pub mod dialog;
 //pub mod window;
 //pub mod navigation;
-
-//use super::FlutterEngine;
-//use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
-//use std::{borrow::Cow, collections::HashMap, ffi::CString, mem, ptr::null, sync::Arc, sync::Weak};
 
 use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
@@ -35,13 +31,19 @@ impl PluginRegistrar {
         }
     }
 
-    pub fn add_plugin<P>(&mut self, mut plugin: P)
+    pub fn add_system_plugins(&mut self) {
+        self.add_plugin(platform::PlatformPlugin::new())
+            .add_plugin(textinput::TextInputPlugin::new());
+    }
+
+    pub fn add_plugin<P>(&mut self, mut plugin: P) -> &mut Self
     where
         P: Plugin + PluginChannel + 'static,
     {
         plugin.init_channel(Weak::clone(&self.runtime_data));
         self.plugins
             .insert(P::channel_name().to_owned(), Box::new(plugin));
+        self
     }
 
     pub fn handle(&mut self, message: PlatformMessage) {

@@ -105,9 +105,7 @@ impl FlutterDesktop {
             // send initial size callback to engine
             window_state.send_framebuffer_size_change(framebuffer_size);
 
-            window_state
-                .plugin_registrar
-                .add_plugin(plugins::platform::PlatformPlugin::new());
+            window_state.plugin_registrar.add_system_plugins();
 
             let mut window = window_state.runtime_data.window.borrow_mut();
             // enable event polling

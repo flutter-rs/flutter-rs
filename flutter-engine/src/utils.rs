@@ -53,13 +53,16 @@ impl Drop for CStringVec {
 
 pub trait StringUtils {
     fn substring(&self, start: usize, end: usize) -> &str;
-    fn remove_chars(&mut self, range: Range<usize>);
-    fn count(&self) -> usize;
+    fn char_count(&self) -> usize;
     fn byte_index_of_char(&self, char_index: usize) -> Option<usize>;
     fn byte_range_of_chars(&self, char_range: Range<usize>) -> Option<Range<usize>>;
 }
 
-impl StringUtils for String {
+pub trait OwnedStringUtils {
+    fn remove_chars(&mut self, range: Range<usize>);
+}
+
+impl StringUtils for str {
     fn substring(&self, start: usize, end: usize) -> &str {
         if start >= end {
             return "";
@@ -68,13 +71,7 @@ impl StringUtils for String {
         let end_idx = self.byte_index_of_char(end).unwrap_or_else(|| self.len());
         &self[start_idx..end_idx]
     }
-    fn remove_chars(&mut self, range: Range<usize>) {
-        if range.start >= range.end {
-            return;
-        }
-        self.drain(self.byte_range_of_chars(range).unwrap());
-    }
-    fn count(&self) -> usize {
+    fn char_count(&self) -> usize {
         self.chars().count()
     }
     fn byte_index_of_char(&self, char_index: usize) -> Option<usize> {
@@ -98,6 +95,15 @@ impl StringUtils for String {
             }
             None => None,
         }
+    }
+}
+
+impl OwnedStringUtils for String {
+    fn remove_chars(&mut self, range: Range<usize>) {
+        if range.start >= range.end {
+            return;
+        }
+        self.drain(self.byte_range_of_chars(range).unwrap());
     }
 }
 

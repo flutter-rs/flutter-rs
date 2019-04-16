@@ -4,7 +4,11 @@ mod platform;
 mod textinput;
 //pub mod dialog;
 //pub mod window;
-//pub mod navigation;
+mod navigation;
+
+pub use self::{
+    navigation::NavigationPlugin, platform::PlatformPlugin, textinput::TextInputPlugin,
+};
 
 use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
@@ -33,7 +37,8 @@ impl PluginRegistrar {
 
     pub fn add_system_plugins(&mut self) {
         self.add_plugin(platform::PlatformPlugin::new())
-            .add_plugin(textinput::TextInputPlugin::new());
+            .add_plugin(textinput::TextInputPlugin::new())
+            .add_plugin(navigation::NavigationPlugin::new());
     }
 
     pub fn add_plugin<P>(&mut self, mut plugin: P) -> &mut Self

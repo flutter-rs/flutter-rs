@@ -82,6 +82,7 @@ impl FlutterDesktop {
         &mut self,
         width: i32,
         height: i32,
+        title: &str,
         assets_path: String,
         icu_data_path: String,
         arguments: Vec<String>,
@@ -92,7 +93,12 @@ impl FlutterDesktop {
         }
         let (window, receiver) = self
             .glfw
-            .create_window(width as u32, height as u32, "", glfw::WindowMode::Windowed)
+            .create_window(
+                width as u32,
+                height as u32,
+                title,
+                glfw::WindowMode::Windowed,
+            )
             .ok_or(Error::WindowCreationFailed)?;
         self.window = Some(window);
         let window_ref = if let Some(window) = &mut self.window {
@@ -214,7 +220,10 @@ impl FlutterDesktop {
         }
     }
 
-    pub fn run_window_loop(mut self) {
+    pub fn run_window_loop<F>(mut self, mut custom_handler: Option<F>)
+    where
+        F: FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool,
+    {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
             #[cfg(target_os = "linux")]
             {
@@ -231,7 +240,14 @@ impl FlutterDesktop {
                     glfw::flush_messages(&window_state.runtime_data.window_event_receiver)
                         .collect();
                 for (_, event) in events {
-                    window_state.handle_glfw_event(event);
+                    let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
+                        custom_handler(&mut window_state, event.clone())
+                    } else {
+                        true
+                    };
+                    if run_default_handler {
+                        window_state.handle_glfw_event(event);
+                    }
                 }
 
                 unsafe {

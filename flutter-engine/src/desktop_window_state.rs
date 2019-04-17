@@ -210,6 +210,14 @@ impl DesktopWindowState {
             }
             glfw::WindowEvent::Key(key, _, glfw::Action::Press, modifiers)
             | glfw::WindowEvent::Key(key, _, glfw::Action::Repeat, modifiers) => match key {
+                glfw::Key::Enter => self.plugin_registrar.with_plugin(
+                    |text_input: &crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.add_characters(&"\n");
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
                 glfw::Key::Backspace => self.plugin_registrar.with_plugin(
                     |text_input: &crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {

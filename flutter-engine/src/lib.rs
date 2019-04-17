@@ -220,10 +220,10 @@ impl FlutterDesktop {
         }
     }
 
-    pub fn run_window_loop<F>(mut self, mut custom_handler: Option<F>)
-    where
-        F: FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool,
-    {
+    pub fn run_window_loop(
+        mut self,
+        mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
+    ) {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
             #[cfg(target_os = "linux")]
             {

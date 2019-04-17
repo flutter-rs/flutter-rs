@@ -78,6 +78,7 @@ fn main() {
         .create_window(
             1800,
             1200,
+            "Flutter App Demo",
             assets_path.to_string_lossy().to_string(),
             icu_data_path.to_string_lossy().to_string(),
             vec![],
@@ -85,5 +86,5 @@ fn main() {
         .unwrap();
     //    engine.add_plugin(Box::new(calc_channel::CalcPlugin::new()));
     //    engine.add_plugin(Box::new(msg_stream_channel::MsgStreamPlugin::new()));
-    engine.run_window_loop();
+    engine.run_window_loop(None);
 }

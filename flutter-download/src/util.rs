@@ -1,10 +1,7 @@
 use std::{
-    error,
-    fmt,
-    io,
-    fs,
+    error, fmt, fs, io,
+    path::{Path, PathBuf},
     process::Command,
-    path::{ Path, PathBuf },
 };
 
 #[derive(Debug)]
@@ -35,18 +32,21 @@ impl error::Error for Error {
 fn guess_sdk_path() -> Result<PathBuf, &'static str> {
     let output = if cfg!(target_os = "windows") {
         Command::new("cmd")
-                .args(&["/C", "where.exe flutter"])
-                .output()
+            .args(&["/C", "where.exe flutter"])
+            .output()
     } else {
-        Command::new("sh")
-                .arg("-c")
-                .arg("which flutter")
-                .output()
-    }.map_err(|_| "cannot find flutter executable")?;
-    let s = std::str::from_utf8(output.stdout.as_slice()).map_err(|_| "parse result of `which flutter`")?;
+        Command::new("sh").arg("-c").arg("which flutter").output()
+    }
+    .map_err(|_| "cannot find flutter executable")?;
+    let s = std::str::from_utf8(output.stdout.as_slice())
+        .map_err(|_| "parse result of `which flutter`")?;
     let line = s.trim().lines().next().ok_or("output empty")?;
     let p = Path::new(line).canonicalize().map_err(|_| "follow link")?;
-    let p = p.parent().ok_or("parent of flutter")?.parent().ok_or("parent of parent of flutter")?;
+    let p = p
+        .parent()
+        .ok_or("parent of flutter")?
+        .parent()
+        .ok_or("parent of parent of flutter")?;
     Ok(p.to_owned())
 }
 
@@ -60,10 +60,13 @@ pub fn get_flutter_version() -> Result<String, Error> {
         Ok(v)
     } else if let Ok(v) = std::env::var("FLUTTER_ROOT") {
         let p = Path::new(&v);
-        read_ver_from_sdk(p).map_err(|_| Error::InvalidFlutterRoot("read engine version from FLUTTER_ROOT failed"))
+        read_ver_from_sdk(p)
+            .map_err(|_| Error::InvalidFlutterRoot("read engine version from FLUTTER_ROOT failed"))
     } else {
         match guess_sdk_path() {
-            Ok(p) => read_ver_from_sdk(&p).map_err(|_| Error::InvalidFlutterRoot("read engine version from flutter executable failed")),
+            Ok(p) => read_ver_from_sdk(&p).map_err(|_| {
+                Error::InvalidFlutterRoot("read engine version from flutter executable failed")
+            }),
             Err("cannot find flutter executable") => Err(Error::MissingEnv),
             Err(reason) => Err(Error::InvalidFlutterRoot(reason)),
         }

@@ -5,6 +5,8 @@ use crate::{
 
 use std::{rc::Rc, sync::mpsc::Receiver};
 
+use log::info;
+
 const DP_PER_INCH: f64 = 160.0;
 const SCROLL_SPEED: f64 = 20.0;
 #[cfg(not(target_os = "macos"))]
@@ -111,11 +113,11 @@ impl DesktopWindowState {
 
         self.runtime_data.engine.send_pointer_event(
             phase,
-            x,
-            y,
+            x * self.window_pixels_per_screen_coordinate,
+            y * self.window_pixels_per_screen_coordinate,
             signal_kind,
-            scroll_delta_x,
-            scroll_delta_y,
+            scroll_delta_x * self.window_pixels_per_screen_coordinate,
+            scroll_delta_y * self.window_pixels_per_screen_coordinate,
         );
 
         match phase {
@@ -218,6 +220,28 @@ impl DesktopWindowState {
                         text_input.notify_changes();
                     },
                 ),
+                //                Key::Enter => {
+                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                //                        if modifiers.contains(Modifiers::Control) {
+                //                            p.perform_action("done");
+                //                        } else {
+                //                            // TODO
+                //                            // why add_char plus newline action?
+                //                            p.add_chars("\n");
+                //                            p.perform_action("newline");
+                //                        }
+                //                    });
+                //                },
+                //                Key::Up => {
+                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                //                        p.move_cursor_up(modifiers);
+                //                    });
+                //                },
+                //                Key::Down => {
+                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
+                //                        p.move_cursor_down(modifiers);
+                //                    });
+                //                },
                 glfw::Key::Backspace => self.plugin_registrar.with_plugin(
                     |text_input: &crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
@@ -322,6 +346,8 @@ impl DesktopWindowState {
                                         self.runtime_data.window().get_clipboard_string()
                                     {
                                         state.add_characters(&text);
+                                    } else {
+                                        info!("Tried to paste non-text data");
                                     }
                                 });
                                 text_input.notify_changes();

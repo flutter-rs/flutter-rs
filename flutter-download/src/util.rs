@@ -11,7 +11,7 @@ use std::{
 pub enum Error {
     AlreadyDownloaded,
     MissingEnv,
-    InvalidFlutterRoot,
+    InvalidFlutterRoot(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -27,12 +27,12 @@ impl error::Error for Error {
         match *self {
             Error::AlreadyDownloaded => "Flutter engine already downloaded",
             Error::MissingEnv => "Cannot find flutter engine version. flutter cli not in PATH. You may need to set either FLUTTER_ROOT or FLUTTER_ENGINE_VERSION",
-            Error::InvalidFlutterRoot => "Cannot read from FLUTTER_ROOT",
+            Error::InvalidFlutterRoot(_) => "Cannot read from FLUTTER_ROOT",
         }
     }
 }
 
-fn guess_sdk_path() -> Option<PathBuf> {
+fn guess_sdk_path() -> Result<PathBuf, &'static str> {
     let output = if cfg!(target_os = "windows") {
         Command::new("cmd")
                 .args(&["/C", "where.exe flutter"])
@@ -42,20 +42,12 @@ fn guess_sdk_path() -> Option<PathBuf> {
                 .arg("-c")
                 .arg("which flutter")
                 .output()
-    };
-    if let Ok(o) = output {
-        if let Ok(s) = std::str::from_utf8(o.stdout.as_slice()) {
-            if let Some(line) = s.trim().lines().next() {
-                let p = Path::new(line);
-                if let Some(p) = p.parent() {
-                    if let Some(p) = p.parent() {
-                        return Some(p.to_owned());
-                    }
-                }
-            }
-        }
-    }
-    None
+    }.map_err(|_| "cannot find flutter executable")?;
+    let s = std::str::from_utf8(output.stdout.as_slice()).map_err(|_| "parse result of `which flutter`")?;
+    let line = s.trim().lines().next().ok_or("output empty")?;
+    let p = Path::new(line).canonicalize().map_err(|_| "follow link")?;
+    let p = p.parent().ok_or("parent of flutter")?.parent().ok_or("parent of parent of flutter")?;
+    Ok(p.to_owned())
 }
 
 fn read_ver_from_sdk(p: &Path) -> io::Result<String> {
@@ -68,10 +60,12 @@ pub fn get_flutter_version() -> Result<String, Error> {
         Ok(v)
     } else if let Ok(v) = std::env::var("FLUTTER_ROOT") {
         let p = Path::new(&v);
-        read_ver_from_sdk(p).map_err(|_| Error::InvalidFlutterRoot)
-    } else if let Some(p) = guess_sdk_path() {
-        read_ver_from_sdk(&p).map_err(|_| Error::InvalidFlutterRoot)
+        read_ver_from_sdk(p).map_err(|_| Error::InvalidFlutterRoot("read engine version from FLUTTER_ROOT failed"))
     } else {
-        Err(Error::MissingEnv)
+        match guess_sdk_path() {
+            Ok(p) => read_ver_from_sdk(&p).map_err(|_| Error::InvalidFlutterRoot("read engine version from flutter executable failed")),
+            Err("cannot find flutter executable") => Err(Error::MissingEnv),
+            Err(reason) => Err(Error::InvalidFlutterRoot(reason)),
+        }
     }
 }

@@ -4,7 +4,7 @@
 use super::{PlatformMessage, Plugin, PluginChannel};
 use crate::{
     channel::{Channel, JsonMethodChannel},
-    codec::MethodCall,
+    codec::{MethodCall, MethodCallResult},
     desktop_window_state::RuntimeData,
 };
 
@@ -66,5 +66,7 @@ impl Plugin for NavigationPlugin {
             "navigation method {:?} called with args {:?}",
             decoded.method, decoded.args
         );
+        self.channel
+            .send_method_call_response(&mut msg.response_handle, MethodCallResult::NotImplemented);
     }
 }

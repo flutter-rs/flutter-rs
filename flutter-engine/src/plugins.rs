@@ -62,6 +62,15 @@ impl PluginRegistrar {
                 &message.channel
             );
         }
+        if let Some(handle) = message.response_handle.take() {
+            warn!(
+                "No response for channel {}, sending default empty response",
+                message.channel
+            );
+            runtime_data
+                .engine
+                .send_platform_message_response(handle, &[]);
+        }
     }
 
     pub fn with_plugin<F, P>(&self, mut f: F)

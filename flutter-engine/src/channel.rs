@@ -76,6 +76,7 @@ pub trait Channel {
                     message,
                     details,
                 } => Self::Codec::encode_error_envelope(&code, &message, &details),
+                MethodCallResult::NotImplemented => vec![],
             };
             self.send_response(response_handle, &buf);
         }

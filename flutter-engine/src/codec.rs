@@ -21,6 +21,7 @@ pub enum MethodCallResult<R> {
         message: String,
         details: R,
     },
+    NotImplemented,
 }
 
 pub trait MethodCodec {

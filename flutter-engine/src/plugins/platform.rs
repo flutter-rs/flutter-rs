@@ -53,15 +53,31 @@ impl Plugin for PlatformPlugin {
                         .as_str()
                         .unwrap(),
                 );
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::Ok(Value::Null),
+                );
             }
             "Clipboard.setData" => {
                 if let Value::Object(v) = &decoded.args {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
                             window.set_clipboard_string(text);
+                            self.channel.send_method_call_response(
+                                &mut msg.response_handle,
+                                MethodCallResult::Ok(Value::Null),
+                            );
                         }
                     }
                 }
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::Err {
+                        message: "".into(),
+                        code: "".into(),
+                        details: Value::Null,
+                    },
+                );
             }
             "Clipboard.getData" => {
                 if let Value::String(mime) = &decoded.args {
@@ -72,14 +88,30 @@ impl Plugin for PlatformPlugin {
                                 "text": window.get_clipboard_string(),
                             })),
                         ),
-                        _ => error!(
-                            "Don't know how to handle {} clipboard message",
-                            mime.as_str()
-                        ),
+                        _ => {
+                            error!(
+                                "Don't know how to handle {} clipboard message",
+                                mime.as_str()
+                            );
+                            self.channel.send_method_call_response(
+                                &mut msg.response_handle,
+                                MethodCallResult::Err {
+                                    message: "".into(),
+                                    code: "".into(),
+                                    details: Value::Null,
+                                },
+                            );
+                        }
                     }
                 }
             }
-            method => warn!("Unknown method {} called", method),
+            method => {
+                warn!("Unknown method {} called", method);
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::NotImplemented,
+                );
+            }
         }
     }
 }

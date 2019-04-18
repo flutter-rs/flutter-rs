@@ -79,6 +79,10 @@ impl Plugin for TextInputPlugin {
                     if v.len() > 0 {
                         if let Some(n) = v[0].as_i64() {
                             self.client_id = Some(n);
+                            self.channel.send_method_call_response(
+                                &mut msg.response_handle,
+                                MethodCallResult::Ok(Value::Null),
+                            );
                         }
                     }
                 }
@@ -86,15 +90,33 @@ impl Plugin for TextInputPlugin {
             "TextInput.clearClient" => {
                 self.client_id = None;
                 self.editing_state.replace(None);
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::Ok(Value::Null),
+                );
             }
             "TextInput.setEditingState" => {
                 if self.client_id.is_some() {
                     self.editing_state
                         .replace(TextEditingState::from(&decoded.args));
+                    self.channel.send_method_call_response(
+                        &mut msg.response_handle,
+                        MethodCallResult::Ok(Value::Null),
+                    );
                 }
             }
-            "TextInput.show" => {}
-            "TextInput.hide" => {}
+            "TextInput.show" => {
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::Ok(Value::Null),
+                );
+            }
+            "TextInput.hide" => {
+                self.channel.send_method_call_response(
+                    &mut msg.response_handle,
+                    MethodCallResult::Ok(Value::Null),
+                );
+            }
             method => {
                 warn!("Unknown method {} called", method);
             }

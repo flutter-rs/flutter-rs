@@ -1,18 +1,13 @@
-use std::sync::Arc;
+use std::sync::Weak;
+
 use flutter_engine::{
-    Window,
-    PluginRegistry,
-    codec::{
-        MethodCallResult,
-        standard_codec::{
-            Value,
-        }
-    },
-    PlatformMessage,
-    FlutterEngineInner,
-    plugins::Plugin,
-    channel::{ Channel, StandardMethodChannel },
+    channel::{Channel, StandardMethodChannel},
+    codec::{standard_codec::Value, MethodCallResult},
+    plugins::{Plugin, PluginChannel},
+    PlatformMessage, RuntimeData, Window,
 };
+
+const CHANNEL_NAME: &str = "rust/calc";
 
 pub struct CalcPlugin {
     channel: StandardMethodChannel,
@@ -21,18 +16,24 @@ pub struct CalcPlugin {
 impl CalcPlugin {
     pub fn new() -> CalcPlugin {
         CalcPlugin {
-            channel: StandardMethodChannel::new("rust/calc")
+            channel: StandardMethodChannel::new(CHANNEL_NAME),
         }
     }
 }
 
-impl Plugin for CalcPlugin {
-    fn init_channel(&self, registry: &PluginRegistry) -> &str {
-        self.channel.init(registry);
-        self.channel.get_name()
+impl PluginChannel for CalcPlugin {
+    fn channel_name() -> &'static str {
+        CHANNEL_NAME
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, _window: &mut Window) {
-        let decoded = self.channel.decode_method_call(msg);
+}
+
+impl Plugin for CalcPlugin {
+    fn init_channel(&mut self, registry: Weak<RuntimeData>) {
+        self.channel.init(registry);
+    }
+
+    fn handle(&mut self, msg: &PlatformMessage, _window: &mut Window) {
+        let decoded = self.channel.decode_method_call(msg).unwrap();
         match decoded.method.as_str() {
             "fibonacci" => {
                 // TODO: what if we want this processor to be async? we need to cache engine and handle?
@@ -70,10 +71,9 @@ impl Plugin for CalcPlugin {
                         details: Value::Null,
                     }
                 };
-                self.channel.send_method_call_response(
-                    msg.response_handle,
-                    result);
-            },
+                self.channel
+                    .send_method_call_response(msg.response_handle.unwrap(), result);
+            }
             _ => (),
         }
     }

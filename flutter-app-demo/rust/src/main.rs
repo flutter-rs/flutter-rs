@@ -1,7 +1,8 @@
 // This build a windows app without console on windows in release mode
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-//mod calc_channel;
+mod calc_channel;
+mod dialog;
 //mod msg_stream_channel;
 
 use fern::colors::{Color, ColoredLevelConfig};
@@ -84,7 +85,11 @@ fn main() {
             vec![],
         )
         .unwrap();
-    //    engine.add_plugin(Box::new(calc_channel::CalcPlugin::new()));
-    //    engine.add_plugin(Box::new(msg_stream_channel::MsgStreamPlugin::new()));
+    engine.init_with_window_state(|window_state| {
+        window_state
+            .plugin_registrar
+            .add_plugin(calc_channel::CalcPlugin::new())
+            .add_plugin(dialog::DialogPlugin::new());
+    });
     engine.run_window_loop(None);
 }

@@ -13,7 +13,6 @@ edition = "2018"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 glfw = "^0.27"
 gl = "0.11.0"
-tinyfiledialogs = "3.3.5"
 libc = "0.2.44"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"

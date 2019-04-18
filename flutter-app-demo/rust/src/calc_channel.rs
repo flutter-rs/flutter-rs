@@ -32,7 +32,7 @@ impl Plugin for CalcPlugin {
         self.channel.init(registry);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, _window: &mut Window) {
+    fn handle(&mut self, msg: &mut PlatformMessage, _window: &mut Window) {
         let decoded = self.channel.decode_method_call(msg).unwrap();
         match decoded.method.as_str() {
             "fibonacci" => {
@@ -72,7 +72,7 @@ impl Plugin for CalcPlugin {
                     }
                 };
                 self.channel
-                    .send_method_call_response(msg.response_handle.unwrap(), result);
+                    .send_method_call_response(&mut msg.response_handle, result);
             }
             _ => (),
         }

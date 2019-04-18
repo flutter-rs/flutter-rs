@@ -54,10 +54,10 @@ impl Plugin for WindowPlugin {
         channel.init(registry);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, window: &mut Window) {
-        let handle = msg.response_handle.unwrap();
+    fn handle(&mut self, msg: &mut PlatformMessage, window: &mut Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg).unwrap();
+        let handle = &mut msg.response_handle;
 
         let s = serde_json::to_string(&decoded.args);
 

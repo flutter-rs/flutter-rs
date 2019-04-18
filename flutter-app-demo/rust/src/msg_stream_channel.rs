@@ -44,7 +44,7 @@ impl Plugin for MsgStreamPlugin {
         channel.init(registry);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, _window: &mut Window) {
+    fn handle(&mut self, msg: &mut PlatformMessage, _window: &mut Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg).unwrap();
 
@@ -56,7 +56,7 @@ impl Plugin for MsgStreamPlugin {
                 }
 
                 channel.send_method_call_response(
-                    msg.response_handle.unwrap(),
+                    &mut msg.response_handle,
                     MethodCallResult::Ok(Value::Null),
                 );
 
@@ -88,7 +88,7 @@ impl Plugin for MsgStreamPlugin {
                 // drop the trigger to stop stream
                 self.stop_trigger.take();
                 channel.send_method_call_response(
-                    msg.response_handle.unwrap(),
+                    &mut msg.response_handle,
                     MethodCallResult::Ok(Value::Null),
                 );
             }

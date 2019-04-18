@@ -39,13 +39,13 @@ impl Plugin for DialogPlugin {
         channel.init(registry);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, _window: &mut Window) {
+    fn handle(&mut self, msg: &mut PlatformMessage, _window: &mut Window) {
         let channel = self.channel.lock().unwrap();
         let decoded = channel.decode_method_call(msg).unwrap();
         match decoded.method.as_str() {
             "open_file_dialog" => {
                 let c = self.channel.clone();
-                let handle = msg.response_handle.unwrap();
+                let mut handle = msg.response_handle.take();
                 std::thread::spawn(move || {
                     let s = serde_json::to_string(&decoded.args);
                     let params: serde_json::Result<OpenFileDialogParams> =
@@ -53,7 +53,7 @@ impl Plugin for DialogPlugin {
                     if params.is_err() {
                         let channel = c.lock().unwrap();
                         channel.send_method_call_response(
-                            handle,
+                            &mut handle,
                             MethodCallResult::Err {
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
@@ -85,12 +85,12 @@ impl Plugin for DialogPlugin {
                         None => "",
                     };
                     let channel = c.lock().unwrap();
-                    channel.send_method_call_response(handle, MethodCallResult::Ok(json!(s)));
+                    channel.send_method_call_response(&mut handle, MethodCallResult::Ok(json!(s)));
                 });
             }
             "message_box_ok" => {
                 let c = self.channel.clone();
-                let handle = msg.response_handle.unwrap();
+                let mut handle = msg.response_handle.take();
                 std::thread::spawn(move || {
                     let s = serde_json::to_string(&decoded.args);
                     let params: serde_json::Result<MessageBoxOkParams> =
@@ -98,7 +98,7 @@ impl Plugin for DialogPlugin {
                     if params.is_err() {
                         let channel = c.lock().unwrap();
                         channel.send_method_call_response(
-                            handle,
+                            &mut handle,
                             MethodCallResult::Err {
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
@@ -124,7 +124,7 @@ impl Plugin for DialogPlugin {
 
                     let channel = c.lock().unwrap();
                     channel.send_method_call_response(
-                        handle,
+                        &mut handle,
                         MethodCallResult::Ok(json!(Value::Null)),
                     );
                 });

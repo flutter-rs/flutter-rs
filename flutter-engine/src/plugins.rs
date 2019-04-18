@@ -15,7 +15,7 @@ use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
-    rc::Weak,
+    sync::Weak,
 };
 
 use log::{trace, warn};
@@ -101,6 +101,6 @@ pub trait PluginChannel {
 }
 
 pub trait Plugin {
-    fn init_channel(&mut self, registar: Weak<RuntimeData>);
+    fn init_channel(&mut self, registrar: Weak<RuntimeData>);
     fn handle(&mut self, message: &PlatformMessage, window: &mut glfw::Window);
 }

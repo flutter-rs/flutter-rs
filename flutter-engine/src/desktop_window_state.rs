@@ -3,7 +3,7 @@ use crate::{
     plugins::PluginRegistrar,
 };
 
-use std::{rc::Rc, sync::mpsc::Receiver};
+use std::sync::{mpsc::Receiver, Arc};
 
 use log::info;
 
@@ -20,7 +20,7 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub struct DesktopWindowState {
-    pub runtime_data: Rc<RuntimeData>,
+    pub runtime_data: Arc<RuntimeData>,
     pointer_currently_added: bool,
     monitor_screen_coordinates_per_inch: f64,
     window_pixels_per_screen_coordinate: f64,
@@ -30,7 +30,7 @@ pub struct DesktopWindowState {
 pub struct RuntimeData {
     window: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
-    pub engine: Rc<FlutterEngine>,
+    pub engine: Arc<FlutterEngine>,
 }
 
 impl RuntimeData {
@@ -46,10 +46,10 @@ impl DesktopWindowState {
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
-        let runtime_data = Rc::new(RuntimeData {
+        let runtime_data = Arc::new(RuntimeData {
             window: window_ref,
             window_event_receiver,
-            engine: Rc::new(engine),
+            engine: Arc::new(engine),
         });
         let monitor_screen_coordinates_per_inch =
             Self::get_screen_coordinates_per_inch(&mut runtime_data.window().glfw);
@@ -57,7 +57,7 @@ impl DesktopWindowState {
             pointer_currently_added: false,
             monitor_screen_coordinates_per_inch,
             window_pixels_per_screen_coordinate: 0.0,
-            plugin_registrar: PluginRegistrar::new(Rc::downgrade(&runtime_data)),
+            plugin_registrar: PluginRegistrar::new(Arc::downgrade(&runtime_data)),
             runtime_data,
         }
     }

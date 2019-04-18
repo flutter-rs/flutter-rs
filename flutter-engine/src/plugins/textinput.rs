@@ -13,7 +13,7 @@ use crate::{
     utils::{OwnedStringUtils, StringUtils},
 };
 
-use std::{cell::RefCell, rc::Weak};
+use std::{cell::RefCell, sync::Weak};
 
 use glfw::Modifiers;
 use log::{error, warn};

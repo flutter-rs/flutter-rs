@@ -15,6 +15,9 @@ pub struct PlatformMessageResponseHandle {
     handle: *const FlutterPlatformMessageResponseHandle,
 }
 
+unsafe impl Send for PlatformMessageResponseHandle {}
+unsafe impl Sync for PlatformMessageResponseHandle {}
+
 impl Into<PlatformMessageResponseHandle> for *const FlutterPlatformMessageResponseHandle {
     fn into(self) -> PlatformMessageResponseHandle {
         PlatformMessageResponseHandle { handle: self }
@@ -118,6 +121,9 @@ impl From<FlutterPointerSignalKind> for flutter_engine_sys::FlutterPointerSignal
 pub struct FlutterEngine {
     engine_ptr: flutter_engine_sys::FlutterEngine,
 }
+
+unsafe impl Send for FlutterEngine {}
+unsafe impl Sync for FlutterEngine {}
 
 impl FlutterEngine {
     pub fn new(engine_ptr: flutter_engine_sys::FlutterEngine) -> Option<Self> {

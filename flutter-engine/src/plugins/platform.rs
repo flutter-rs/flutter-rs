@@ -8,7 +8,7 @@ use crate::{
     desktop_window_state::RuntimeData,
 };
 
-use std::rc::Weak;
+use std::sync::Weak;
 
 use log::{error, warn};
 use serde_json::{json, Value};

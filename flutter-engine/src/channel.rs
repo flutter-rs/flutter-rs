@@ -5,12 +5,12 @@
 use crate::{
     codec::{json_codec, standard_codec, MethodCall, MethodCallResult, MethodCodec},
     desktop_window_state::RuntimeData,
-    ffi::{PlatformMessage, PlatformMessageResponseHandle},
+    ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle},
 };
 
 use std::{
     borrow::Cow,
-    rc::{Rc, Weak},
+    sync::{Arc, Weak},
 };
 
 use log::error;
@@ -20,7 +20,7 @@ pub trait Channel {
     type Codec: MethodCodec<R = Self::R>;
 
     fn name(&self) -> &str;
-    fn runtime_data(&self) -> Option<Rc<RuntimeData>>;
+    fn engine(&self) -> Option<Arc<FlutterEngine>>;
     fn init(&mut self, runtime_data: Weak<RuntimeData>);
 
     /// Invoke a flutter method using this channel
@@ -84,10 +84,8 @@ pub trait Channel {
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
     fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(runtime_data) = self.runtime_data() {
-            runtime_data
-                .engine
-                .send_platform_message_response(response_handle, buf);
+        if let Some(engine) = self.engine() {
+            engine.send_platform_message_response(response_handle, buf);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -95,8 +93,8 @@ pub trait Channel {
 
     /// Send a platform message over this channel. This is a low level method.
     fn send_platform_message(&self, message: PlatformMessage) {
-        if let Some(runtime_data) = self.runtime_data() {
-            runtime_data.engine.send_platform_message(message);
+        if let Some(engine) = self.engine() {
+            engine.send_platform_message(message);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -105,14 +103,14 @@ pub trait Channel {
 
 pub struct JsonMethodChannel {
     name: String,
-    runtime_data: Weak<RuntimeData>,
+    engine: Weak<FlutterEngine>,
 }
 
 impl JsonMethodChannel {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_owned(),
-            runtime_data: Weak::new(),
+            engine: Weak::new(),
         }
     }
 }
@@ -125,28 +123,30 @@ impl Channel for JsonMethodChannel {
         &self.name
     }
 
-    fn runtime_data(&self) -> Option<Rc<RuntimeData>> {
-        self.runtime_data.upgrade()
+    fn engine(&self) -> Option<Arc<FlutterEngine>> {
+        self.engine.upgrade()
     }
 
     fn init(&mut self, runtime_data: Weak<RuntimeData>) {
-        if self.runtime_data.upgrade().is_some() {
+        if self.engine.upgrade().is_some() {
             error!("Channel {} was already initialized", self.name);
         }
-        self.runtime_data = runtime_data
+        if let Some(runtime_data) = runtime_data.upgrade() {
+            self.engine = Arc::downgrade(&runtime_data.engine);
+        }
     }
 }
 
 pub struct StandardMethodChannel {
     name: String,
-    runtime_data: Weak<RuntimeData>,
+    engine: Weak<FlutterEngine>,
 }
 
 impl StandardMethodChannel {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_owned(),
-            runtime_data: Weak::new(),
+            engine: Weak::new(),
         }
     }
 }
@@ -159,14 +159,16 @@ impl Channel for StandardMethodChannel {
         &self.name
     }
 
-    fn runtime_data(&self) -> Option<Rc<RuntimeData>> {
-        self.runtime_data.upgrade()
+    fn engine(&self) -> Option<Arc<FlutterEngine>> {
+        self.engine.upgrade()
     }
 
     fn init(&mut self, runtime_data: Weak<RuntimeData>) {
-        if self.runtime_data.upgrade().is_some() {
+        if self.engine.upgrade().is_some() {
             error!("Channel {} was already initialized", self.name);
         }
-        self.runtime_data = runtime_data
+        if let Some(runtime_data) = runtime_data.upgrade() {
+            self.engine = Arc::downgrade(&runtime_data.engine);
+        }
     }
 }

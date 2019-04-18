@@ -4,6 +4,7 @@
 mod calc_channel;
 mod dialog;
 //mod msg_stream_channel;
+mod window;
 
 use fern::colors::{Color, ColoredLevelConfig};
 use log::info;
@@ -89,7 +90,8 @@ fn main() {
         window_state
             .plugin_registrar
             .add_plugin(calc_channel::CalcPlugin::new())
-            .add_plugin(dialog::DialogPlugin::new());
+            .add_plugin(dialog::DialogPlugin::new())
+            .add_plugin(window::WindowPlugin::new());
     });
     engine.run_window_loop(None);
 }

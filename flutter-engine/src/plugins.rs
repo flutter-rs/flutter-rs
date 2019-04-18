@@ -15,6 +15,7 @@ use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
+    ops::Deref,
     sync::Weak,
 };
 
@@ -49,19 +50,13 @@ impl PluginRegistrar {
         self
     }
 
-    pub fn handle(&mut self, message: PlatformMessage) {
-        let mut message_handled = false;
+    pub fn handle(&mut self, mut message: PlatformMessage) {
         let runtime_data = self.runtime_data.upgrade().unwrap();
         let window = runtime_data.window();
-        for (channel, plugin) in &mut self.plugins {
-            if channel == &message.channel {
-                trace!("Processing message from channel: {}", channel);
-                plugin.handle(&message, window);
-                message_handled = true;
-                break;
-            }
-        }
-        if !message_handled {
+        if let Some(plugin) = self.plugins.get_mut(message.channel.deref()) {
+            trace!("Processing message from channel: {}", message.channel);
+            plugin.handle(&mut message, window);
+        } else {
             warn!(
                 "No plugin registered to handle messages from channel: {}",
                 &message.channel
@@ -102,5 +97,5 @@ pub trait PluginChannel {
 
 pub trait Plugin {
     fn init_channel(&mut self, registrar: Weak<RuntimeData>);
-    fn handle(&mut self, message: &PlatformMessage, window: &mut glfw::Window);
+    fn handle(&mut self, message: &mut PlatformMessage, window: &mut glfw::Window);
 }

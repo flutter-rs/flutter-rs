@@ -8,9 +8,9 @@ use std::{
 };
 
 use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
-use log::trace;
+use log::{error, trace};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct PlatformMessageResponseHandle {
     handle: *const FlutterPlatformMessageResponseHandle,
 }
@@ -25,8 +25,18 @@ impl Into<PlatformMessageResponseHandle> for *const FlutterPlatformMessageRespon
 }
 
 impl From<PlatformMessageResponseHandle> for *const FlutterPlatformMessageResponseHandle {
-    fn from(handle: PlatformMessageResponseHandle) -> Self {
-        handle.handle
+    fn from(mut handle: PlatformMessageResponseHandle) -> Self {
+        let ptr = handle.handle;
+        handle.handle = ptr::null();
+        ptr
+    }
+}
+
+impl Drop for PlatformMessageResponseHandle {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            error!("A message response handle has been dropped without sending a response! This WILL lead to leaking memory.");
+        }
     }
 }
 

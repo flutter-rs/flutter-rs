@@ -59,7 +59,7 @@ impl Plugin for NavigationPlugin {
         self.channel.init(runtime_data);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, _: &mut glfw::Window) {
+    fn handle(&mut self, msg: &mut PlatformMessage, _: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg).unwrap();
 
         info!(

@@ -38,7 +38,7 @@ impl Plugin for PlatformPlugin {
         self.channel.init(runtime_data);
     }
 
-    fn handle(&mut self, msg: &PlatformMessage, window: &mut glfw::Window) {
+    fn handle(&mut self, msg: &mut PlatformMessage, window: &mut glfw::Window) {
         let decoded = self.channel.decode_method_call(msg).unwrap();
         match decoded.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
@@ -67,7 +67,7 @@ impl Plugin for PlatformPlugin {
                 if let Value::String(mime) = &decoded.args {
                     match mime.as_str() {
                         "text/plain" => self.channel.send_method_call_response(
-                            msg.response_handle.unwrap(),
+                            &mut msg.response_handle,
                             MethodCallResult::Ok(json!({
                                 "text": window.get_clipboard_string(),
                             })),

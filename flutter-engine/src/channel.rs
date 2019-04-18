@@ -65,18 +65,20 @@ pub trait Channel {
     /// Send a method call response
     fn send_method_call_response(
         &self,
-        response_handle: PlatformMessageResponseHandle,
+        response_handle: &mut Option<PlatformMessageResponseHandle>,
         response: MethodCallResult<Self::R>,
     ) {
-        let buf = match response {
-            MethodCallResult::Ok(data) => Self::Codec::encode_success_envelope(&data),
-            MethodCallResult::Err {
-                code,
-                message,
-                details,
-            } => Self::Codec::encode_error_envelope(&code, &message, &details),
-        };
-        self.send_response(response_handle, &buf);
+        if let Some(response_handle) = response_handle.take() {
+            let buf = match response {
+                MethodCallResult::Ok(data) => Self::Codec::encode_success_envelope(&data),
+                MethodCallResult::Err {
+                    code,
+                    message,
+                    details,
+                } => Self::Codec::encode_error_envelope(&code, &message, &details),
+            };
+            self.send_response(response_handle, &buf);
+        }
     }
 
     /// When flutter call a method using MethodChannel,

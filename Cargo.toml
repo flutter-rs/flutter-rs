@@ -4,3 +4,7 @@ members = [
     "flutter-engine-sys",
     "flutter-download",
 ]
+
+exclude = [
+    "flutter-app-demo/rust"
+]

@@ -225,13 +225,6 @@ impl FlutterDesktop {
         mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
     ) {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
-            #[cfg(target_os = "linux")]
-            {
-                unsafe {
-                    x11::xlib::XInitThreads();
-                }
-            }
-
             while !window_state.runtime_data.window().should_close() {
                 self.glfw.poll_events();
                 self.glfw.wait_events_timeout(1.0 / 60.0);

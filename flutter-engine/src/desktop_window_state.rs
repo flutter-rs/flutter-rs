@@ -7,7 +7,7 @@ use std::sync::{mpsc::Receiver, Arc};
 
 use log::{debug, info};
 
-const SCROLL_SPEED: f64 = 20.0;
+const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]

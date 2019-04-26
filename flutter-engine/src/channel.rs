@@ -3,7 +3,8 @@
 //! and JsonMethodChannel using json encoding.
 
 pub use self::{
-    json_method_channel::JsonMethodChannel, standard_method_channel::StandardMethodChannel,
+    event_channel::EventChannel, json_method_channel::JsonMethodChannel,
+    standard_method_channel::StandardMethodChannel,
 };
 use crate::{
     codec::{MethodCall, MethodCallResult, MethodCodec},
@@ -18,6 +19,7 @@ use std::{
 
 use log::error;
 
+mod event_channel;
 mod json_method_channel;
 mod standard_method_channel;
 

@@ -5,9 +5,8 @@ use crate::{
 
 use std::sync::{mpsc::Receiver, Arc};
 
-use log::info;
+use log::{debug, info};
 
-const DP_PER_INCH: f64 = 160.0;
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
@@ -22,7 +21,6 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 pub struct DesktopWindowState {
     pub runtime_data: Arc<RuntimeData>,
     pointer_currently_added: bool,
-    monitor_screen_coordinates_per_inch: f64,
     window_pixels_per_screen_coordinate: f64,
     pub plugin_registrar: PluginRegistrar,
 }
@@ -51,41 +49,29 @@ impl DesktopWindowState {
             window_event_receiver,
             engine: Arc::new(engine),
         });
-        let monitor_screen_coordinates_per_inch =
-            Self::get_screen_coordinates_per_inch(&mut runtime_data.window().glfw);
         Self {
             pointer_currently_added: false,
-            monitor_screen_coordinates_per_inch,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&runtime_data)),
             runtime_data,
         }
     }
 
-    pub fn send_framebuffer_size_change(&mut self, framebuffer_size: (i32, i32)) {
-        let window_size = self.runtime_data.window().get_size();
+    pub fn send_scale_or_size_change(&mut self) {
+        let window = self.runtime_data.window();
+        let window_size = window.get_size();
+        let framebuffer_size = window.get_framebuffer_size();
+        let scale = window.get_content_scale();
         self.window_pixels_per_screen_coordinate = framebuffer_size.0 as f64 / window_size.0 as f64;
-        let dpi =
-            self.window_pixels_per_screen_coordinate * self.monitor_screen_coordinates_per_inch;
-        let pixel_ratio = (dpi / DP_PER_INCH).max(1.0);
+        debug!(
+            "Setting framebuffer size to {:?}, scale to {}",
+            framebuffer_size, scale.0
+        );
         self.runtime_data.engine.send_window_metrics_event(
             framebuffer_size.0,
             framebuffer_size.1,
-            pixel_ratio,
+            scale.0 as f64,
         );
-    }
-
-    fn get_screen_coordinates_per_inch(glfw: &mut glfw::Glfw) -> f64 {
-        glfw.with_primary_monitor(|glfw, monitor| match monitor {
-            None => DP_PER_INCH,
-            Some(monitor) => match monitor.get_video_mode() {
-                None => DP_PER_INCH,
-                Some(video_mode) => {
-                    let (width, _) = monitor.get_physical_size();
-                    video_mode.width as f64 / (width as f64 / 25.4)
-                }
-            },
-        })
     }
 
     fn send_pointer_event(
@@ -198,8 +184,11 @@ impl DesktopWindowState {
                     -scroll_delta_y * SCROLL_SPEED,
                 );
             }
-            glfw::WindowEvent::FramebufferSize(width, height) => {
-                self.send_framebuffer_size_change((width, height));
+            glfw::WindowEvent::FramebufferSize(_, _) => {
+                self.send_scale_or_size_change();
+            }
+            glfw::WindowEvent::ContentScale(_, _) => {
+                self.send_scale_or_size_change();
             }
             glfw::WindowEvent::Char(char) => {
                 self.plugin_registrar

@@ -117,9 +117,8 @@ impl FlutterDesktop {
             DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine));
 
         if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
-            let framebuffer_size = window_state.runtime_data.window().get_framebuffer_size();
             // send initial size callback to engine
-            window_state.send_framebuffer_size_change(framebuffer_size);
+            window_state.send_scale_or_size_change();
 
             window_state.plugin_registrar.add_system_plugins();
 
@@ -133,6 +132,7 @@ impl FlutterDesktop {
             window.set_mouse_button_polling(true);
             window.set_scroll_polling(true);
             window.set_size_polling(true);
+            window.set_content_scale_polling(true);
         }
 
         Ok(())

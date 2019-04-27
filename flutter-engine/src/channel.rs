@@ -2,8 +2,12 @@
 //! It contains two implementations StandardMethodChannel using binary encoding
 //! and JsonMethodChannel using json encoding.
 
+pub use self::{
+    event_channel::EventChannel, json_method_channel::JsonMethodChannel,
+    standard_method_channel::StandardMethodChannel,
+};
 use crate::{
-    codec::{json_codec, standard_codec, MethodCall, MethodCallResult, MethodCodec},
+    codec::{MethodCall, MethodCallResult, MethodCodec},
     desktop_window_state::RuntimeData,
     ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle},
 };
@@ -14,6 +18,10 @@ use std::{
 };
 
 use log::error;
+
+mod event_channel;
+mod json_method_channel;
+mod standard_method_channel;
 
 pub trait Channel {
     type R;
@@ -100,78 +108,6 @@ pub trait Channel {
             engine.send_platform_message(message);
         } else {
             error!("Channel {} was not initialized", self.name());
-        }
-    }
-}
-
-pub struct JsonMethodChannel {
-    name: String,
-    engine: Weak<FlutterEngine>,
-}
-
-impl JsonMethodChannel {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            engine: Weak::new(),
-        }
-    }
-}
-
-impl Channel for JsonMethodChannel {
-    type R = json_codec::Value;
-    type Codec = json_codec::JsonMethodCodec;
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn engine(&self) -> Option<Arc<FlutterEngine>> {
-        self.engine.upgrade()
-    }
-
-    fn init(&mut self, runtime_data: Weak<RuntimeData>) {
-        if self.engine.upgrade().is_some() {
-            error!("Channel {} was already initialized", self.name);
-        }
-        if let Some(runtime_data) = runtime_data.upgrade() {
-            self.engine = Arc::downgrade(&runtime_data.engine);
-        }
-    }
-}
-
-pub struct StandardMethodChannel {
-    name: String,
-    engine: Weak<FlutterEngine>,
-}
-
-impl StandardMethodChannel {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            engine: Weak::new(),
-        }
-    }
-}
-
-impl Channel for StandardMethodChannel {
-    type R = standard_codec::Value;
-    type Codec = standard_codec::StandardMethodCodec;
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn engine(&self) -> Option<Arc<FlutterEngine>> {
-        self.engine.upgrade()
-    }
-
-    fn init(&mut self, runtime_data: Weak<RuntimeData>) {
-        if self.engine.upgrade().is_some() {
-            error!("Channel {} was already initialized", self.name);
-        }
-        if let Some(runtime_data) = runtime_data.upgrade() {
-            self.engine = Arc::downgrade(&runtime_data.engine);
         }
     }
 }

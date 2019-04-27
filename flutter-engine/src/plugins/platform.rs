@@ -1,7 +1,7 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
 
-use super::{PlatformMessage, Plugin, PluginChannel};
+use super::{PlatformMessage, Plugin, PluginName};
 use crate::{
     channel::{Channel, JsonMethodChannel},
     codec::MethodCallResult,
@@ -13,6 +13,7 @@ use std::sync::Weak;
 use log::{error, warn};
 use serde_json::{json, Value};
 
+pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
 pub struct PlatformPlugin {
@@ -27,9 +28,9 @@ impl PlatformPlugin {
     }
 }
 
-impl PluginChannel for PlatformPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl PluginName for PlatformPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
     }
 }
 

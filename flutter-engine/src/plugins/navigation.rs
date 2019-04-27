@@ -1,7 +1,7 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use super::{PlatformMessage, Plugin, PluginChannel};
+use super::{PlatformMessage, Plugin, PluginName};
 use crate::{
     channel::{Channel, JsonMethodChannel},
     codec::{MethodCall, MethodCallResult},
@@ -13,15 +13,16 @@ use std::sync::Weak;
 use log::info;
 use serde_json::{json, Value};
 
+pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
 pub struct NavigationPlugin {
     channel: JsonMethodChannel,
 }
 
-impl PluginChannel for NavigationPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl PluginName for NavigationPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
     }
 }
 

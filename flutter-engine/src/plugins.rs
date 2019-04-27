@@ -42,11 +42,11 @@ impl PluginRegistrar {
 
     pub fn add_plugin<P>(&mut self, mut plugin: P) -> &mut Self
     where
-        P: Plugin + PluginChannel + 'static,
+        P: Plugin + PluginName + 'static,
     {
         plugin.init_channel(Weak::clone(&self.runtime_data));
         self.plugins
-            .insert(P::channel_name().to_owned(), Box::new(plugin));
+            .insert(P::plugin_name().to_owned(), Box::new(plugin));
         self
     }
 
@@ -76,9 +76,9 @@ impl PluginRegistrar {
     pub fn with_plugin<F, P>(&self, mut f: F)
     where
         F: FnMut(&P),
-        P: Plugin + PluginChannel + 'static,
+        P: Plugin + PluginName + 'static,
     {
-        if let Some(b) = self.plugins.get(P::channel_name()) {
+        if let Some(b) = self.plugins.get(P::plugin_name()) {
             unsafe {
                 let plugin: &Box<P> = std::mem::transmute(b);
                 f(plugin);
@@ -89,9 +89,9 @@ impl PluginRegistrar {
     pub fn with_plugin_mut<F, P>(&mut self, mut f: F)
     where
         F: FnMut(&mut P),
-        P: Plugin + PluginChannel + 'static,
+        P: Plugin + PluginName + 'static,
     {
-        if let Some(b) = self.plugins.get_mut(P::channel_name()) {
+        if let Some(b) = self.plugins.get_mut(P::plugin_name()) {
             unsafe {
                 let plugin: &mut Box<P> = std::mem::transmute(b);
                 f(plugin);
@@ -100,8 +100,8 @@ impl PluginRegistrar {
     }
 }
 
-pub trait PluginChannel {
-    fn channel_name() -> &'static str;
+pub trait PluginName {
+    fn plugin_name() -> &'static str;
 }
 
 pub trait Plugin {

@@ -9,7 +9,7 @@ use crate::{
     codec::MethodCall,
     codec::MethodCallResult,
     desktop_window_state::RuntimeData,
-    plugins::{PlatformMessage, Plugin, PluginChannel},
+    plugins::{PlatformMessage, Plugin, PluginName},
     utils::{OwnedStringUtils, StringUtils},
 };
 
@@ -19,6 +19,7 @@ use glfw::Modifiers;
 use log::{error, warn};
 use serde_json::{json, Value};
 
+pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
 pub struct TextInputPlugin {
@@ -27,9 +28,9 @@ pub struct TextInputPlugin {
     channel: JsonMethodChannel,
 }
 
-impl PluginChannel for TextInputPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl PluginName for TextInputPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
     }
 }
 

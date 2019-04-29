@@ -8,6 +8,7 @@ use log::info;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
+#[derive(Default)]
 pub struct NavigationPlugin {
     channel: Weak<JsonMethodChannel>,
 }

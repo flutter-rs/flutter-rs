@@ -19,39 +19,6 @@ const VALUE_FLOAT64LIST: u8 = 11;
 const VALUE_LIST: u8 = 12;
 const VALUE_MAP: u8 = 13;
 
-//impl Value {
-//    fn type_id(&self) -> u8 {
-//        match self {
-//            Value::Null => VALUE_NULL,
-//            Value::Boolean(v) => {
-//                if *v {
-//                    VALUE_TRUE
-//                } else {
-//                    VALUE_FALSE
-//                }
-//            }
-//            Value::I32(_) => VALUE_INT32,
-//            Value::I64(_) => VALUE_INT64,
-//            Value::LargeInt => VALUE_LARGEINT,
-//            Value::F64(_) => VALUE_FLOAT64,
-//            Value::String(_) => VALUE_STRING,
-//            Value::U8List(_) => VALUE_UINT8LIST,
-//            Value::I32List(_) => VALUE_INT32LIST,
-//            Value::I64List(_) => VALUE_INT64LIST,
-//            Value::F64List(_) => VALUE_FLOAT64LIST,
-//            Value::List(_) => VALUE_LIST,
-//            Value::Map(_) => VALUE_MAP,
-//        }
-//    }
-//    fn as_string(self) -> Option<String> {
-//        if let Value::String(s) = self {
-//            Some(s)
-//        } else {
-//            None
-//        }
-//    }
-//}
-
 #[derive(Debug)]
 enum DecodeError {
     Invalid,

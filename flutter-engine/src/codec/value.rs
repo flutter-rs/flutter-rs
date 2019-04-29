@@ -3,7 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de, ser, Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {

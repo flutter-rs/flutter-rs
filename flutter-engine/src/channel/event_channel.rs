@@ -53,7 +53,7 @@ impl Channel for EventChannel {
         &CODEC
     }
 
-    fn handle_method(&self, msg: &mut PlatformMessage, window: &mut Window) {
+    fn handle_method(&self, msg: &mut PlatformMessage, _: &mut Window) {
         if let Some(handler) = self.event_handler.upgrade() {
             let mut handler = handler.write().unwrap();
             let decoded = self.decode_method_call(msg).unwrap();

@@ -18,11 +18,8 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use log::{trace, warn};
-
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
-    runtime_data: Weak<RuntimeData>,
     channel_registrar: ChannelRegistrar,
 }
 
@@ -30,8 +27,7 @@ impl PluginRegistrar {
     pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
         Self {
             plugins: HashMap::new(),
-            channel_registrar: ChannelRegistrar::new(runtime_data.clone()),
-            runtime_data,
+            channel_registrar: ChannelRegistrar::new(runtime_data),
         }
     }
 
@@ -54,7 +50,7 @@ impl PluginRegistrar {
         self
     }
 
-    pub fn handle(&mut self, mut message: PlatformMessage) {
+    pub fn handle(&mut self, message: PlatformMessage) {
         self.channel_registrar.handle(message);
     }
 

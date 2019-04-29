@@ -5,19 +5,12 @@ mod value;
 
 pub use self::value::Value;
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MethodCall {
     pub method: String,
     pub args: Value,
-}
-
-pub enum CodecTypes {
-    JsonMessageCodec,
-    StandardMessageCodec,
 }
 
 pub enum MethodCallResult {

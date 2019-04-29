@@ -3,11 +3,12 @@
 
 use super::prelude::*;
 
-use log::{error, warn};
+use log::error;
 
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
+#[derive(Default)]
 pub struct PlatformPlugin {
     channel: Weak<JsonMethodChannel>,
 }
@@ -44,11 +45,6 @@ impl MethodCallHandler for PlatformPlugin {
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError> {
-        let channel = if let Some(channel) = self.channel.upgrade() {
-            channel
-        } else {
-            return Err(MethodCallError::ChannelClosed);
-        };
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args = SetApplicationSwitcherDescriptionArgs::try_from(call.args);

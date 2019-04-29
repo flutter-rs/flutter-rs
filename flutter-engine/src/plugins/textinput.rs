@@ -11,6 +11,7 @@ use std::cell::RefCell;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
+#[derive(Default)]
 pub struct TextInputPlugin {
     client_id: Option<i64>,
     editing_state: RefCell<Option<TextEditingState>>,
@@ -78,12 +79,12 @@ impl MethodCallHandler for TextInputPlugin {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        window: &mut Window,
+        _: &mut Window,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::List(v) = &call.args {
-                    if v.len() > 0 {
+                    if !v.is_empty() {
                         if let Value::I64(n) = v[0] {
                             self.client_id = Some(n);
                             return Ok(Value::Null);
@@ -108,7 +109,7 @@ impl MethodCallHandler for TextInputPlugin {
             }
             "TextInput.show" => Ok(Value::Null),
             "TextInput.hide" => Ok(Value::Null),
-            method => Err(MethodCallError::NotImplemented),
+            _ => Err(MethodCallError::NotImplemented),
         }
     }
 }

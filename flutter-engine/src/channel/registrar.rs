@@ -2,7 +2,6 @@ use super::Channel;
 use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
 use std::{
-    any::Any,
     collections::HashMap,
     ops::Deref,
     sync::{Arc, Weak},

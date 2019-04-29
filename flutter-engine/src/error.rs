@@ -1,7 +1,5 @@
 use std::{error, fmt};
 
-use log::{error, warn};
-
 use crate::codec::{MethodCallResult, Value};
 
 #[derive(Debug)]

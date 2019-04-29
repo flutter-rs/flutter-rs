@@ -1,21 +1,46 @@
-use crate::utils::{OwnedStringUtils, StringUtils};
+use crate::{
+    codec::Value,
+    utils::{OwnedStringUtils, StringUtils},
+};
 
-use std::ops::Range;
+use std::{convert::TryFrom, ops::Range};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
-#[derive(Serialize, Deserialize, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct TextEditingState {
-    composing_base: i64,
-    composing_extent: i64,
-    selection_affinity: String,
-    selection_base: i64,
-    selection_extent: i64,
-    selection_is_directional: bool,
-    text: String,
-}
+method_call_args!(
+    #[derive(Serialize, Deserialize, Default, Debug)]
+    #[serde(rename_all = "camelCase")]
+    @pub struct TextEditingState {
+        composing_base: i64 = match map_value("composingBase") {
+            Value::I64(i) => i,
+            _ => -1,
+        },
+        composing_extent: i64 = match map_value("composingExtent") {
+            Value::I64(i) => i,
+            _ => -1,
+        },
+        selection_affinity: String = match map_value("selectionAffinity") {
+            Value::String(s) => s,
+            _ => "".into(),
+        },
+        selection_base: i64 = match map_value("selectionBase") {
+            Value::I64(i) => i,
+            _ => -1,
+        },
+        selection_extent: i64 = match map_value("selectionExtent") {
+            Value::I64(i) => i,
+            _ => -1,
+        },
+        selection_is_directional: bool = match map_value("selectionIsDirectional") {
+            Value::Boolean(b) => b,
+            _ => false,
+        },
+        text: String = match map_value("text") {
+            Value::String(s) => s,
+            _ => "".into(),
+        },
+    }
+);
 
 enum Direction {
     Left,
@@ -23,46 +48,8 @@ enum Direction {
 }
 
 impl TextEditingState {
-    pub fn from(v: &Value) -> Option<Self> {
-        if let Some(m) = v.as_object() {
-            Some(Self {
-                composing_base: m
-                    .get("composingBase")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                composing_extent: m
-                    .get("composingExtent")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_affinity: String::from(
-                    m.get("selectionAffinity")
-                        .unwrap_or(&json!(""))
-                        .as_str()
-                        .unwrap(),
-                ),
-                selection_base: m
-                    .get("selectionBase")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_extent: m
-                    .get("selectionExtent")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_is_directional: m
-                    .get("selectionIsDirectional")
-                    .unwrap_or(&json!(false))
-                    .as_bool()
-                    .unwrap(),
-                text: String::from(m.get("text").unwrap_or(&json!("")).as_str().unwrap()),
-                ..Default::default()
-            })
-        } else {
-            None
-        }
+    pub fn from(v: Value) -> Option<Self> {
+        Self::try_from(v).ok()
     }
 
     fn get_selection_range(&self) -> Range<usize> {

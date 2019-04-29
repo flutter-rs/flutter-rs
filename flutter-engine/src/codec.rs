@@ -1,12 +1,18 @@
 pub mod json_codec;
 pub mod standard_codec;
+#[macro_use]
+mod value;
+
+pub use self::value::Value;
+
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct MethodCall<T> {
+pub struct MethodCall {
     pub method: String,
-    pub args: T,
+    pub args: Value,
 }
 
 pub enum CodecTypes {
@@ -14,25 +20,23 @@ pub enum CodecTypes {
     StandardMessageCodec,
 }
 
-pub enum MethodCallResult<R> {
-    Ok(R),
+pub enum MethodCallResult {
+    Ok(Value),
     Err {
         code: String,
         message: String,
-        details: R,
+        details: Value,
     },
     NotImplemented,
 }
 
 pub trait MethodCodec {
-    type R;
-
     /// Methods for handling dart call
-    fn decode_method_call(buf: &[u8]) -> Option<MethodCall<Self::R>>;
-    fn encode_success_envelope(v: &Self::R) -> Vec<u8>;
-    fn encode_error_envelope(code: &str, message: &str, details: &Self::R) -> Vec<u8>;
+    fn decode_method_call(&self, buf: &[u8]) -> Option<MethodCall>;
+    fn encode_success_envelope(&self, v: &Value) -> Vec<u8>;
+    fn encode_error_envelope(&self, code: &str, message: &str, details: &Value) -> Vec<u8>;
 
     /// Methods for calling into dart
-    fn encode_method_call(v: &MethodCall<Self::R>) -> Vec<u8>;
-    fn decode_envelope(buf: &[u8]) -> Option<MethodCallResult<Self::R>>;
+    fn encode_method_call(&self, v: &MethodCall) -> Vec<u8>;
+    fn decode_envelope(&self, buf: &[u8]) -> Option<MethodCallResult>;
 }

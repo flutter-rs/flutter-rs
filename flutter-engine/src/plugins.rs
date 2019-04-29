@@ -1,35 +1,36 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-mod platform;
-mod textinput;
-//pub mod dialog;
-//pub mod window;
 mod navigation;
+mod platform;
+pub mod prelude;
+mod textinput;
 
 pub use self::{
     navigation::NavigationPlugin, platform::PlatformPlugin, textinput::TextInputPlugin,
 };
 
-use crate::{desktop_window_state::RuntimeData, ffi::PlatformMessage};
+use crate::{channel::ChannelRegistrar, desktop_window_state::RuntimeData, ffi::PlatformMessage};
 
 use std::{
-    borrow::{Borrow, BorrowMut},
+    any::Any,
     collections::HashMap,
-    ops::Deref,
-    sync::Weak,
+    ops::{Deref, DerefMut},
+    sync::{Arc, RwLock, Weak},
 };
 
 use log::{trace, warn};
 
 pub struct PluginRegistrar {
-    plugins: HashMap<String, Box<dyn Plugin>>,
+    plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
     runtime_data: Weak<RuntimeData>,
+    channel_registrar: ChannelRegistrar,
 }
 
 impl PluginRegistrar {
     pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
         Self {
             plugins: HashMap::new(),
+            channel_registrar: ChannelRegistrar::new(runtime_data.clone()),
             runtime_data,
         }
     }
@@ -40,71 +41,49 @@ impl PluginRegistrar {
             .add_plugin(navigation::NavigationPlugin::new());
     }
 
-    pub fn add_plugin<P>(&mut self, mut plugin: P) -> &mut Self
+    pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self
     where
-        P: Plugin + PluginName + 'static,
+        P: Plugin + 'static,
     {
-        plugin.init_channel(Weak::clone(&self.runtime_data));
-        self.plugins
-            .insert(P::plugin_name().to_owned(), Box::new(plugin));
+        let arc = Arc::new(RwLock::new(plugin));
+        {
+            let mut plugin = arc.write().unwrap();
+            plugin.init_channels(Arc::downgrade(&arc), &mut self.channel_registrar);
+        }
+        self.plugins.insert(P::plugin_name().to_owned(), arc);
         self
     }
 
     pub fn handle(&mut self, mut message: PlatformMessage) {
-        let runtime_data = self.runtime_data.upgrade().unwrap();
-        let window = runtime_data.window();
-        if let Some(plugin) = self.plugins.get_mut(message.channel.deref()) {
-            trace!("Processing message from channel: {}", message.channel);
-            plugin.handle(&mut message, window);
-        } else {
-            warn!(
-                "No plugin registered to handle messages from channel: {}",
-                &message.channel
-            );
-        }
-        if let Some(handle) = message.response_handle.take() {
-            warn!(
-                "No response for channel {}, sending default empty response",
-                message.channel
-            );
-            runtime_data
-                .engine
-                .send_platform_message_response(handle, &[]);
-        }
+        self.channel_registrar.handle(message);
     }
 
     pub fn with_plugin<F, P>(&self, mut f: F)
     where
         F: FnMut(&P),
-        P: Plugin + PluginName + 'static,
+        P: Plugin + 'static,
     {
-        if let Some(b) = self.plugins.get(P::plugin_name()) {
-            unsafe {
-                let plugin: &Box<P> = std::mem::transmute(b);
-                f(plugin);
-            }
+        if let Some(arc) = self.plugins.get(P::plugin_name()) {
+            let plugin = arc.read().unwrap();
+            let plugin = plugin.deref().downcast_ref::<P>().unwrap();
+            f(plugin);
         }
     }
 
     pub fn with_plugin_mut<F, P>(&mut self, mut f: F)
     where
         F: FnMut(&mut P),
-        P: Plugin + PluginName + 'static,
+        P: Plugin + 'static,
     {
-        if let Some(b) = self.plugins.get_mut(P::plugin_name()) {
-            unsafe {
-                let plugin: &mut Box<P> = std::mem::transmute(b);
-                f(plugin);
-            }
+        if let Some(arc) = self.plugins.get_mut(P::plugin_name()) {
+            let mut plugin = arc.write().unwrap();
+            let plugin = plugin.deref_mut().downcast_mut::<P>().unwrap();
+            f(plugin);
         }
     }
 }
 
-pub trait PluginName {
-    fn plugin_name() -> &'static str;
-}
-
 pub trait Plugin {
-    fn init_channel(&mut self, registrar: Weak<RuntimeData>);
-    fn handle(&mut self, message: &mut PlatformMessage, window: &mut glfw::Window);
+    fn plugin_name() -> &'static str;
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar);
 }

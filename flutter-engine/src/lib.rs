@@ -1,6 +1,10 @@
+#[macro_use]
+mod macros;
+
 pub mod channel;
 pub mod codec;
 mod desktop_window_state;
+pub mod error;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;

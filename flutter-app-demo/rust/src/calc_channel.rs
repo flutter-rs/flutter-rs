@@ -1,80 +1,75 @@
-use std::sync::Weak;
+use flutter_engine::plugins::prelude::*;
 
-use flutter_engine::{
-    channel::{Channel, StandardMethodChannel},
-    codec::{standard_codec::Value, MethodCallResult},
-    plugins::{Plugin, PluginChannel},
-    PlatformMessage, RuntimeData, Window,
-};
-
+const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "rust/calc";
 
 pub struct CalcPlugin {
-    channel: StandardMethodChannel,
+    channel: Weak<StandardMethodChannel>,
 }
 
 impl CalcPlugin {
-    pub fn new() -> CalcPlugin {
-        CalcPlugin {
-            channel: StandardMethodChannel::new(CHANNEL_NAME),
+    pub fn new() -> Self {
+        Self {
+            channel: Weak::new(),
         }
     }
 }
 
-impl PluginChannel for CalcPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl Plugin for CalcPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
+    }
+
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+        self.channel = registrar.register_channel(StandardMethodChannel::new(CHANNEL_NAME, plugin));
     }
 }
 
-impl Plugin for CalcPlugin {
-    fn init_channel(&mut self, registry: Weak<RuntimeData>) {
-        self.channel.init(registry);
-    }
-
-    fn handle(&mut self, msg: &mut PlatformMessage, _window: &mut Window) {
-        let decoded = self.channel.decode_method_call(msg).unwrap();
-        match decoded.method.as_str() {
+impl MethodCallHandler for CalcPlugin {
+    fn on_method_call(
+        &mut self,
+        _channel: &str,
+        call: MethodCall,
+        _: &mut Window,
+    ) -> Result<Value, MethodCallError> {
+        match call.method.as_str() {
             "fibonacci" => {
                 // TODO: what if we want this processor to be async? we need to cache engine and handle?
-                let result = if let Value::String(s) = decoded.args {
+                if let Value::String(s) = call.args {
                     if let Ok(n) = s.parse() {
                         if n >= 0 {
-                            let ret = fibonacci(n);
-                            if let Some(v) = ret {
-                                MethodCallResult::Ok(Value::I64(v))
+                            if let Some(v) = fibonacci(n) {
+                                Ok(Value::I64(v))
                             } else {
-                                MethodCallResult::Err {
+                                Err(MethodCallError::CustomError {
                                     code: "100".to_owned(),
                                     message: "Overflow".to_owned(),
                                     details: Value::Null,
-                                }
+                                })
                             }
                         } else {
-                            MethodCallResult::Err {
+                            Err(MethodCallError::CustomError {
                                 code: "101".to_owned(),
                                 message: "Minus!".to_owned(),
                                 details: Value::Null,
-                            }
+                            })
                         }
                     } else {
-                        MethodCallResult::Err {
+                        Err(MethodCallError::CustomError {
                             code: "102".to_owned(),
                             message: "Not a number!".to_owned(),
                             details: Value::Null,
-                        }
+                        })
                     }
                 } else {
-                    MethodCallResult::Err {
+                    Err(MethodCallError::CustomError {
                         code: "103".to_owned(),
                         message: "Format error".to_owned(),
                         details: Value::Null,
-                    }
-                };
-                self.channel
-                    .send_method_call_response(&mut msg.response_handle, result);
+                    })
+                }
             }
-            _ => (),
+            _ => Err(MethodCallError::NotImplemented),
         }
     }
 }

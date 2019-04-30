@@ -1,43 +1,49 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
 
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex, Weak},
-};
+use std::sync::RwLock;
 
-use flutter_engine::{
-    channel::{Channel, JsonMethodChannel},
-    codec::{json_codec::Value, MethodCallResult},
-    plugins::{Plugin, PluginChannel},
-    PlatformMessage, RuntimeData, Window,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use flutter_engine::plugins::prelude::*;
 
+const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "flutter-rs/window";
 
 pub struct WindowPlugin {
-    channel: Arc<Mutex<JsonMethodChannel>>,
-    state: RefCell<WindowState>,
+    channel: Weak<JsonMethodChannel>,
+    state: RwLock<WindowState>,
 }
 
-impl PluginChannel for WindowPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+method_call_args!(
+    struct PositionArgs {
+        @pub x: f64 = match map_value("x") {
+            Value::F64(f) => f,
+        },
+        @pub y: f64 = match map_value("y") {
+            Value::F64(f) => f,
+        },
+    }
+);
+
+impl Plugin for WindowPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
+    }
+
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
     }
 }
 
 impl WindowPlugin {
     pub fn new() -> Self {
         WindowPlugin {
-            channel: Arc::new(Mutex::new(JsonMethodChannel::new(CHANNEL_NAME))),
-            state: RefCell::new(WindowState::new()),
+            channel: Weak::new(),
+            state: RwLock::new(WindowState::new()),
         }
     }
 
     pub fn drag_window(&self, window: &mut Window, x: f64, y: f64) -> bool {
-        let state = self.state.borrow();
+        let state = self.state.read().unwrap();
         if state.dragging {
             let (wx, wy) = window.get_pos();
             let dx = (x - state.start_cursor_pos.0) as i32;
@@ -48,85 +54,62 @@ impl WindowPlugin {
     }
 }
 
-impl Plugin for WindowPlugin {
-    fn init_channel(&mut self, registry: Weak<RuntimeData>) {
-        let mut channel = self.channel.lock().unwrap();
-        channel.init(registry);
-    }
-
-    fn handle(&mut self, msg: &mut PlatformMessage, window: &mut Window) {
-        let channel = self.channel.lock().unwrap();
-        let decoded = channel.decode_method_call(msg).unwrap();
-        let handle = &mut msg.response_handle;
-
-        let s = serde_json::to_string(&decoded.args);
-
-        match decoded.method.as_str() {
+impl MethodCallHandler for WindowPlugin {
+    fn on_method_call(
+        &mut self,
+        _channel: &str,
+        call: MethodCall,
+        window: &mut Window,
+    ) -> Result<Value, MethodCallError> {
+        match call.method.as_str() {
             "maximize" => {
                 window.maximize();
+                Ok(Value::Null)
             }
             "iconify" => {
                 window.iconify();
+                Ok(Value::Null)
             }
             "restore" => {
                 window.restore();
+                Ok(Value::Null)
             }
             "show" => {
                 window.show();
+                Ok(Value::Null)
             }
             "hide" => {
                 window.hide();
+                Ok(Value::Null)
             }
             "close" => {
                 window.set_should_close(true);
+                Ok(Value::Null)
             }
             "set_pos" => {
-                let params: serde_json::Result<PositionParams> = serde_json::from_str(&s.unwrap());
-                if params.is_err() {
-                    channel.send_method_call_response(
-                        handle,
-                        MethodCallResult::Err {
-                            code: "1002".to_owned(), // TODO: put errors together
-                            message: "Params error".to_owned(),
-                            details: Value::Null,
-                        },
-                    );
-                    return;
-                }
-
-                let params = params.unwrap();
-                let PositionParams { x, y } = params;
-                window.set_pos(x as i32, y as i32);
+                let args = PositionArgs::try_from(call.args)?;
+                window.set_pos(args.x as i32, args.y as i32);
+                Ok(Value::Null)
             }
             "get_pos" => {
                 let (xpos, ypos) = window.get_pos();
-                channel.send_method_call_response(
-                    handle,
-                    MethodCallResult::Ok(json!({"x": xpos, "y": ypos})),
-                );
-                return;
+                Ok(json_value!({"x": xpos, "y": ypos}))
             }
             "start_drag" => {
-                let mut state = self.state.borrow_mut();
+                let mut state = self.state.write().unwrap();
                 let pos = window.get_cursor_pos();
                 state.dragging = true;
                 state.start_cursor_pos = pos;
+                Ok(Value::Null)
             }
             "end_drag" => {
-                let mut state = self.state.borrow_mut();
+                let mut state = self.state.write().unwrap();
                 state.dragging = false;
+                Ok(Value::Null)
             }
-            _ => {}
+            _ => Err(MethodCallError::NotImplemented),
         }
-
-        channel.send_method_call_response(handle, MethodCallResult::Ok(Value::Null));
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct PositionParams {
-    x: f32,
-    y: f32,
 }
 
 struct WindowState {

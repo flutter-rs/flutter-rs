@@ -74,6 +74,7 @@ impl TextInputPlugin {
 impl MethodCallHandler for TextInputPlugin {
     fn on_method_call(
         &mut self,
+        channel: &str,
         call: MethodCall,
         _: &mut Window,
     ) -> Result<Value, MethodCallError> {

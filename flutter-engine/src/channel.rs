@@ -18,6 +18,7 @@ use crate::{
 
 use std::{
     borrow::Cow,
+    ops::Deref,
     sync::{Arc, RwLock, Weak},
 };
 
@@ -38,14 +39,20 @@ pub trait Channel {
 
     /// Handle a method call received on this channel
     fn handle_method(&self, msg: &mut PlatformMessage, window: &mut Window) {
+        debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.method_handler() {
             let mut handler = handler.write().unwrap();
             let call = self.decode_method_call(&msg).unwrap();
             if handler.handle_async(&call) {
-                handler.on_async_method_call(call, window, msg.response_handle.take());
+                handler.on_async_method_call(
+                    msg.channel.deref(),
+                    call,
+                    window,
+                    msg.response_handle.take(),
+                );
             } else {
                 let method = call.method.clone();
-                let result = handler.on_method_call(call, window);
+                let result = handler.on_method_call(msg.channel.deref(), call, window);
                 let response = match result {
                     Ok(value) => MethodCallResult::Ok(value),
                     Err(error) => {
@@ -159,12 +166,14 @@ pub trait MethodCallHandler {
 
     fn on_method_call(
         &mut self,
+        channel: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError>;
 
     fn on_async_method_call(
         &mut self,
+        channel: &str,
         call: MethodCall,
         window: &mut Window,
         response_handle: Option<PlatformMessageResponseHandle>,

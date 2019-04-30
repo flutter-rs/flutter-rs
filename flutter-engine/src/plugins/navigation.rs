@@ -70,6 +70,7 @@ impl NavigationPlugin {
 impl MethodCallHandler for NavigationPlugin {
     fn on_method_call(
         &mut self,
+        channel: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError> {

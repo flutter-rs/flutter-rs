@@ -42,6 +42,7 @@ method_call_args!(
 impl MethodCallHandler for PlatformPlugin {
     fn on_method_call(
         &mut self,
+        channel: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError> {

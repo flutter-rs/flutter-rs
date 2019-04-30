@@ -180,3 +180,8 @@ pub trait MethodCallHandler {
     ) {
     }
 }
+
+pub trait EventHandler {
+    fn on_listen(&mut self, channel: &str, args: Value) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, channel: &str) -> Result<Value, MethodCallError>;
+}

@@ -1,29 +1,33 @@
 use std::sync::{Arc, RwLock, Weak};
 
 use crate::{
-    channel::{Channel, MethodCallHandler},
-    codec::{standard_codec::CODEC, MethodCodec, Value},
+    channel::{Channel, EventHandler, MethodCallHandler},
+    codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
     desktop_window_state::RuntimeData,
+    error::MethodCallError,
     ffi::FlutterEngine,
-    PlatformMessage, Window,
+    Window,
 };
 
-use crate::codec::MethodCallResult;
-use log::{error, warn};
+use log::error;
 
 pub struct EventChannel {
     name: String,
     engine: Weak<FlutterEngine>,
-    event_handler: Weak<RwLock<EventHandler>>,
+    method_handler: Arc<RwLock<MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
+struct EventChannelMethodCallHandler {
+    event_handler: Weak<RwLock<EventHandler + Send + Sync>>,
+}
+
 impl EventChannel {
-    pub fn new(name: &str, handler: Weak<RwLock<EventHandler>>) -> Self {
+    pub fn new(name: &str, handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
         Self {
             name: name.to_owned(),
             engine: Weak::new(),
-            event_handler: handler,
+            method_handler: Arc::new(RwLock::new(EventChannelMethodCallHandler::new(handler))),
             plugin_name: None,
         }
     }
@@ -49,7 +53,7 @@ impl Channel for EventChannel {
     }
 
     fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
-        None
+        Some(Arc::clone(&self.method_handler))
     }
 
     fn plugin_name(&self) -> &'static str {
@@ -59,36 +63,32 @@ impl Channel for EventChannel {
     fn codec(&self) -> &MethodCodec {
         &CODEC
     }
+}
 
-    fn handle_method(&self, msg: &mut PlatformMessage, _: &mut Window) {
-        if let Some(handler) = self.event_handler.upgrade() {
-            let mut handler = handler.write().unwrap();
-            let decoded = self.decode_method_call(msg).unwrap();
-            match decoded.method.as_str() {
-                "listen" => {
-                    let response = handler.on_listen(decoded.args);
-                    self.send_method_call_response(&mut msg.response_handle, response);
-                }
-                "cancel" => {
-                    let response = handler.on_cancel();
-                    self.send_method_call_response(&mut msg.response_handle, response);
-                }
-                method => {
-                    warn!(
-                        "Unknown method {} called! Maybe this is not an event channel?",
-                        method
-                    );
-                    self.send_method_call_response(
-                        &mut msg.response_handle,
-                        MethodCallResult::NotImplemented,
-                    );
-                }
-            }
+impl EventChannelMethodCallHandler {
+    pub fn new(handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
+        Self {
+            event_handler: handler,
         }
     }
 }
 
-pub trait EventHandler {
-    fn on_listen(&mut self, args: Value) -> MethodCallResult;
-    fn on_cancel(&mut self) -> MethodCallResult;
+impl MethodCallHandler for EventChannelMethodCallHandler {
+    fn on_method_call(
+        &mut self,
+        channel: &str,
+        call: MethodCall,
+        _: &mut Window,
+    ) -> Result<Value, MethodCallError> {
+        if let Some(handler) = self.event_handler.upgrade() {
+            let mut handler = handler.write().unwrap();
+            match call.method.as_str() {
+                "listen" => handler.on_listen(channel, call.args),
+                "cancel" => handler.on_cancel(channel),
+                _ => Err(MethodCallError::NotImplemented),
+            }
+        } else {
+            Err(MethodCallError::ChannelClosed)
+        }
+    }
 }

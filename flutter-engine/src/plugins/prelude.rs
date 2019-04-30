@@ -1,7 +1,7 @@
 pub use crate::{
     channel::{
-        Channel, ChannelRegistrar, EventChannel, JsonMethodChannel, MethodCallHandler,
-        StandardMethodChannel,
+        Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
+        MethodCallHandler, StandardMethodChannel,
     },
     codec::{MethodCall, MethodCallResult, Value},
     error::{MethodArgsError, MethodCallError},

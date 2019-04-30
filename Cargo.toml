@@ -6,5 +6,5 @@ members = [
 ]
 
 exclude = [
-    "flutter-app-demo/rust"
+    "flutter-app-demo"
 ]

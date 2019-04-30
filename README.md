@@ -34,7 +34,7 @@ Build flutter desktop app in dart & rust.
 - System dialogs
 - Clipboard support
 - Cross platform support, Runs on mac, windows, linux
-- Support distribution format: (mac app, mac dmg)
+- Support distribution format: (windows NSIS, mac app, mac dmg, linux snap)
 
 # Contribution
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
@@ -53,3 +53,4 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: LICENSE-MIT
 [demo-ui]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png
+

@@ -9,12 +9,18 @@ use std::{
 
 use log::{trace, warn};
 
-pub struct ChannelRegistrar {
+pub struct ChannelRegistry {
     channels: HashMap<String, Arc<dyn Channel>>,
     runtime_data: Weak<RuntimeData>,
 }
 
-impl ChannelRegistrar {
+pub struct ChannelRegistrar<'a> {
+    plugin_name: &'static str,
+    runtime_data: &'a Weak<RuntimeData>,
+    channels: &'a mut HashMap<String, Arc<dyn Channel>>,
+}
+
+impl ChannelRegistry {
     pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
         Self {
             channels: HashMap::new(),
@@ -22,16 +28,16 @@ impl ChannelRegistrar {
         }
     }
 
-    pub fn register_channel<C>(&mut self, mut channel: C) -> Weak<C>
+    pub fn with_channel_registrar<F>(&mut self, plugin_name: &'static str, f: F)
     where
-        C: Channel + 'static,
+        F: FnOnce(&mut ChannelRegistrar),
     {
-        channel.init(Weak::clone(&self.runtime_data));
-        let name = channel.name().to_owned();
-        let arc = Arc::new(channel);
-        let weak = Arc::downgrade(&arc);
-        self.channels.insert(name, arc);
-        weak
+        let mut registrar = ChannelRegistrar {
+            plugin_name,
+            runtime_data: &self.runtime_data,
+            channels: &mut self.channels,
+        };
+        f(&mut registrar);
     }
 
     pub fn handle(&mut self, mut message: PlatformMessage) {
@@ -55,5 +61,19 @@ impl ChannelRegistrar {
                 .engine
                 .send_platform_message_response(handle, &[]);
         }
+    }
+}
+
+impl<'a> ChannelRegistrar<'a> {
+    pub fn register_channel<C>(&mut self, mut channel: C) -> Weak<C>
+    where
+        C: Channel + 'static,
+    {
+        channel.init(Weak::clone(&self.runtime_data), self.plugin_name);
+        let name = channel.name().to_owned();
+        let arc = Arc::new(channel);
+        let weak = Arc::downgrade(&arc);
+        self.channels.insert(name, arc);
+        weak
     }
 }

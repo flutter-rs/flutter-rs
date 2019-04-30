@@ -15,6 +15,7 @@ pub struct EventChannel {
     name: String,
     engine: Weak<FlutterEngine>,
     event_handler: Weak<RwLock<EventHandler>>,
+    plugin_name: Option<&'static str>,
 }
 
 impl EventChannel {
@@ -23,6 +24,7 @@ impl EventChannel {
             name: name.to_owned(),
             engine: Weak::new(),
             event_handler: handler,
+            plugin_name: None,
         }
     }
 }
@@ -36,17 +38,22 @@ impl Channel for EventChannel {
         self.engine.upgrade()
     }
 
-    fn init(&mut self, runtime_data: Weak<RuntimeData>) {
+    fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str) {
         if self.engine.upgrade().is_some() {
             error!("Channel {} was already initialized", self.name);
         }
         if let Some(runtime_data) = runtime_data.upgrade() {
             self.engine = Arc::downgrade(&runtime_data.engine);
         }
+        self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
         None
+    }
+
+    fn plugin_name(&self) -> &'static str {
+        self.plugin_name.unwrap()
     }
 
     fn codec(&self) -> &MethodCodec {

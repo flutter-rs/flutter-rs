@@ -9,7 +9,11 @@ pub use self::{
     navigation::NavigationPlugin, platform::PlatformPlugin, textinput::TextInputPlugin,
 };
 
-use crate::{channel::ChannelRegistrar, desktop_window_state::RuntimeData, ffi::PlatformMessage};
+use crate::{
+    channel::{ChannelRegistrar, ChannelRegistry},
+    desktop_window_state::RuntimeData,
+    ffi::PlatformMessage,
+};
 
 use std::{
     any::Any,
@@ -20,14 +24,14 @@ use std::{
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
-    channel_registrar: ChannelRegistrar,
+    channel_registry: ChannelRegistry,
 }
 
 impl PluginRegistrar {
     pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
         Self {
             plugins: HashMap::new(),
-            channel_registrar: ChannelRegistrar::new(runtime_data),
+            channel_registry: ChannelRegistry::new(runtime_data),
         }
     }
 
@@ -44,19 +48,22 @@ impl PluginRegistrar {
         let arc = Arc::new(RwLock::new(plugin));
         {
             let mut plugin = arc.write().unwrap();
-            plugin.init_channels(Arc::downgrade(&arc), &mut self.channel_registrar);
+            self.channel_registry
+                .with_channel_registrar(P::plugin_name(), |registrar| {
+                    plugin.init_channels(Arc::downgrade(&arc), registrar);
+                });
         }
         self.plugins.insert(P::plugin_name().to_owned(), arc);
         self
     }
 
     pub fn handle(&mut self, message: PlatformMessage) {
-        self.channel_registrar.handle(message);
+        self.channel_registry.handle(message);
     }
 
-    pub fn with_plugin<F, P>(&self, mut f: F)
+    pub fn with_plugin<F, P>(&self, f: F)
     where
-        F: FnMut(&P),
+        F: FnOnce(&P),
         P: Plugin + 'static,
     {
         if let Some(arc) = self.plugins.get(P::plugin_name()) {
@@ -66,9 +73,9 @@ impl PluginRegistrar {
         }
     }
 
-    pub fn with_plugin_mut<F, P>(&mut self, mut f: F)
+    pub fn with_plugin_mut<F, P>(&mut self, f: F)
     where
-        F: FnMut(&mut P),
+        F: FnOnce(&mut P),
         P: Plugin + 'static,
     {
         if let Some(arc) = self.plugins.get_mut(P::plugin_name()) {

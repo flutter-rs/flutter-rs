@@ -3,8 +3,10 @@
 //! and JsonMethodChannel using json encoding.
 
 pub use self::{
-    event_channel::EventChannel, json_method_channel::JsonMethodChannel,
-    registrar::ChannelRegistrar, standard_method_channel::StandardMethodChannel,
+    event_channel::EventChannel,
+    json_method_channel::JsonMethodChannel,
+    registry::{ChannelRegistrar, ChannelRegistry},
+    standard_method_channel::StandardMethodChannel,
 };
 use crate::{
     codec::{MethodCall, MethodCallResult, MethodCodec, Value},
@@ -23,14 +25,15 @@ use log::error;
 
 mod event_channel;
 mod json_method_channel;
-mod registrar;
+mod registry;
 mod standard_method_channel;
 
 pub trait Channel {
     fn name(&self) -> &str;
     fn engine(&self) -> Option<Arc<FlutterEngine>>;
-    fn init(&mut self, runtime_data: Weak<RuntimeData>);
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>>;
+    fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str);
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
+    fn plugin_name(&self) -> &'static str;
     fn codec(&self) -> &MethodCodec;
 
     /// Handle a method call received on this channel
@@ -38,16 +41,27 @@ pub trait Channel {
         if let Some(handler) = self.method_handler() {
             let mut handler = handler.write().unwrap();
             let call = self.decode_method_call(&msg).unwrap();
-            let method = call.method.clone();
-            let result = handler.on_method_call(call, window);
-            let response = match result {
-                Ok(value) => MethodCallResult::Ok(value),
-                Err(error) => {
-                    error!(target: handler.module_path(), "error in method call {}#{}: {}", msg.channel, method, error);
-                    error.into()
-                }
-            };
-            self.send_method_call_response(&mut msg.response_handle, response);
+            if handler.handle_async(&call) {
+                handler.on_async_method_call(call, window, msg.response_handle.take());
+            } else {
+                let method = call.method.clone();
+                let result = handler.on_method_call(call, window);
+                let response = match result {
+                    Ok(value) => MethodCallResult::Ok(value),
+                    Err(error) => {
+                        error!(
+                            target: handler
+                                .log_target()
+                                .unwrap_or_else(|| self.plugin_name()),
+                            "error in method call {}#{}: {}",
+                            msg.channel,
+                            method,
+                            error);
+                        error.into()
+                    }
+                };
+                self.send_method_call_response(&mut msg.response_handle, response);
+            }
         }
     }
 
@@ -135,8 +149,12 @@ pub trait Channel {
 }
 
 pub trait MethodCallHandler {
-    fn module_path(&self) -> &'static str {
-        module_path!()
+    fn log_target(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn handle_async(&self, call: &MethodCall) -> bool {
+        false
     }
 
     fn on_method_call(
@@ -144,4 +162,12 @@ pub trait MethodCallHandler {
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError>;
+
+    fn on_async_method_call(
+        &mut self,
+        call: MethodCall,
+        window: &mut Window,
+        response_handle: Option<PlatformMessageResponseHandle>,
+    ) {
+    }
 }

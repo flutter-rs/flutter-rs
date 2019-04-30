@@ -190,19 +190,18 @@ impl DesktopWindowState {
             glfw::WindowEvent::ContentScale(_, _) => {
                 self.send_scale_or_size_change();
             }
-            glfw::WindowEvent::Char(char) => {
-                self.plugin_registrar
-                    .with_plugin(|text_input: &crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.add_characters(&char.to_string());
-                        });
-                        text_input.notify_changes();
-                    })
-            }
+            glfw::WindowEvent::Char(char) => self.plugin_registrar.with_plugin_mut(
+                |text_input: &mut crate::plugins::TextInputPlugin| {
+                    text_input.with_state(|state| {
+                        state.add_characters(&char.to_string());
+                    });
+                    text_input.notify_changes();
+                },
+            ),
             glfw::WindowEvent::Key(key, _, glfw::Action::Press, modifiers)
             | glfw::WindowEvent::Key(key, _, glfw::Action::Repeat, modifiers) => match key {
-                glfw::Key::Enter => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Enter => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.add_characters(&"\n");
                         });
@@ -231,24 +230,24 @@ impl DesktopWindowState {
                 //                        p.move_cursor_down(modifiers);
                 //                    });
                 //                },
-                glfw::Key::Backspace => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Backspace => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.backspace();
                         });
                         text_input.notify_changes();
                     },
                 ),
-                glfw::Key::Delete => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Delete => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.delete();
                         });
                         text_input.notify_changes();
                     },
                 ),
-                glfw::Key::Left => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Left => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.move_left(
                                 modifiers.contains(BY_WORD_MODIFIER_KEY),
@@ -258,8 +257,8 @@ impl DesktopWindowState {
                         text_input.notify_changes();
                     },
                 ),
-                glfw::Key::Right => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Right => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.move_right(
                                 modifiers.contains(BY_WORD_MODIFIER_KEY),
@@ -269,16 +268,16 @@ impl DesktopWindowState {
                         text_input.notify_changes();
                     },
                 ),
-                glfw::Key::Home => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::Home => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.move_to_beginning(modifiers.contains(SELECT_MODIFIER_KEY));
                         });
                         text_input.notify_changes();
                     },
                 ),
-                glfw::Key::End => self.plugin_registrar.with_plugin(
-                    |text_input: &crate::plugins::TextInputPlugin| {
+                glfw::Key::End => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {
                             state.move_to_end(modifiers.contains(SELECT_MODIFIER_KEY));
                         });
@@ -287,8 +286,8 @@ impl DesktopWindowState {
                 ),
                 glfw::Key::A => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        self.plugin_registrar.with_plugin(
-                            |text_input: &crate::plugins::TextInputPlugin| {
+                        self.plugin_registrar.with_plugin_mut(
+                            |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
                                     state.select_all();
                                 });
@@ -299,12 +298,11 @@ impl DesktopWindowState {
                 }
                 glfw::Key::X => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        self.plugin_registrar.with_plugin(
-                            |text_input: &crate::plugins::TextInputPlugin| {
+                        let window = self.runtime_data.window();
+                        self.plugin_registrar.with_plugin_mut(
+                            |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
-                                    self.runtime_data
-                                        .window()
-                                        .set_clipboard_string(state.get_selected_text());
+                                    window.set_clipboard_string(state.get_selected_text());
                                     state.delete_selected();
                                 });
                                 text_input.notify_changes();
@@ -314,12 +312,11 @@ impl DesktopWindowState {
                 }
                 glfw::Key::C => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        self.plugin_registrar.with_plugin(
-                            |text_input: &crate::plugins::TextInputPlugin| {
+                        let window = self.runtime_data.window();
+                        self.plugin_registrar.with_plugin_mut(
+                            |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
-                                    self.runtime_data
-                                        .window()
-                                        .set_clipboard_string(state.get_selected_text());
+                                    window.set_clipboard_string(state.get_selected_text());
                                 });
                                 text_input.notify_changes();
                             },
@@ -328,12 +325,11 @@ impl DesktopWindowState {
                 }
                 glfw::Key::V => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        self.plugin_registrar.with_plugin(
-                            |text_input: &crate::plugins::TextInputPlugin| {
+                        let window = self.runtime_data.window();
+                        self.plugin_registrar.with_plugin_mut(
+                            |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
-                                    if let Some(text) =
-                                        self.runtime_data.window().get_clipboard_string()
-                                    {
+                                    if let Some(text) = window.get_clipboard_string() {
                                         state.add_characters(&text);
                                     } else {
                                         info!("Tried to paste non-text data");

@@ -39,6 +39,12 @@ pub enum MethodCallError {
     UnspecifiedError,
 }
 
+impl From<MethodArgsError> for MethodCallError {
+    fn from(error: MethodArgsError) -> Self {
+        MethodCallError::ArgParseError(error)
+    }
+}
+
 impl fmt::Display for MethodCallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

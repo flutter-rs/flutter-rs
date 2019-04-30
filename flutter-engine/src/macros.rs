@@ -13,7 +13,8 @@ macro_rules! method_call_args {
     (
     $(#$attr:tt)*
     $(@$pub:tt)? struct $args_struct:ident {
-        $($(@$field_pub:tt)? $field:ident : $field_type:ty = match map_value($map_name:expr) {
+        $($(#[optional=$optional:expr])?
+        $(@$field_pub:tt)? $field:ident : $field_type:ty = match map_value($map_name:expr) {
             $($map_pattern:pat => $map_value:expr,)*
         },)*
     }) => {
@@ -33,17 +34,22 @@ macro_rules! method_call_args {
                 };
                 // get fields
                 $(let $field: $field_type = match map.remove($map_name) {
-                    Some(value) => {
-                        match value {
-                            $($map_pattern => $map_value,)*
-                            value => {
-                                return Err(MethodArgsError::WrongType(stringify!($field_type).into(), value));
-                            }
+                    Some(value) => match value {
+                        $($map_pattern => $map_value,)*
+                        value => {
+                            return Err(MethodArgsError::WrongType(stringify!($field_type).into(), value));
                         }
                     },
                     None => {
-                        return Err(MethodArgsError::MissingField(stringify!($map_name).into()));
-                    }
+                        let mut value = None;
+                        $(if $optional == true {
+                            value = Some(None);
+                        })?
+                        if value.is_none() {
+                            return Err(MethodArgsError::MissingField(stringify!($map_name).into()));
+                        }
+                        value.unwrap()
+                    },
                 };)*
                 // return struct
                 Ok(Self {

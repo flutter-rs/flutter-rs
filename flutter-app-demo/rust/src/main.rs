@@ -2,7 +2,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod calc_channel;
-//mod dialog;
+mod dialog;
 mod msg_stream_channel;
 mod window;
 
@@ -93,7 +93,7 @@ fn main() {
         window_state
             .plugin_registrar
             .add_plugin(calc_channel::CalcPlugin::new())
-            //.add_plugin(dialog::DialogPlugin::new())
+            .add_plugin(dialog::DialogPlugin::new())
             .add_plugin(msg_stream_channel::MsgStreamPlugin::new(rt.executor()))
             .add_plugin(window::WindowPlugin::new());
     });

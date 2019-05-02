@@ -28,7 +28,7 @@ impl Plugin for CalcPlugin {
 impl MethodCallHandler for CalcPlugin {
     fn on_method_call(
         &mut self,
-        _channel: &str,
+        _: &str,
         call: MethodCall,
         _: &mut Window,
     ) -> Result<Value, MethodCallError> {

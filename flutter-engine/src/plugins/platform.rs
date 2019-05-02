@@ -34,7 +34,7 @@ impl Plugin for PlatformPlugin {
 impl MethodCallHandler for PlatformPlugin {
     fn on_method_call(
         &mut self,
-        channel: &str,
+        _: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError> {
@@ -74,7 +74,7 @@ impl MethodCallHandler for PlatformPlugin {
                     Err(MethodCallError::UnspecifiedError)
                 }
             }
-            method => Err(MethodCallError::NotImplemented),
+            _ => Err(MethodCallError::NotImplemented),
         }
     }
 }

@@ -161,6 +161,7 @@ pub trait MethodCallHandler {
     }
 
     fn handle_async(&self, call: &MethodCall) -> bool {
+        let _ = call;
         false
     }
 
@@ -178,6 +179,10 @@ pub trait MethodCallHandler {
         window: &mut Window,
         response_handle: Option<PlatformMessageResponseHandle>,
     ) {
+        let _ = channel;
+        let _ = call;
+        let _ = window;
+        let _ = response_handle;
     }
 }
 

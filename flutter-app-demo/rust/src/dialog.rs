@@ -46,9 +46,9 @@ impl MethodCallHandler for DialogPlugin {
 
     fn on_async_method_call(
         &mut self,
-        _channel: &str,
+        _: &str,
         call: MethodCall,
-        window: &mut Window,
+        _: &mut Window,
         mut response_handle: Option<PlatformMessageResponseHandle>,
     ) {
         match call.method.as_str() {
@@ -78,7 +78,7 @@ impl MethodCallHandler for DialogPlugin {
 
                     // Oh, these borrow stuff sux
                     let filter2 = filter.as_ref().map(|(p, n)| {
-                        let p: Vec<&str> = p.iter().map(|v| v.as_str()).collect();
+                        let p: Vec<&str> = p.iter().map(String::as_str).collect();
                         (p, n)
                     });
                     let path = tinyfiledialogs::open_file_dialog(

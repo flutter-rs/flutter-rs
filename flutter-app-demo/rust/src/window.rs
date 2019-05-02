@@ -46,7 +46,7 @@ impl WindowPlugin {
 impl MethodCallHandler for WindowPlugin {
     fn on_method_call(
         &mut self,
-        _channel: &str,
+        _: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError> {

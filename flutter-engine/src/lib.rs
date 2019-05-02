@@ -257,6 +257,6 @@ impl FlutterDesktop {
     }
 }
 
-fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
+fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
     error!("GLFW error: {}", description);
 }

@@ -29,6 +29,7 @@ impl error::Error for MethodArgsError {}
 pub enum MethodCallError {
     NotImplemented,
     ArgParseError(MethodArgsError),
+    DeserializeError(ValueError),
     ChannelClosed,
     RustError(Box<error::Error>),
     CustomError {
@@ -45,11 +46,20 @@ impl From<MethodArgsError> for MethodCallError {
     }
 }
 
+impl From<ValueError> for MethodCallError {
+    fn from(error: ValueError) -> Self {
+        MethodCallError::DeserializeError(error)
+    }
+}
+
 impl fmt::Display for MethodCallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MethodCallError::NotImplemented => write!(f, "method not implemented"),
             MethodCallError::ArgParseError(err) => write!(f, "failed to parse arguments: {}", err),
+            MethodCallError::DeserializeError(err) => {
+                write!(f, "failed to deserialize value: {}", err)
+            }
             MethodCallError::ChannelClosed => write!(f, "channel already closed"),
             MethodCallError::RustError(error) => write!(f, "rust error: {}", error),
             MethodCallError::CustomError {
@@ -80,6 +90,11 @@ impl Into<MethodCallResult> for MethodCallError {
                 message: "failed to parse arguments".into(),
                 details: Value::Null,
             },
+            MethodCallError::DeserializeError(_) => MethodCallResult::Err {
+                code: "".into(),
+                message: "failed to deserialize value".into(),
+                details: Value::Null,
+            },
             MethodCallError::ChannelClosed => MethodCallResult::Err {
                 code: "".into(),
                 message: "channel closed".into(),
@@ -107,3 +122,30 @@ impl Into<MethodCallResult> for MethodCallError {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum ValueError {
+    Message(String),
+    WrongType,
+    NoList,
+    NoMap,
+}
+
+impl fmt::Display for ValueError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ValueError::Message(s) => write!(f, "{}", s),
+            ValueError::WrongType => write!(f, "wrong type"),
+            ValueError::NoList => write!(f, "value is not a list"),
+            ValueError::NoMap => write!(f, "value is not a map"),
+        }
+    }
+}
+
+impl serde::de::Error for ValueError {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        ValueError::Message(msg.to_string())
+    }
+}
+
+impl error::Error for ValueError {}

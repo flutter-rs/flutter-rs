@@ -1,7 +1,7 @@
 pub mod json_codec;
 pub mod standard_codec;
 #[macro_use]
-mod value;
+pub mod value;
 
 pub use self::value::Value;
 

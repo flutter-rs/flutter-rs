@@ -3,7 +3,11 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use serde::{de, ser, Deserialize, Deserializer, Serialize};
+pub use self::deserializer::{from_value, Deserializer};
+
+use serde::{de, ser, Deserialize, Serialize};
+
+mod deserializer;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -58,7 +62,7 @@ impl<'de> Deserialize<'de> for Value {
     #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Value, D::Error>
     where
-        D: Deserializer<'de>,
+        D: de::Deserializer<'de>,
     {
         use de::Visitor;
         struct ValueVisitor;
@@ -115,7 +119,7 @@ impl<'de> Deserialize<'de> for Value {
             #[inline]
             fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
             where
-                D: Deserializer<'de>,
+                D: de::Deserializer<'de>,
             {
                 Deserialize::deserialize(deserializer)
             }

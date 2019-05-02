@@ -13,17 +13,6 @@ pub struct WindowPlugin {
     state: RwLock<WindowState>,
 }
 
-method_call_args!(
-    struct PositionArgs {
-        @pub x: f64 = match map_value("x") {
-            Value::F64(f) => f,
-        },
-        @pub y: f64 = match map_value("y") {
-            Value::F64(f) => f,
-        },
-    }
-);
-
 impl Plugin for WindowPlugin {
     fn plugin_name() -> &'static str {
         PLUGIN_NAME
@@ -87,7 +76,7 @@ impl MethodCallHandler for WindowPlugin {
                 Ok(Value::Null)
             }
             "set_pos" => {
-                let args = PositionArgs::try_from(call.args)?;
+                let args: PositionParams = from_value(&call.args)?;
                 window.set_pos(args.x as i32, args.y as i32);
                 Ok(Value::Null)
             }
@@ -110,6 +99,12 @@ impl MethodCallHandler for WindowPlugin {
             _ => Err(MethodCallError::NotImplemented),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct PositionParams {
+    x: f32,
+    y: f32,
 }
 
 struct WindowState {

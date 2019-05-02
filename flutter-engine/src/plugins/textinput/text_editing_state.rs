@@ -1,46 +1,23 @@
 use crate::{
-    codec::Value,
+    codec::{value::from_value, Value},
     utils::{OwnedStringUtils, StringUtils},
 };
 
-use std::{convert::TryFrom, ops::Range};
+use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 
-method_call_args!(
-    #[derive(Serialize, Deserialize, Default, Debug)]
-    #[serde(rename_all = "camelCase")]
-    @pub struct TextEditingState {
-        composing_base: i64 = match map_value("composingBase") {
-            Value::I64(i) => i,
-            _ => -1,
-        },
-        composing_extent: i64 = match map_value("composingExtent") {
-            Value::I64(i) => i,
-            _ => -1,
-        },
-        selection_affinity: String = match map_value("selectionAffinity") {
-            Value::String(s) => s,
-            _ => "".into(),
-        },
-        selection_base: i64 = match map_value("selectionBase") {
-            Value::I64(i) => i,
-            _ => -1,
-        },
-        selection_extent: i64 = match map_value("selectionExtent") {
-            Value::I64(i) => i,
-            _ => -1,
-        },
-        selection_is_directional: bool = match map_value("selectionIsDirectional") {
-            Value::Boolean(b) => b,
-            _ => false,
-        },
-        text: String = match map_value("text") {
-            Value::String(s) => s,
-            _ => "".into(),
-        },
-    }
-);
+#[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TextEditingState {
+    composing_base: i64,
+    composing_extent: i64,
+    selection_affinity: String,
+    selection_base: i64,
+    selection_extent: i64,
+    selection_is_directional: bool,
+    text: String,
+}
 
 enum Direction {
     Left,
@@ -49,7 +26,7 @@ enum Direction {
 
 impl TextEditingState {
     pub fn from(v: Value) -> Option<Self> {
-        Self::try_from(v).ok()
+        from_value(&v).ok()
     }
 
     fn get_selection_range(&self) -> Range<usize> {

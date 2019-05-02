@@ -97,13 +97,9 @@ impl MethodCallHandler for TextInputPlugin {
             }
             "TextInput.setEditingState" => {
                 if self.client_id.is_some() {
-                    match TextEditingState::try_from(call.args) {
-                        Ok(state) => {
-                            self.editing_state.replace(state);
-                            Ok(Value::Null)
-                        }
-                        Err(err) => Err(MethodCallError::ArgParseError(err)),
-                    }
+                    let state: TextEditingState = from_value(&call.args)?;
+                    self.editing_state.replace(state);
+                    Ok(Value::Null)
                 } else {
                     Err(MethodCallError::UnspecifiedError)
                 }

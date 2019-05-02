@@ -31,14 +31,6 @@ impl Plugin for PlatformPlugin {
     }
 }
 
-method_call_args!(
-    struct SetApplicationSwitcherDescriptionArgs {
-        @pub label: String = match map_value("label") {
-            Value::String(s) => s,
-        },
-    }
-);
-
 impl MethodCallHandler for PlatformPlugin {
     fn on_method_call(
         &mut self,
@@ -48,15 +40,10 @@ impl MethodCallHandler for PlatformPlugin {
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
-                let args = SetApplicationSwitcherDescriptionArgs::try_from(call.args);
-                match args {
-                    Ok(args) => {
-                        // label and primaryColor
-                        window.set_title(args.label.as_str());
-                        Ok(Value::Null)
-                    }
-                    Err(err) => Err(MethodCallError::ArgParseError(err)),
-                }
+                let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;
+                // label and primaryColor
+                window.set_title(args.label.as_str());
+                Ok(Value::Null)
             }
             "Clipboard.setData" => {
                 if let Value::Map(v) = &call.args {
@@ -90,4 +77,9 @@ impl MethodCallHandler for PlatformPlugin {
             method => Err(MethodCallError::NotImplemented),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetApplicationSwitcherDescriptionArgs {
+    pub label: String,
 }

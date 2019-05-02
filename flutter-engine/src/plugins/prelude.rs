@@ -3,10 +3,10 @@ pub use crate::{
         Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
         MethodCallHandler, StandardMethodChannel,
     },
-    codec::{MethodCall, MethodCallResult, Value},
+    codec::{value::from_value, MethodCall, MethodCallResult, Value},
     error::{MethodArgsError, MethodCallError},
     ffi::PlatformMessageResponseHandle,
-    json_value, method_call_args,
+    json_value,
     plugins::{Plugin, PluginRegistrar},
     Window,
 };
@@ -15,3 +15,5 @@ pub use std::{
     convert::{TryFrom, TryInto},
     sync::{RwLock, Weak},
 };
+
+pub use serde::{Deserialize, Serialize};

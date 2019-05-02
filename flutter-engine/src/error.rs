@@ -40,6 +40,12 @@ pub enum MethodCallError {
     UnspecifiedError,
 }
 
+impl MethodCallError {
+    pub fn from_error<T: error::Error + 'static>(error: T) -> Self {
+        MethodCallError::RustError(Box::new(error))
+    }
+}
+
 impl From<MethodArgsError> for MethodCallError {
     fn from(error: MethodArgsError) -> Self {
         MethodCallError::ArgParseError(error)

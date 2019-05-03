@@ -12,12 +12,12 @@ use log::error;
 pub struct StandardMethodChannel {
     name: String,
     engine: Weak<FlutterEngine>,
-    method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+    method_handler: Weak<RwLock<MethodCallHandler>>,
     plugin_name: Option<&'static str>,
 }
 
 impl StandardMethodChannel {
-    pub fn new(name: &str, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) -> Self {
+    pub fn new(name: &str, method_handler: Weak<RwLock<MethodCallHandler>>) -> Self {
         Self {
             name: name.to_owned(),
             engine: Weak::new(),
@@ -26,7 +26,7 @@ impl StandardMethodChannel {
         }
     }
 
-    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) {
+    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler>>) {
         self.method_handler = method_handler;
     }
 }
@@ -50,7 +50,7 @@ impl Channel for StandardMethodChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>> {
         self.method_handler.upgrade()
     }
 

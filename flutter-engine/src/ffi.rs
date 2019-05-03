@@ -132,9 +132,6 @@ pub struct FlutterEngine {
     engine_ptr: flutter_engine_sys::FlutterEngine,
 }
 
-unsafe impl Send for FlutterEngine {}
-unsafe impl Sync for FlutterEngine {}
-
 impl FlutterEngine {
     pub fn new(engine_ptr: flutter_engine_sys::FlutterEngine) -> Option<Self> {
         if engine_ptr.is_null() {

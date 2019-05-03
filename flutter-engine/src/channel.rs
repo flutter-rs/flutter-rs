@@ -33,7 +33,7 @@ pub trait Channel {
     fn name(&self) -> &str;
     fn engine(&self) -> Option<Arc<FlutterEngine>>;
     fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str);
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>>;
     fn plugin_name(&self) -> &'static str;
     fn codec(&self) -> &MethodCodec;
 
@@ -43,20 +43,12 @@ pub trait Channel {
         if let Some(handler) = self.method_handler() {
             let mut handler = handler.write().unwrap();
             let call = self.decode_method_call(&msg).unwrap();
-            if handler.handle_async(&call) {
-                handler.on_async_method_call(
-                    msg.channel.deref(),
-                    call,
-                    window,
-                    msg.response_handle.take(),
-                );
-            } else {
-                let method = call.method.clone();
-                let result = handler.on_method_call(msg.channel.deref(), call, window);
-                let response = match result {
-                    Ok(value) => MethodCallResult::Ok(value),
-                    Err(error) => {
-                        error!(
+            let method = call.method.clone();
+            let result = handler.on_method_call(msg.channel.deref(), call, window);
+            let response = match result {
+                Ok(value) => MethodCallResult::Ok(value),
+                Err(error) => {
+                    error!(
                             target: handler
                                 .log_target()
                                 .unwrap_or_else(|| self.plugin_name()),
@@ -64,11 +56,10 @@ pub trait Channel {
                             msg.channel,
                             method,
                             error);
-                        error.into()
-                    }
-                };
-                self.send_method_call_response(&mut msg.response_handle, response);
-            }
+                    error.into()
+                }
+            };
+            self.send_method_call_response(&mut msg.response_handle, response);
         }
     }
 
@@ -160,30 +151,12 @@ pub trait MethodCallHandler {
         None
     }
 
-    fn handle_async(&self, call: &MethodCall) -> bool {
-        let _ = call;
-        false
-    }
-
     fn on_method_call(
         &mut self,
         channel: &str,
         call: MethodCall,
         window: &mut Window,
     ) -> Result<Value, MethodCallError>;
-
-    fn on_async_method_call(
-        &mut self,
-        channel: &str,
-        call: MethodCall,
-        window: &mut Window,
-        response_handle: Option<PlatformMessageResponseHandle>,
-    ) {
-        let _ = channel;
-        let _ = call;
-        let _ = window;
-        let _ = response_handle;
-    }
 }
 
 pub trait EventHandler {

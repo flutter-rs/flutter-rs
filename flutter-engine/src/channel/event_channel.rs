@@ -14,16 +14,16 @@ use log::error;
 pub struct EventChannel {
     name: String,
     engine: Weak<FlutterEngine>,
-    method_handler: Arc<RwLock<MethodCallHandler + Send + Sync>>,
+    method_handler: Arc<RwLock<MethodCallHandler>>,
     plugin_name: Option<&'static str>,
 }
 
 struct EventChannelMethodCallHandler {
-    event_handler: Weak<RwLock<EventHandler + Send + Sync>>,
+    event_handler: Weak<RwLock<EventHandler>>,
 }
 
 impl EventChannel {
-    pub fn new(name: &str, handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
+    pub fn new(name: &str, handler: Weak<RwLock<EventHandler>>) -> Self {
         Self {
             name: name.to_owned(),
             engine: Weak::new(),
@@ -52,7 +52,7 @@ impl Channel for EventChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>> {
         Some(Arc::clone(&self.method_handler))
     }
 
@@ -66,7 +66,7 @@ impl Channel for EventChannel {
 }
 
 impl EventChannelMethodCallHandler {
-    pub fn new(handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
+    pub fn new(handler: Weak<RwLock<EventHandler>>) -> Self {
         Self {
             event_handler: handler,
         }

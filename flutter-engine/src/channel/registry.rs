@@ -40,26 +40,31 @@ impl ChannelRegistry {
         f(&mut registrar);
     }
 
+    pub fn with_channel<F>(&self, channel_name: &'static str, mut f: F)
+    where
+        F: FnMut(&Channel),
+    {
+        if let Some(channel) = self.channels.get(channel_name) {
+            f(&**channel);
+        }
+    }
+
     pub fn handle(&mut self, mut message: PlatformMessage) {
         if let Some(channel) = self.channels.get(message.channel.deref()) {
             trace!("Processing message from channel: {}", message.channel);
-            channel.handle_method(&mut message);
+            channel.handle_method(message);
         } else {
             warn!(
                 "No plugin registered to handle messages from channel: {}",
                 &message.channel
             );
-        }
-        if let Some(handle) = message.response_handle.take() {
-            warn!(
-                "No response for channel {}, sending default empty response",
-                message.channel
-            );
-            self.init_data
-                .upgrade()
-                .unwrap()
-                .engine
-                .send_platform_message_response(handle, &[]);
+            if let Some(handle) = message.response_handle.take() {
+                self.init_data
+                    .upgrade()
+                    .unwrap()
+                    .engine
+                    .send_platform_message_response(handle, &[]);
+            }
         }
     }
 }

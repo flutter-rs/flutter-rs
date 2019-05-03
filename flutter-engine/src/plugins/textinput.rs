@@ -9,11 +9,19 @@ use super::prelude::*;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
-#[derive(Default)]
 pub struct TextInputPlugin {
+    channel: Weak<JsonMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
+    data: Arc<RwLock<Data>>,
+}
+
+struct Handler {
+    data: Arc<RwLock<Data>>,
+}
+
+struct Data {
     client_id: Option<i64>,
     editing_state: Option<TextEditingState>,
-    channel: Weak<JsonMethodChannel>,
 }
 
 impl Plugin for TextInputPlugin {
@@ -22,16 +30,24 @@ impl Plugin for TextInputPlugin {
     }
 
     fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
+        let method_handler = Arc::downgrade(&self.handler);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
 impl TextInputPlugin {
     pub fn new() -> Self {
-        Self {
+        let data = Arc::new(RwLock::new(Data {
             client_id: None,
             editing_state: None,
+        }));
+        Self {
             channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler {
+                data: Arc::clone(&data),
+            })),
+            data,
         }
     }
 
@@ -45,45 +61,49 @@ impl TextInputPlugin {
     }
 
     pub fn with_state(&mut self, cbk: impl FnOnce(&mut TextEditingState)) {
-        if let Some(state) = &mut self.editing_state {
+        let mut data = self.data.write().unwrap();
+        if let Some(state) = &mut data.editing_state {
             cbk(state);
         }
     }
 
     pub fn perform_action(&self, action: &str) {
+        let data = self.data.read().unwrap();
         self.with_channel(|channel| {
             channel.invoke_method(MethodCall {
                 method: String::from("TextInputClient.performAction"),
-                args: json_value!([self.client_id, "TextInputAction.".to_owned() + action]),
+                args: json_value!([data.client_id, "TextInputAction.".to_owned() + action]),
             })
         });
     }
 
     pub fn notify_changes(&mut self) {
-        if let Some(state) = &mut self.editing_state {
+        let mut data = self.data.write().unwrap();
+        let client_id = data.client_id;
+        if let Some(state) = &mut (data.editing_state) {
             if let Some(channel) = self.channel.upgrade() {
                 channel.invoke_method(MethodCall {
                     method: String::from("TextInputClient.updateEditingState"),
-                    args: json_value!([self.client_id, state]),
+                    args: json_value!([client_id, state]),
                 });
             }
         };
     }
 }
 
-impl MethodCallHandler for TextInputPlugin {
+impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        _: Arc<RuntimeData>,
+        _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::List(v) = &call.args {
                     if !v.is_empty() {
                         if let Value::I64(n) = v[0] {
-                            self.client_id = Some(n);
+                            let mut data = self.data.write().unwrap();
+                            data.client_id = Some(n);
                             return Ok(Value::Null);
                         }
                     }
@@ -91,14 +111,16 @@ impl MethodCallHandler for TextInputPlugin {
                 Err(MethodCallError::UnspecifiedError)
             }
             "TextInput.clearClient" => {
-                self.client_id = None;
-                self.editing_state.take();
+                let mut data = self.data.write().unwrap();
+                data.client_id = None;
+                data.editing_state.take();
                 Ok(Value::Null)
             }
             "TextInput.setEditingState" => {
-                if self.client_id.is_some() {
+                let mut data = self.data.write().unwrap();
+                if data.client_id.is_some() {
                     let state: TextEditingState = from_value(&call.args)?;
-                    self.editing_state.replace(state);
+                    data.editing_state.replace(state);
                     Ok(Value::Null)
                 } else {
                     Err(MethodCallError::UnspecifiedError)

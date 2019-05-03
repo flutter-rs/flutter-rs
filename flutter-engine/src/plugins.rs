@@ -24,7 +24,7 @@ use std::{
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
-    channel_registry: ChannelRegistry,
+    pub channel_registry: ChannelRegistry,
 }
 
 impl PluginRegistrar {

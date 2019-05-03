@@ -8,9 +8,9 @@ use log::info;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
-#[derive(Default)]
 pub struct NavigationPlugin {
     channel: Weak<JsonMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
 
 impl Plugin for NavigationPlugin {
@@ -19,7 +19,9 @@ impl Plugin for NavigationPlugin {
     }
 
     fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
+        let method_handler = Arc::downgrade(&self.handler);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
@@ -27,6 +29,7 @@ impl NavigationPlugin {
     pub fn new() -> Self {
         Self {
             channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 
@@ -67,12 +70,13 @@ impl NavigationPlugin {
     }
 }
 
-impl MethodCallHandler for NavigationPlugin {
+struct Handler;
+
+impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        _: Arc<RuntimeData>,
+        _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         info!(
             "navigation method {:?} called with args {:?}",

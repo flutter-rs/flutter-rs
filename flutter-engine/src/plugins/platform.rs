@@ -8,15 +8,16 @@ use log::error;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
-#[derive(Default)]
 pub struct PlatformPlugin {
     channel: Weak<JsonMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
 
 impl PlatformPlugin {
     pub fn new() -> Self {
         Self {
             channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -27,16 +28,19 @@ impl Plugin for PlatformPlugin {
     }
 
     fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
+        let method_handler = Arc::downgrade(&self.handler);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
-impl MethodCallHandler for PlatformPlugin {
+struct Handler;
+
+impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        runtime_data: Arc<RuntimeData>,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {

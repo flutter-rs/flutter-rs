@@ -9,29 +9,32 @@ use crate::{
 use log::error;
 
 pub struct JsonMethodChannel {
-    name: String,
+    name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Weak<RwLock<MethodCallHandler>>,
+    method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl JsonMethodChannel {
-    pub fn new(name: &str, method_handler: Weak<RwLock<MethodCallHandler>>) -> Self {
+    pub fn new(
+        name: &'static str,
+        method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+    ) -> Self {
         Self {
-            name: name.to_owned(),
+            name,
             init_data: Weak::new(),
             method_handler,
             plugin_name: None,
         }
     }
 
-    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler>>) {
+    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) {
         self.method_handler = method_handler;
     }
 }
 
 impl Channel for JsonMethodChannel {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         &self.name
     }
 
@@ -47,7 +50,7 @@ impl Channel for JsonMethodChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
         self.method_handler.upgrade()
     }
 

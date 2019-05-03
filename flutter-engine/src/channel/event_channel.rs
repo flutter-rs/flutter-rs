@@ -10,20 +10,20 @@ use crate::{
 use log::error;
 
 pub struct EventChannel {
-    name: String,
+    name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Arc<RwLock<MethodCallHandler>>,
+    method_handler: Arc<RwLock<MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 struct EventChannelMethodCallHandler {
-    event_handler: Weak<RwLock<EventHandler>>,
+    event_handler: Weak<RwLock<EventHandler + Send + Sync>>,
 }
 
 impl EventChannel {
-    pub fn new(name: &str, handler: Weak<RwLock<EventHandler>>) -> Self {
+    pub fn new(name: &'static str, handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
         Self {
-            name: name.to_owned(),
+            name,
             init_data: Weak::new(),
             method_handler: Arc::new(RwLock::new(EventChannelMethodCallHandler::new(handler))),
             plugin_name: None,
@@ -32,7 +32,7 @@ impl EventChannel {
 }
 
 impl Channel for EventChannel {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         &self.name
     }
 
@@ -48,7 +48,7 @@ impl Channel for EventChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
         Some(Arc::clone(&self.method_handler))
     }
 
@@ -62,7 +62,7 @@ impl Channel for EventChannel {
 }
 
 impl EventChannelMethodCallHandler {
-    pub fn new(handler: Weak<RwLock<EventHandler>>) -> Self {
+    pub fn new(handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
         Self {
             event_handler: handler,
         }
@@ -72,15 +72,14 @@ impl EventChannelMethodCallHandler {
 impl MethodCallHandler for EventChannelMethodCallHandler {
     fn on_method_call(
         &mut self,
-        channel: &str,
         call: MethodCall,
-        _: Arc<RuntimeData>,
+        _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         if let Some(handler) = self.event_handler.upgrade() {
             let mut handler = handler.write().unwrap();
             match call.method.as_str() {
-                "listen" => handler.on_listen(channel, call.args),
-                "cancel" => handler.on_cancel(channel),
+                "listen" => handler.on_listen(call.args),
+                "cancel" => handler.on_cancel(),
                 _ => Err(MethodCallError::NotImplemented),
             }
         } else {

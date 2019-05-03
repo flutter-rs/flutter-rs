@@ -16,6 +16,7 @@ pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
 
+use crate::desktop_window_state::ChannelFn;
 pub use glfw::Window;
 use log::error;
 
@@ -248,6 +249,16 @@ impl FlutterDesktop {
                 let window = window_state.window();
                 for mut f in fns {
                     f(window);
+                }
+
+                let fns: Vec<ChannelFn> = window_state.channel_receiver.try_iter().collect();
+                for mut f in fns {
+                    window_state
+                        .plugin_registrar
+                        .channel_registry
+                        .with_channel(f.0, |channel| {
+                            f.1(channel);
+                        });
                 }
 
                 unsafe {

@@ -29,38 +29,50 @@ mod registry;
 mod standard_method_channel;
 
 pub trait Channel {
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>>;
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
     fn plugin_name(&self) -> &'static str;
     fn codec(&self) -> &MethodCodec;
 
     /// Handle a method call received on this channel
-    fn handle_method(&self, msg: &mut PlatformMessage) {
+    fn handle_method(&self, mut msg: PlatformMessage) {
         debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.method_handler() {
             if let Some(init_data) = self.init_data() {
-                let runtime_data = Arc::clone(&init_data.runtime_data);
-                let mut handler = handler.write().unwrap();
+                let runtime_data = (*init_data.runtime_data).clone();
                 let call = self.decode_method_call(&msg).unwrap();
-                let method = call.method.clone();
-                let result = handler.on_method_call(msg.channel.deref(), call, runtime_data);
-                let response = match result {
-                    Ok(value) => MethodCallResult::Ok(value),
-                    Err(error) => {
-                        error!(
-                            target: handler
-                                .log_target()
-                                .unwrap_or_else(|| self.plugin_name()),
-                            "error in method call {}#{}: {}",
-                            msg.channel,
-                            method,
-                            error);
-                        error.into()
-                    }
-                };
-                self.send_method_call_response(&mut msg.response_handle, response);
+                let channel = self.name();
+                let plugin_name = self.plugin_name();
+                let mut response_handle = msg.response_handle.take();
+                std::thread::spawn(move || {
+                    let mut handler = handler.write().unwrap();
+                    let method = call.method.clone();
+                    let tx = runtime_data.channel_sender.clone();
+                    let result = handler.on_method_call(call, runtime_data);
+                    let response = match result {
+                        Ok(value) => MethodCallResult::Ok(value),
+                        Err(error) => {
+                            error!(
+                                target: handler
+                                    .log_target()
+                                    .unwrap_or(plugin_name),
+                                "error in method call {}#{}: {}",
+                                channel,
+                                method,
+                                error);
+                            error.into()
+                        }
+                    };
+                    tx.send((
+                        channel,
+                        Box::new(move |channel| {
+                            channel.send_method_call_response(&mut response_handle, &response);
+                        }),
+                    ))
+                    .unwrap();
+                });
             }
         }
     }
@@ -108,18 +120,16 @@ pub trait Channel {
     fn send_method_call_response(
         &self,
         response_handle: &mut Option<PlatformMessageResponseHandle>,
-        response: MethodCallResult,
+        response: &MethodCallResult,
     ) {
         if let Some(response_handle) = response_handle.take() {
             let buf = match response {
-                MethodCallResult::Ok(data) => self.codec().encode_success_envelope(&data),
+                MethodCallResult::Ok(data) => self.codec().encode_success_envelope(data),
                 MethodCallResult::Err {
                     code,
                     message,
                     details,
-                } => self
-                    .codec()
-                    .encode_error_envelope(&code, &message, &details),
+                } => self.codec().encode_error_envelope(code, message, details),
                 MethodCallResult::NotImplemented => vec![],
             };
             self.send_response(response_handle, &buf);
@@ -157,13 +167,12 @@ pub trait MethodCallHandler {
 
     fn on_method_call(
         &mut self,
-        channel: &str,
         call: MethodCall,
-        runtime_data: Arc<RuntimeData>,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError>;
 }
 
 pub trait EventHandler {
-    fn on_listen(&mut self, channel: &str, args: Value) -> Result<Value, MethodCallError>;
-    fn on_cancel(&mut self, channel: &str) -> Result<Value, MethodCallError>;
+    fn on_listen(&mut self, args: Value) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self) -> Result<Value, MethodCallError>;
 }

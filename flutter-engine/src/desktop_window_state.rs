@@ -1,16 +1,16 @@
 use crate::{
+    channel::Channel,
     ffi::{FlutterEngine, FlutterPointerPhase, FlutterPointerSignalKind},
     plugins::PluginRegistrar,
     utils::WindowUnwrap,
 };
 
+use log::{debug, info};
 use std::sync::{
     mpsc,
     mpsc::{Receiver, Sender},
     Arc,
 };
-
-use log::{debug, info};
 
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
@@ -24,11 +24,13 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub type MainThreadFn = Box<FnMut(&mut glfw::Window) + Send>;
+pub type ChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
 
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     pub main_thread_receiver: Receiver<MainThreadFn>,
+    pub channel_receiver: Receiver<ChannelFn>,
     pub init_data: Arc<InitData>,
     pointer_currently_added: bool,
     window_pixels_per_screen_coordinate: f64,
@@ -42,8 +44,10 @@ pub struct InitData {
 }
 
 /// Data accessible during runtime. Implements Send to be used in message handling.
+#[derive(Clone)]
 pub struct RuntimeData {
     pub main_thread_sender: Sender<MainThreadFn>,
+    pub channel_sender: Sender<ChannelFn>,
 }
 
 impl DesktopWindowState {
@@ -57,8 +61,10 @@ impl DesktopWindowState {
         engine: FlutterEngine,
     ) -> Self {
         let (main_tx, main_rx) = mpsc::channel();
+        let (channel_tx, channel_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
             main_thread_sender: main_tx,
+            channel_sender: channel_tx,
         });
         let init_data = Arc::new(InitData {
             engine: Arc::new(engine),
@@ -68,6 +74,7 @@ impl DesktopWindowState {
             window_ref,
             window_event_receiver,
             main_thread_receiver: main_rx,
+            channel_receiver: channel_rx,
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),

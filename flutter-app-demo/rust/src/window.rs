@@ -1,8 +1,5 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
-
-use std::sync::RwLock;
-
 use flutter_engine::plugins::prelude::*;
 
 const PLUGIN_NAME: &str = module_path!();
@@ -10,7 +7,7 @@ const CHANNEL_NAME: &str = "flutter-rs/window";
 
 pub struct WindowPlugin {
     channel: Weak<JsonMethodChannel>,
-    state: RwLock<WindowState>,
+    state: Arc<RwLock<WindowState>>,
 }
 
 impl Plugin for WindowPlugin {
@@ -18,8 +15,10 @@ impl Plugin for WindowPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
+        let method_handler = Arc::downgrade(&self.state);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
@@ -27,7 +26,7 @@ impl WindowPlugin {
     pub fn new() -> Self {
         WindowPlugin {
             channel: Weak::new(),
-            state: RwLock::new(WindowState::new()),
+            state: Arc::new(RwLock::new(WindowState::new())),
         }
     }
 
@@ -43,57 +42,68 @@ impl WindowPlugin {
     }
 }
 
-impl MethodCallHandler for WindowPlugin {
+impl MethodCallHandler for WindowState {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        window: &mut Window,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "maximize" => {
-                window.maximize();
+                runtime_data.with_window(|window| {
+                    window.maximize();
+                })?;
                 Ok(Value::Null)
             }
             "iconify" => {
-                window.iconify();
+                runtime_data.with_window(|window| {
+                    window.iconify();
+                })?;
                 Ok(Value::Null)
             }
             "restore" => {
-                window.restore();
+                runtime_data.with_window(|window| {
+                    window.restore();
+                })?;
                 Ok(Value::Null)
             }
             "show" => {
-                window.show();
+                runtime_data.with_window(|window| {
+                    window.show();
+                })?;
                 Ok(Value::Null)
             }
             "hide" => {
-                window.hide();
+                runtime_data.with_window(|window| {
+                    window.hide();
+                })?;
                 Ok(Value::Null)
             }
             "close" => {
-                window.set_should_close(true);
+                runtime_data.with_window(|window| {
+                    window.set_should_close(true);
+                })?;
                 Ok(Value::Null)
             }
             "set_pos" => {
                 let args: PositionParams = from_value(&call.args)?;
-                window.set_pos(args.x as i32, args.y as i32);
+                runtime_data.with_window(move |window| {
+                    window.set_pos(args.x as i32, args.y as i32);
+                })?;
                 Ok(Value::Null)
             }
             "get_pos" => {
-                let (xpos, ypos) = window.get_pos();
+                let (xpos, ypos) = runtime_data.with_window_result(|window| window.get_pos())?;
                 Ok(json_value!({"x": xpos, "y": ypos}))
             }
             "start_drag" => {
-                let mut state = self.state.write().unwrap();
-                let pos = window.get_cursor_pos();
-                state.dragging = true;
-                state.start_cursor_pos = pos;
+                let pos = runtime_data.with_window_result(|window| window.get_cursor_pos())?;
+                self.dragging = true;
+                self.start_cursor_pos = pos;
                 Ok(Value::Null)
             }
             "end_drag" => {
-                let mut state = self.state.write().unwrap();
-                state.dragging = false;
+                self.dragging = false;
                 Ok(Value::Null)
             }
             _ => Err(MethodCallError::NotImplemented),

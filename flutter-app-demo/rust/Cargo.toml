@@ -11,10 +11,10 @@ identifier = "one.juju.flutter-app" # This is only used on mac
 
 [dependencies]
 log = "0.4.6"
-tokio = "0.1.13"
-futures = "0.1.25"
-tokio-timer = "0.2.8"
-stream-cancel = "0.4.4"
+tokio = "^0.1"
+futures = "^0.1"
+tokio-timer = "^0.2"
+stream-cancel = "^0.4"
 tinyfiledialogs = "3.3.5"
 flutter-engine = { path = "../../flutter-engine" }
 fern = { version = "^0.5", features = ["colored"] }

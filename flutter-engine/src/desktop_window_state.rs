@@ -48,9 +48,34 @@ pub struct InitData {
 /// Data accessible during runtime. Implements Send to be used in message handling.
 #[derive(Clone)]
 pub struct RuntimeData {
-    pub main_thread_sender: Sender<MainThreadFn>,
-    pub channel_sender: Sender<ChannelFn>,
+    main_thread_sender: Sender<MainThreadFn>,
+    pub(crate) channel_sender: Sender<ChannelFn>,
     pub task_executor: TaskExecutor,
+}
+
+impl RuntimeData {
+    pub fn with_window_result<F, R>(&self, mut f: F) -> Result<R, crate::error::MethodCallError>
+    where
+        F: FnMut(&mut glfw::Window) -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let (tx, rx) = mpsc::sync_channel(0);
+        self.main_thread_sender.send(Box::new(move |window| {
+            let result = f(window);
+            tx.send(result).unwrap();
+        }))?;
+        Ok(rx.recv()?)
+    }
+
+    pub fn with_window<F>(&self, mut f: F) -> Result<(), crate::error::MethodCallError>
+    where
+        F: FnMut(&mut glfw::Window) + Send + 'static,
+    {
+        self.main_thread_sender.send(Box::new(move |window| {
+            f(window);
+        }))?;
+        Ok(())
+    }
 }
 
 impl DesktopWindowState {

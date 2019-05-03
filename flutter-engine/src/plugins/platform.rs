@@ -46,11 +46,9 @@ impl MethodCallHandler for Handler {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;
                 // label and primaryColor
-                runtime_data
-                    .main_thread_sender
-                    .send(Box::new(move |window| {
-                        window.set_title(args.label.as_str());
-                    }))?;
+                runtime_data.with_window(move |window| {
+                    window.set_title(args.label.as_str());
+                })?;
                 Ok(Value::Null)
             }
             "Clipboard.setData" => {
@@ -58,11 +56,9 @@ impl MethodCallHandler for Handler {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
                             let text = text.clone();
-                            runtime_data
-                                .main_thread_sender
-                                .send(Box::new(move |window| {
-                                    window.set_clipboard_string(text.as_str());
-                                }))?;
+                            runtime_data.with_window(move |window| {
+                                window.set_clipboard_string(text.as_str());
+                            })?;
                             return Ok(Value::Null);
                         }
                     }
@@ -73,13 +69,8 @@ impl MethodCallHandler for Handler {
                 if let Value::String(mime) = &call.args {
                     match mime.as_str() {
                         "text/plain" => {
-                            let (tx, rx) = std::sync::mpsc::sync_channel(0);
-                            runtime_data
-                                .main_thread_sender
-                                .send(Box::new(move |window| {
-                                    tx.send(window.get_clipboard_string()).unwrap();
-                                }))?;
-                            let text = rx.recv()?;
+                            let text = runtime_data
+                                .with_window_result(|window| window.get_clipboard_string())?;
                             Ok(json_value!({ "text": text }))
                         }
                         _ => {

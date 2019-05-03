@@ -4,122 +4,109 @@
 mod text_editing_state;
 
 use self::text_editing_state::TextEditingState;
-use crate::{
-    channel::{Channel, JsonMethodChannel},
-    codec::MethodCall,
-    codec::MethodCallResult,
-    desktop_window_state::RuntimeData,
-    plugins::{PlatformMessage, Plugin, PluginChannel},
-    utils::{OwnedStringUtils, StringUtils},
-};
+use super::prelude::*;
 
-use std::{cell::RefCell, sync::Weak};
-
-use glfw::Modifiers;
-use log::{error, warn};
-use serde_json::{json, Value};
-
+pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
+#[derive(Default)]
 pub struct TextInputPlugin {
     client_id: Option<i64>,
-    editing_state: RefCell<Option<TextEditingState>>,
-    channel: JsonMethodChannel,
+    editing_state: Option<TextEditingState>,
+    channel: Weak<JsonMethodChannel>,
 }
 
-impl PluginChannel for TextInputPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl Plugin for TextInputPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
+    }
+
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
     }
 }
 
 impl TextInputPlugin {
-    pub fn new() -> TextInputPlugin {
-        TextInputPlugin {
+    pub fn new() -> Self {
+        Self {
             client_id: None,
-            editing_state: RefCell::new(None),
-            channel: JsonMethodChannel::new(CHANNEL_NAME),
+            editing_state: None,
+            channel: Weak::new(),
         }
     }
-    pub fn with_state(&self, cbk: impl Fn(&mut TextEditingState)) {
-        if let Ok(mut state) = self.editing_state.try_borrow_mut() {
-            if let Some(state) = &mut *state {
-                cbk(state);
-            }
+
+    fn with_channel<F>(&self, f: F)
+    where
+        F: FnOnce(&Channel),
+    {
+        if let Some(channel) = self.channel.upgrade() {
+            f(&*channel);
+        }
+    }
+
+    pub fn with_state(&mut self, cbk: impl FnOnce(&mut TextEditingState)) {
+        if let Some(state) = &mut self.editing_state {
+            cbk(state);
         }
     }
 
     pub fn perform_action(&self, action: &str) {
-        self.channel.invoke_method(MethodCall {
-            method: String::from("TextInputClient.performAction"),
-            args: json!([self.client_id, "TextInputAction.".to_owned() + action]),
+        self.with_channel(|channel| {
+            channel.invoke_method(MethodCall {
+                method: String::from("TextInputClient.performAction"),
+                args: json_value!([self.client_id, "TextInputAction.".to_owned() + action]),
+            })
         });
     }
 
-    pub fn notify_changes(&self) {
-        self.with_state(|s: &mut TextEditingState| {
-            self.channel.invoke_method(MethodCall {
-                method: String::from("TextInputClient.updateEditingState"),
-                args: json!([self.client_id, s]),
-            });
-        });
+    pub fn notify_changes(&mut self) {
+        if let Some(state) = &mut self.editing_state {
+            if let Some(channel) = self.channel.upgrade() {
+                channel.invoke_method(MethodCall {
+                    method: String::from("TextInputClient.updateEditingState"),
+                    args: json_value!([self.client_id, state]),
+                });
+            }
+        };
     }
 }
 
-impl Plugin for TextInputPlugin {
-    fn init_channel(&mut self, runtime_data: Weak<RuntimeData>) {
-        self.channel.init(runtime_data);
-    }
-    fn handle(&mut self, msg: &mut PlatformMessage, _: &mut glfw::Window) {
-        let decoded = self.channel.decode_method_call(msg).unwrap();
-
-        match decoded.method.as_str() {
+impl MethodCallHandler for TextInputPlugin {
+    fn on_method_call(
+        &mut self,
+        _: &str,
+        call: MethodCall,
+        _: &mut Window,
+    ) -> Result<Value, MethodCallError> {
+        match call.method.as_str() {
             "TextInput.setClient" => {
-                if let Value::Array(v) = &decoded.args {
-                    if v.len() > 0 {
-                        if let Some(n) = v[0].as_i64() {
+                if let Value::List(v) = &call.args {
+                    if !v.is_empty() {
+                        if let Value::I64(n) = v[0] {
                             self.client_id = Some(n);
-                            self.channel.send_method_call_response(
-                                &mut msg.response_handle,
-                                MethodCallResult::Ok(Value::Null),
-                            );
+                            return Ok(Value::Null);
                         }
                     }
                 }
+                Err(MethodCallError::UnspecifiedError)
             }
             "TextInput.clearClient" => {
                 self.client_id = None;
-                self.editing_state.replace(None);
-                self.channel.send_method_call_response(
-                    &mut msg.response_handle,
-                    MethodCallResult::Ok(Value::Null),
-                );
+                self.editing_state.take();
+                Ok(Value::Null)
             }
             "TextInput.setEditingState" => {
                 if self.client_id.is_some() {
-                    self.editing_state
-                        .replace(TextEditingState::from(&decoded.args));
-                    self.channel.send_method_call_response(
-                        &mut msg.response_handle,
-                        MethodCallResult::Ok(Value::Null),
-                    );
+                    let state: TextEditingState = from_value(&call.args)?;
+                    self.editing_state.replace(state);
+                    Ok(Value::Null)
+                } else {
+                    Err(MethodCallError::UnspecifiedError)
                 }
             }
-            "TextInput.show" => {
-                self.channel.send_method_call_response(
-                    &mut msg.response_handle,
-                    MethodCallResult::Ok(Value::Null),
-                );
-            }
-            "TextInput.hide" => {
-                self.channel.send_method_call_response(
-                    &mut msg.response_handle,
-                    MethodCallResult::Ok(Value::Null),
-                );
-            }
-            method => {
-                warn!("Unknown method {} called", method);
-            }
+            "TextInput.show" => Ok(Value::Null),
+            "TextInput.hide" => Ok(Value::Null),
+            _ => Err(MethodCallError::NotImplemented),
         }
     }
 }

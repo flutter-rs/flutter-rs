@@ -78,7 +78,7 @@ fn main() {
     };
 
     let mut engine = flutter_engine::init().unwrap();
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     engine
         .create_window(
             1800,

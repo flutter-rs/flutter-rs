@@ -1,9 +1,11 @@
-use crate::utils::{OwnedStringUtils, StringUtils};
+use crate::{
+    codec::{value::from_value, Value},
+    utils::{OwnedStringUtils, StringUtils},
+};
 
 use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -23,46 +25,8 @@ enum Direction {
 }
 
 impl TextEditingState {
-    pub fn from(v: &Value) -> Option<Self> {
-        if let Some(m) = v.as_object() {
-            Some(Self {
-                composing_base: m
-                    .get("composingBase")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                composing_extent: m
-                    .get("composingExtent")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_affinity: String::from(
-                    m.get("selectionAffinity")
-                        .unwrap_or(&json!(""))
-                        .as_str()
-                        .unwrap(),
-                ),
-                selection_base: m
-                    .get("selectionBase")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_extent: m
-                    .get("selectionExtent")
-                    .unwrap_or(&json!(-1))
-                    .as_i64()
-                    .unwrap(),
-                selection_is_directional: m
-                    .get("selectionIsDirectional")
-                    .unwrap_or(&json!(false))
-                    .as_bool()
-                    .unwrap(),
-                text: String::from(m.get("text").unwrap_or(&json!("")).as_str().unwrap()),
-                ..Default::default()
-            })
-        } else {
-            None
-        }
+    pub fn from(v: Value) -> Option<Self> {
+        from_value(&v).ok()
     }
 
     fn get_selection_range(&self) -> Range<usize> {

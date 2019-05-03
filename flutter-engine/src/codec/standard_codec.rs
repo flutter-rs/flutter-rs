@@ -1,10 +1,6 @@
-use super::{MethodCall, MethodCallResult, MethodCodec};
+use super::{MethodCall, MethodCallResult, MethodCodec, Value};
 
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-    mem, slice, u16, u32,
-};
+use std::{collections::HashMap, mem, slice, u16, u32};
 
 use log::error;
 
@@ -24,81 +20,14 @@ const VALUE_LIST: u8 = 12;
 const VALUE_MAP: u8 = 13;
 
 #[derive(Debug)]
-pub enum Value {
-    Null,
-    Boolean(bool),
-    I32(i32),
-    I64(i64),
-    LargeInt, // Not supported, since flutter have this deprecated
-    F64(f64),
-    String(String),
-    U8List(Vec<u8>),
-    I32List(Vec<i32>),
-    I64List(Vec<i64>),
-    F64List(Vec<f64>),
-    List(Vec<Value>),
-    Map(HashMap<Value, Value>),
-}
-
-/// This is required, because HashMap need it.
-/// This implementation use mem location for comparision
-/// It does not matter, since it's only used as data holder
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        let p: *const Value = self;
-        let p2: *const Value = other;
-        p == p2
-    }
-}
-impl Eq for Value {}
-
-impl Hash for Value {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let p: *const Value = self;
-        p.hash(state);
-    }
-}
-
-impl Value {
-    fn type_id(&self) -> u8 {
-        match self {
-            Value::Null => VALUE_NULL,
-            Value::Boolean(v) => {
-                if *v {
-                    VALUE_TRUE
-                } else {
-                    VALUE_FALSE
-                }
-            }
-            Value::I32(_) => VALUE_INT32,
-            Value::I64(_) => VALUE_INT64,
-            Value::LargeInt => VALUE_LARGEINT,
-            Value::F64(_) => VALUE_FLOAT64,
-            Value::String(_) => VALUE_STRING,
-            Value::U8List(_) => VALUE_UINT8LIST,
-            Value::I32List(_) => VALUE_INT32LIST,
-            Value::I64List(_) => VALUE_INT64LIST,
-            Value::F64List(_) => VALUE_FLOAT64LIST,
-            Value::List(_) => VALUE_LIST,
-            Value::Map(_) => VALUE_MAP,
-        }
-    }
-    fn as_string(self) -> Option<String> {
-        if let Value::String(s) = self {
-            Some(s)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug)]
 enum DecodeError {
     Invalid,
     Ended,
 }
 
 pub struct StandardMethodCodec;
+
+pub const CODEC: StandardMethodCodec = StandardMethodCodec {};
 
 impl StandardMethodCodec {
     fn read_value(reader: &mut Reader) -> Result<Value, DecodeError> {
@@ -158,12 +87,21 @@ impl StandardMethodCodec {
                     }
                     let k = k.unwrap();
                     let v = v.unwrap();
-                    map.insert(k, v);
+                    if let Value::String(k) = k {
+                        map.insert(k, v);
+                    } else {
+                        return Err(DecodeError::Invalid);
+                    }
                 }
                 Value::Map(map)
             }
             _ => Value::Null,
         })
+    }
+    fn write_string(writer: &mut Writer, s: &String) {
+        writer.write_u8(VALUE_STRING);
+        writer.write_size(s.len());
+        writer.write_string(s);
     }
     fn write_value(writer: &mut Writer, v: &Value) {
         match v {
@@ -182,9 +120,7 @@ impl StandardMethodCodec {
                 writer.write_i64(*n);
             }
             Value::String(s) => {
-                writer.write_u8(VALUE_STRING);
-                writer.write_size(s.len());
-                writer.write_string(s);
+                Self::write_string(writer, s);
             }
             Value::U8List(list) => {
                 writer.write_u8(VALUE_UINT8LIST);
@@ -225,7 +161,7 @@ impl StandardMethodCodec {
                 writer.write_u8(VALUE_MAP);
                 writer.write_size(map.len());
                 map.iter().for_each(|(k, v)| {
-                    Self::write_value(writer, k);
+                    Self::write_string(writer, k);
                     Self::write_value(writer, v);
                 });
             }
@@ -235,9 +171,7 @@ impl StandardMethodCodec {
 }
 
 impl MethodCodec for StandardMethodCodec {
-    type R = Value;
-
-    fn encode_method_call(v: &MethodCall<Self::R>) -> Vec<u8> {
+    fn encode_method_call(&self, v: &MethodCall) -> Vec<u8> {
         let mut writer = Writer::new(Vec::new());
         // Can we avoid this clone?
         StandardMethodCodec::write_value(&mut writer, &Value::String(v.method.to_owned()));
@@ -245,7 +179,7 @@ impl MethodCodec for StandardMethodCodec {
         writer.0
     }
 
-    fn decode_method_call(buf: &[u8]) -> Option<MethodCall<Self::R>> {
+    fn decode_method_call(&self, buf: &[u8]) -> Option<MethodCall> {
         let mut reader = Reader::new(buf);
         let method: Value = StandardMethodCodec::read_value(&mut reader).unwrap();
         let args: Value = StandardMethodCodec::read_value(&mut reader).unwrap();
@@ -257,14 +191,14 @@ impl MethodCodec for StandardMethodCodec {
         None
     }
 
-    fn encode_success_envelope(result: &Self::R) -> Vec<u8> {
+    fn encode_success_envelope(&self, result: &Value) -> Vec<u8> {
         let mut writer = Writer::new(Vec::new());
         writer.write_u8(0);
         StandardMethodCodec::write_value(&mut writer, result);
         writer.0
     }
 
-    fn encode_error_envelope(code: &str, message: &str, v: &Self::R) -> Vec<u8> {
+    fn encode_error_envelope(&self, code: &str, message: &str, v: &Value) -> Vec<u8> {
         let mut writer = Writer::new(Vec::new());
         writer.write_u8(1);
         StandardMethodCodec::write_value(&mut writer, &Value::String(code.to_owned()));
@@ -273,7 +207,7 @@ impl MethodCodec for StandardMethodCodec {
         writer.0
     }
 
-    fn decode_envelope(buf: &[u8]) -> Option<MethodCallResult<Self::R>> {
+    fn decode_envelope(&self, buf: &[u8]) -> Option<MethodCallResult> {
         let mut reader = Reader::new(buf);
         let n = reader.read_u8();
         if n == 0 {
@@ -284,8 +218,14 @@ impl MethodCodec for StandardMethodCodec {
             let message = StandardMethodCodec::read_value(&mut reader).unwrap();
             let details = StandardMethodCodec::read_value(&mut reader).unwrap();
             Some(MethodCallResult::Err {
-                code: code.as_string().unwrap(),
-                message: message.as_string().unwrap(),
+                code: match code {
+                    Value::String(s) => s,
+                    _ => "".into(),
+                },
+                message: match message {
+                    Value::String(s) => s,
+                    _ => "".into(),
+                },
                 details,
             })
         } else {

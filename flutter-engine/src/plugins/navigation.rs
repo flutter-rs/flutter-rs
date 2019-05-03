@@ -1,72 +1,83 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use super::{PlatformMessage, Plugin, PluginChannel};
-use crate::{
-    channel::{Channel, JsonMethodChannel},
-    codec::{MethodCall, MethodCallResult},
-    desktop_window_state::RuntimeData,
-};
-
-use std::sync::Weak;
+use super::prelude::*;
 
 use log::info;
-use serde_json::{json, Value};
 
+pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
+#[derive(Default)]
 pub struct NavigationPlugin {
-    channel: JsonMethodChannel,
+    channel: Weak<JsonMethodChannel>,
 }
 
-impl PluginChannel for NavigationPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl Plugin for NavigationPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
+    }
+
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
     }
 }
 
 impl NavigationPlugin {
     pub fn new() -> Self {
         Self {
-            channel: JsonMethodChannel::new(CHANNEL_NAME),
+            channel: Weak::new(),
+        }
+    }
+
+    fn with_channel<F>(&self, f: F)
+    where
+        F: FnOnce(&Channel),
+    {
+        if let Some(channel) = self.channel.upgrade() {
+            f(&*channel);
         }
     }
 
     pub fn set_initial_route(&self, initial_route: &str) {
-        self.channel.invoke_method(MethodCall {
-            method: String::from("setInitialRoute"),
-            args: json!(initial_route),
+        self.with_channel(|channel| {
+            channel.invoke_method(MethodCall {
+                method: String::from("setInitialRoute"),
+                args: Value::String(initial_route.into()),
+            })
         });
     }
 
     pub fn push_route(&self, route: &str) {
-        self.channel.invoke_method(MethodCall {
-            method: String::from("pushRoute"),
-            args: json!(route),
+        self.with_channel(|channel| {
+            channel.invoke_method(MethodCall {
+                method: String::from("pushRoute"),
+                args: Value::String(route.into()),
+            })
         });
     }
 
     pub fn pop_route(&self) {
-        self.channel.invoke_method(MethodCall {
-            method: String::from("popRoute"),
-            args: Value::Null,
+        self.with_channel(|channel| {
+            channel.invoke_method(MethodCall {
+                method: String::from("popRoute"),
+                args: Value::Null,
+            })
         });
     }
 }
 
-impl Plugin for NavigationPlugin {
-    fn init_channel(&mut self, runtime_data: Weak<RuntimeData>) {
-        self.channel.init(runtime_data);
-    }
-
-    fn handle(&mut self, msg: &mut PlatformMessage, _: &mut glfw::Window) {
-        let decoded = self.channel.decode_method_call(msg).unwrap();
-
+impl MethodCallHandler for NavigationPlugin {
+    fn on_method_call(
+        &mut self,
+        _: &str,
+        call: MethodCall,
+        _: &mut Window,
+    ) -> Result<Value, MethodCallError> {
         info!(
             "navigation method {:?} called with args {:?}",
-            decoded.method, decoded.args
+            call.method, call.args
         );
-        self.channel
-            .send_method_call_response(&mut msg.response_handle, MethodCallResult::NotImplemented);
+        Err(MethodCallError::NotImplemented)
     }
 }

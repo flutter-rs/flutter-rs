@@ -30,18 +30,18 @@ pub extern "C" fn make_current(user_data: *mut c_void) -> bool {
     }
 }
 
-pub extern "C" fn clear_current(user_data: *mut c_void) -> bool {
+pub extern "C" fn clear_current(_user_data: *mut c_void) -> bool {
     trace!("clear_current");
     glfw::make_context_current(None);
     true
 }
 
-pub extern "C" fn fbo_callback(user_data: *mut c_void) -> c_uint {
+pub extern "C" fn fbo_callback(_user_data: *mut c_void) -> c_uint {
     trace!("fbo_callback");
     0
 }
 
-pub extern "C" fn make_resource_current(user_data: *mut c_void) -> bool {
+pub extern "C" fn make_resource_current(_user_data: *mut c_void) -> bool {
     trace!("make_resource_current");
     false
 }
@@ -75,6 +75,6 @@ pub extern "C" fn platform_message_callback(
     }
 }
 
-pub extern "C" fn root_isolate_create_callback(user_data: *mut c_void) {
+pub extern "C" fn root_isolate_create_callback(_user_data: *mut c_void) {
     trace!("root_isolate_create_callback");
 }

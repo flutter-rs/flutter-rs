@@ -1,6 +1,10 @@
+#[macro_use]
+mod macros;
+
 pub mod channel;
 pub mod codec;
 mod desktop_window_state;
+pub mod error;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
@@ -253,6 +257,6 @@ impl FlutterDesktop {
     }
 }
 
-fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
+fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
     error!("GLFW error: {}", description);
 }

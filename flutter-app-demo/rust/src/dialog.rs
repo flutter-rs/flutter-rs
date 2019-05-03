@@ -1,59 +1,66 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
 
-use std::sync::{Arc, Mutex, Weak};
+use flutter_engine::plugins::prelude::*;
 
-use flutter_engine::{
-    channel::{Channel, JsonMethodChannel},
-    codec::{json_codec::Value, MethodCallResult},
-    plugins::{Plugin, PluginChannel},
-    PlatformMessage, RuntimeData, Window,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-
+const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "flutter-rs/dialog";
 
 pub struct DialogPlugin {
-    channel: Arc<Mutex<JsonMethodChannel>>,
-    // handle: Handle,
+    channel: Weak<JsonMethodChannel>,
 }
 
 impl DialogPlugin {
     pub fn new() -> Self {
         DialogPlugin {
-            channel: Arc::new(Mutex::new(JsonMethodChannel::new(CHANNEL_NAME))),
+            channel: Weak::new(),
         }
     }
 }
 
-impl PluginChannel for DialogPlugin {
-    fn channel_name() -> &'static str {
-        CHANNEL_NAME
+impl Plugin for DialogPlugin {
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
+    }
+
+    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
     }
 }
 
-impl Plugin for DialogPlugin {
-    fn init_channel(&mut self, registry: Weak<RuntimeData>) {
-        let mut channel = self.channel.lock().unwrap();
-        channel.init(registry);
+impl MethodCallHandler for DialogPlugin {
+    fn handle_async(&self, _call: &MethodCall) -> bool {
+        // all calls here should be handled async
+        true
     }
 
-    fn handle(&mut self, msg: &mut PlatformMessage, _window: &mut Window) {
-        let channel = self.channel.lock().unwrap();
-        let decoded = channel.decode_method_call(msg).unwrap();
-        match decoded.method.as_str() {
+    fn on_method_call(
+        &mut self,
+        _channel: &str,
+        _call: MethodCall,
+        _window: &mut Window,
+    ) -> Result<Value, MethodCallError> {
+        // this can't happen as all calls are handled async
+        Err(MethodCallError::UnspecifiedError)
+    }
+
+    fn on_async_method_call(
+        &mut self,
+        _: &str,
+        call: MethodCall,
+        _: &mut Window,
+        mut response_handle: Option<PlatformMessageResponseHandle>,
+    ) {
+        match call.method.as_str() {
             "open_file_dialog" => {
-                let c = self.channel.clone();
-                let mut handle = msg.response_handle.take();
+                let channel = self.channel.clone();
+                let mut response_handle = response_handle.take();
                 std::thread::spawn(move || {
-                    let s = serde_json::to_string(&decoded.args);
-                    let params: serde_json::Result<OpenFileDialogParams> =
-                        serde_json::from_str(&s.unwrap());
+                    let params = from_value::<OpenFileDialogParams>(&call.args);
                     if params.is_err() {
-                        let channel = c.lock().unwrap();
+                        let channel = channel.upgrade().unwrap();
                         channel.send_method_call_response(
-                            &mut handle,
+                            &mut response_handle,
                             MethodCallResult::Err {
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
@@ -71,7 +78,7 @@ impl Plugin for DialogPlugin {
 
                     // Oh, these borrow stuff sux
                     let filter2 = filter.as_ref().map(|(p, n)| {
-                        let p: Vec<&str> = p.iter().map(|v| v.as_str()).collect();
+                        let p: Vec<&str> = p.iter().map(String::as_str).collect();
                         (p, n)
                     });
                     let path = tinyfiledialogs::open_file_dialog(
@@ -84,21 +91,22 @@ impl Plugin for DialogPlugin {
                         Some(p) => p,
                         None => "",
                     };
-                    let channel = c.lock().unwrap();
-                    channel.send_method_call_response(&mut handle, MethodCallResult::Ok(json!(s)));
+                    let channel = channel.upgrade().unwrap();
+                    channel.send_method_call_response(
+                        &mut response_handle,
+                        MethodCallResult::Ok(json_value!(s)),
+                    );
                 });
             }
             "message_box_ok" => {
-                let c = self.channel.clone();
-                let mut handle = msg.response_handle.take();
+                let channel = self.channel.clone();
+                let mut response_handle = response_handle.take();
                 std::thread::spawn(move || {
-                    let s = serde_json::to_string(&decoded.args);
-                    let params: serde_json::Result<MessageBoxOkParams> =
-                        serde_json::from_str(&s.unwrap());
+                    let params = from_value::<MessageBoxOkParams>(&call.args);
                     if params.is_err() {
-                        let channel = c.lock().unwrap();
+                        let channel = channel.upgrade().unwrap();
                         channel.send_method_call_response(
-                            &mut handle,
+                            &mut response_handle,
                             MethodCallResult::Err {
                                 code: "1002".to_owned(), // TODO: put errors together
                                 message: "Params error".to_owned(),
@@ -122,14 +130,18 @@ impl Plugin for DialogPlugin {
                     };
                     tinyfiledialogs::message_box_ok(title.as_str(), message.as_str(), icon);
 
-                    let channel = c.lock().unwrap();
+                    let channel = channel.upgrade().unwrap();
                     channel.send_method_call_response(
-                        &mut handle,
-                        MethodCallResult::Ok(json!(Value::Null)),
+                        &mut response_handle,
+                        MethodCallResult::Ok(Value::Null),
                     );
                 });
             }
-            _ => (),
+            _ => self
+                .channel
+                .upgrade()
+                .unwrap()
+                .send_method_call_response(&mut response_handle, MethodCallResult::NotImplemented),
         }
     }
 }

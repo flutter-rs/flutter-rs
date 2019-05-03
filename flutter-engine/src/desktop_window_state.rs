@@ -11,6 +11,7 @@ use std::sync::{
     mpsc::{Receiver, Sender},
     Arc,
 };
+use tokio::runtime::{Runtime, TaskExecutor};
 
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
@@ -29,6 +30,7 @@ pub type ChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    pub runtime: Runtime,
     pub main_thread_receiver: Receiver<MainThreadFn>,
     pub channel_receiver: Receiver<ChannelFn>,
     pub init_data: Arc<InitData>,
@@ -48,6 +50,7 @@ pub struct InitData {
 pub struct RuntimeData {
     pub main_thread_sender: Sender<MainThreadFn>,
     pub channel_sender: Sender<ChannelFn>,
+    pub task_executor: TaskExecutor,
 }
 
 impl DesktopWindowState {
@@ -60,11 +63,13 @@ impl DesktopWindowState {
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
+        let runtime = Runtime::new().unwrap();
         let (main_tx, main_rx) = mpsc::channel();
         let (channel_tx, channel_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
             main_thread_sender: main_tx,
             channel_sender: channel_tx,
+            task_executor: runtime.executor(),
         });
         let init_data = Arc::new(InitData {
             engine: Arc::new(engine),
@@ -73,6 +78,7 @@ impl DesktopWindowState {
         Self {
             window_ref,
             window_event_receiver,
+            runtime,
             main_thread_receiver: main_rx,
             channel_receiver: channel_rx,
             pointer_currently_added: false,

@@ -10,13 +10,15 @@ mod flutter_callbacks;
 pub mod plugins;
 mod utils;
 
-pub use crate::desktop_window_state::{DesktopWindowState, InitData, MainThreadFn, RuntimeData};
+pub use crate::desktop_window_state::{
+    ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
+};
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
+use tokio::prelude::Future;
 
-use crate::desktop_window_state::ChannelFn;
 pub use glfw::Window;
 use log::error;
 
@@ -267,6 +269,7 @@ impl FlutterDesktop {
             }
 
             window_state.init_data.engine.shutdown();
+            window_state.runtime.shutdown_now().wait().unwrap();
         }
     }
 }

@@ -50,7 +50,7 @@ impl PluginRegistrar {
             let mut plugin = arc.write().unwrap();
             self.channel_registry
                 .with_channel_registrar(P::plugin_name(), |registrar| {
-                    plugin.init_channels(Arc::downgrade(&arc), registrar);
+                    plugin.init_channels(registrar);
                 });
         }
         self.plugins.insert(P::plugin_name().to_owned(), arc);
@@ -88,5 +88,5 @@ impl PluginRegistrar {
 
 pub trait Plugin {
     fn plugin_name() -> &'static str;
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar);
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar);
 }

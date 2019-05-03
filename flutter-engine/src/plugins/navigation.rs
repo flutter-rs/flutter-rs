@@ -18,7 +18,7 @@ impl Plugin for NavigationPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
         let method_handler = Arc::downgrade(&self.handler);
         self.channel =
             registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));

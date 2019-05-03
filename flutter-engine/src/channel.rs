@@ -17,11 +17,11 @@ use crate::{
 
 use std::{
     borrow::Cow,
-    ops::Deref,
     sync::{Arc, RwLock, Weak},
 };
 
 use log::error;
+use tokio::prelude::Future;
 
 mod event_channel;
 mod json_method_channel;
@@ -46,15 +46,18 @@ pub trait Channel {
                 let channel = self.name();
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
-                std::thread::spawn(move || {
-                    let mut handler = handler.write().unwrap();
-                    let method = call.method.clone();
-                    let tx = runtime_data.channel_sender.clone();
-                    let result = handler.on_method_call(call, runtime_data);
-                    let response = match result {
-                        Ok(value) => MethodCallResult::Ok(value),
-                        Err(error) => {
-                            error!(
+                init_data
+                    .runtime_data
+                    .task_executor
+                    .spawn(tokio::prelude::future::ok(()).map(move |_| {
+                        let mut handler = handler.write().unwrap();
+                        let method = call.method.clone();
+                        let tx = runtime_data.channel_sender.clone();
+                        let result = handler.on_method_call(call, runtime_data);
+                        let response = match result {
+                            Ok(value) => MethodCallResult::Ok(value),
+                            Err(error) => {
+                                error!(
                                 target: handler
                                     .log_target()
                                     .unwrap_or(plugin_name),
@@ -62,17 +65,17 @@ pub trait Channel {
                                 channel,
                                 method,
                                 error);
-                            error.into()
-                        }
-                    };
-                    tx.send((
-                        channel,
-                        Box::new(move |channel| {
-                            channel.send_method_call_response(&mut response_handle, &response);
-                        }),
-                    ))
-                    .unwrap();
-                });
+                                error.into()
+                            }
+                        };
+                        tx.send((
+                            channel,
+                            Box::new(move |channel| {
+                                channel.send_method_call_response(&mut response_handle, &response);
+                            }),
+                        ))
+                        .unwrap();
+                    }));
             }
         }
     }

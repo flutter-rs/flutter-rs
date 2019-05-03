@@ -91,14 +91,14 @@ impl Into<MethodCallResult> for MethodCallError {
     fn into(self) -> MethodCallResult {
         match self {
             MethodCallError::NotImplemented => MethodCallResult::NotImplemented,
-            MethodCallError::ArgParseError(_) => MethodCallResult::Err {
+            MethodCallError::ArgParseError(err) => MethodCallResult::Err {
                 code: "".into(),
-                message: "failed to parse arguments".into(),
+                message: format!("failed to parse arguments: {}", err),
                 details: Value::Null,
             },
-            MethodCallError::DeserializeError(_) => MethodCallResult::Err {
+            MethodCallError::DeserializeError(err) => MethodCallResult::Err {
                 code: "".into(),
-                message: "failed to deserialize value".into(),
+                message: format!("failed to deserialize value: {}", err),
                 details: Value::Null,
             },
             MethodCallError::ChannelClosed => MethodCallResult::Err {

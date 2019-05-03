@@ -73,13 +73,13 @@ impl MethodCallHandler for EventChannelMethodCallHandler {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        _: RuntimeData,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         if let Some(handler) = self.event_handler.upgrade() {
             let mut handler = handler.write().unwrap();
             match call.method.as_str() {
-                "listen" => handler.on_listen(call.args),
-                "cancel" => handler.on_cancel(),
+                "listen" => handler.on_listen(call.args, runtime_data),
+                "cancel" => handler.on_cancel(runtime_data),
                 _ => Err(MethodCallError::NotImplemented),
             }
         } else {

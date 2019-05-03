@@ -176,6 +176,10 @@ pub trait MethodCallHandler {
 }
 
 pub trait EventHandler {
-    fn on_listen(&mut self, args: Value) -> Result<Value, MethodCallError>;
-    fn on_cancel(&mut self) -> Result<Value, MethodCallError>;
+    fn on_listen(
+        &mut self,
+        args: Value,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, runtime_data: RuntimeData) -> Result<Value, MethodCallError>;
 }

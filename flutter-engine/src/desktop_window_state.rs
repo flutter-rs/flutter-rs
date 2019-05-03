@@ -76,6 +76,23 @@ impl RuntimeData {
         }))?;
         Ok(())
     }
+
+    pub fn with_channel<F>(
+        &self,
+        channel_name: &'static str,
+        mut f: F,
+    ) -> Result<(), crate::error::MethodCallError>
+    where
+        F: FnMut(&Channel) + Send + 'static,
+    {
+        self.channel_sender.send((
+            channel_name,
+            Box::new(move |channel| {
+                f(channel);
+            }),
+        ))?;
+        Ok(())
+    }
 }
 
 impl DesktopWindowState {

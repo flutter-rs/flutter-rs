@@ -8,12 +8,12 @@ pub use crate::{
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},
-    Window,
+    MainThreadFn, RuntimeData, Window,
 };
 
 pub use std::{
     convert::{TryFrom, TryInto},
-    sync::{RwLock, Weak},
+    sync::{mpsc::Sender, Arc, RwLock, Weak},
 };
 
 pub use serde::{Deserialize, Serialize};

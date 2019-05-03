@@ -10,10 +10,9 @@ pub use self::{
 };
 use crate::{
     codec::{MethodCall, MethodCallResult, MethodCodec, Value},
-    desktop_window_state::RuntimeData,
+    desktop_window_state::{InitData, RuntimeData},
     error::MethodCallError,
-    ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle},
-    Window,
+    ffi::{PlatformMessage, PlatformMessageResponseHandle},
 };
 
 use std::{
@@ -31,24 +30,26 @@ mod standard_method_channel;
 
 pub trait Channel {
     fn name(&self) -> &str;
-    fn engine(&self) -> Option<Arc<FlutterEngine>>;
-    fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str);
+    fn init_data(&self) -> Option<Arc<InitData>>;
+    fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler>>>;
     fn plugin_name(&self) -> &'static str;
     fn codec(&self) -> &MethodCodec;
 
     /// Handle a method call received on this channel
-    fn handle_method(&self, msg: &mut PlatformMessage, window: &mut Window) {
+    fn handle_method(&self, msg: &mut PlatformMessage) {
         debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.method_handler() {
-            let mut handler = handler.write().unwrap();
-            let call = self.decode_method_call(&msg).unwrap();
-            let method = call.method.clone();
-            let result = handler.on_method_call(msg.channel.deref(), call, window);
-            let response = match result {
-                Ok(value) => MethodCallResult::Ok(value),
-                Err(error) => {
-                    error!(
+            if let Some(init_data) = self.init_data() {
+                let runtime_data = Arc::clone(&init_data.runtime_data);
+                let mut handler = handler.write().unwrap();
+                let call = self.decode_method_call(&msg).unwrap();
+                let method = call.method.clone();
+                let result = handler.on_method_call(msg.channel.deref(), call, runtime_data);
+                let response = match result {
+                    Ok(value) => MethodCallResult::Ok(value),
+                    Err(error) => {
+                        error!(
                             target: handler
                                 .log_target()
                                 .unwrap_or_else(|| self.plugin_name()),
@@ -56,10 +57,11 @@ pub trait Channel {
                             msg.channel,
                             method,
                             error);
-                    error.into()
-                }
-            };
-            self.send_method_call_response(&mut msg.response_handle, response);
+                        error.into()
+                    }
+                };
+                self.send_method_call_response(&mut msg.response_handle, response);
+            }
         }
     }
 
@@ -129,8 +131,10 @@ pub trait Channel {
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
     fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(engine) = self.engine() {
-            engine.send_platform_message_response(response_handle, buf);
+        if let Some(init_data) = self.init_data() {
+            init_data
+                .engine
+                .send_platform_message_response(response_handle, buf);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -138,8 +142,8 @@ pub trait Channel {
 
     /// Send a platform message over this channel. This is a low level method.
     fn send_platform_message(&self, message: PlatformMessage) {
-        if let Some(engine) = self.engine() {
-            engine.send_platform_message(message);
+        if let Some(init_data) = self.init_data() {
+            init_data.engine.send_platform_message(message);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -155,7 +159,7 @@ pub trait MethodCallHandler {
         &mut self,
         channel: &str,
         call: MethodCall,
-        window: &mut Window,
+        runtime_data: Arc<RuntimeData>,
     ) -> Result<Value, MethodCallError>;
 }
 

@@ -1,9 +1,14 @@
 use crate::{
     ffi::{FlutterEngine, FlutterPointerPhase, FlutterPointerSignalKind},
     plugins::PluginRegistrar,
+    utils::WindowUnwrap,
 };
 
-use std::sync::{mpsc::Receiver, Arc};
+use std::sync::{
+    mpsc,
+    mpsc::{Receiver, Sender},
+    Arc,
+};
 
 use log::{debug, info};
 
@@ -18,47 +23,60 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
+pub type MainThreadFn = Box<FnMut(&mut glfw::Window) + Send>;
+
 pub struct DesktopWindowState {
-    pub runtime_data: Arc<RuntimeData>,
+    window_ref: *mut glfw::Window,
+    pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    pub main_thread_receiver: Receiver<MainThreadFn>,
+    pub init_data: Arc<InitData>,
     pointer_currently_added: bool,
     window_pixels_per_screen_coordinate: f64,
     pub plugin_registrar: PluginRegistrar,
 }
 
-pub struct RuntimeData {
-    window: *mut glfw::Window,
-    pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+/// Data accessible during initialization and on the main thread.
+pub struct InitData {
     pub engine: Arc<FlutterEngine>,
+    pub runtime_data: Arc<RuntimeData>,
 }
 
-impl RuntimeData {
-    #[allow(clippy::mut_from_ref)]
-    pub fn window(&self) -> &mut glfw::Window {
-        unsafe { &mut *self.window }
-    }
+/// Data accessible during runtime. Implements Send to be used in message handling.
+pub struct RuntimeData {
+    pub main_thread_sender: Sender<MainThreadFn>,
 }
 
 impl DesktopWindowState {
+    pub fn window(&mut self) -> &mut glfw::Window {
+        self.window_ref.window()
+    }
+
     pub fn new(
         window_ref: *mut glfw::Window,
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
+        let (main_tx, main_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
-            window: window_ref,
-            window_event_receiver,
+            main_thread_sender: main_tx,
+        });
+        let init_data = Arc::new(InitData {
             engine: Arc::new(engine),
+            runtime_data,
         });
         Self {
+            window_ref,
+            window_event_receiver,
+            main_thread_receiver: main_rx,
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
-            plugin_registrar: PluginRegistrar::new(Arc::downgrade(&runtime_data)),
-            runtime_data,
+            plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
+            init_data,
         }
     }
 
     pub fn send_scale_or_size_change(&mut self) {
-        let window = self.runtime_data.window();
+        let window = self.window();
         let window_size = window.get_size();
         let framebuffer_size = window.get_framebuffer_size();
         let scale = window.get_content_scale();
@@ -67,7 +85,7 @@ impl DesktopWindowState {
             "Setting framebuffer size to {:?}, scale to {}",
             framebuffer_size, scale.0
         );
-        self.runtime_data.engine.send_window_metrics_event(
+        self.init_data.engine.send_window_metrics_event(
             framebuffer_size.0,
             framebuffer_size.1,
             scale.0 as f64,
@@ -97,7 +115,7 @@ impl DesktopWindowState {
             return;
         }
 
-        self.runtime_data.engine.send_pointer_event(
+        self.init_data.engine.send_pointer_event(
             phase,
             x * self.window_pixels_per_screen_coordinate,
             y * self.window_pixels_per_screen_coordinate,
@@ -116,7 +134,7 @@ impl DesktopWindowState {
     pub fn handle_glfw_event(&mut self, event: glfw::WindowEvent) {
         match event {
             glfw::WindowEvent::CursorEnter(entered) => {
-                let cursor_pos = self.runtime_data.window().get_cursor_pos();
+                let cursor_pos = self.window().get_cursor_pos();
                 self.send_pointer_event(
                     if entered {
                         FlutterPointerPhase::Add
@@ -131,10 +149,7 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::CursorPos(x, y) => {
-                let phase = if self
-                    .runtime_data
-                    .window()
-                    .get_mouse_button(glfw::MouseButtonLeft)
+                let phase = if self.window().get_mouse_button(glfw::MouseButtonLeft)
                     == glfw::Action::Press
                 {
                     FlutterPointerPhase::Move
@@ -144,7 +159,7 @@ impl DesktopWindowState {
                 self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0);
             }
             glfw::WindowEvent::MouseButton(glfw::MouseButtonLeft, action, _modifiers) => {
-                let (x, y) = self.runtime_data.window().get_cursor_pos();
+                let (x, y) = self.window().get_cursor_pos();
                 let phase = if action == glfw::Action::Press {
                     FlutterPointerPhase::Down
                 } else {
@@ -164,11 +179,8 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
-                let (x, y) = self.runtime_data.window().get_cursor_pos();
-                let phase = if self
-                    .runtime_data
-                    .window()
-                    .get_mouse_button(glfw::MouseButtonLeft)
+                let (x, y) = self.window().get_cursor_pos();
+                let phase = if self.window().get_mouse_button(glfw::MouseButtonLeft)
                     == glfw::Action::Press
                 {
                     FlutterPointerPhase::Move
@@ -298,7 +310,7 @@ impl DesktopWindowState {
                 }
                 glfw::Key::X => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.runtime_data.window();
+                        let window = self.window_ref.window();
                         self.plugin_registrar.with_plugin_mut(
                             |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
@@ -312,7 +324,7 @@ impl DesktopWindowState {
                 }
                 glfw::Key::C => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.runtime_data.window();
+                        let window = self.window_ref.window();
                         self.plugin_registrar.with_plugin_mut(
                             |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {
@@ -325,7 +337,7 @@ impl DesktopWindowState {
                 }
                 glfw::Key::V => {
                     if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.runtime_data.window();
+                        let window = self.window_ref.window();
                         self.plugin_registrar.with_plugin_mut(
                             |text_input: &mut crate::plugins::TextInputPlugin| {
                                 text_input.with_state(|state| {

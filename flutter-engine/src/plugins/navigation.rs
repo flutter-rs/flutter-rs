@@ -72,7 +72,7 @@ impl MethodCallHandler for NavigationPlugin {
         &mut self,
         _: &str,
         call: MethodCall,
-        _: &mut Window,
+        _: Arc<RuntimeData>,
     ) -> Result<Value, MethodCallError> {
         info!(
             "navigation method {:?} called with args {:?}",

@@ -11,7 +11,7 @@ pub use self::{
 
 use crate::{
     channel::{ChannelRegistrar, ChannelRegistry},
-    desktop_window_state::RuntimeData,
+    desktop_window_state::InitData,
     ffi::PlatformMessage,
 };
 
@@ -28,10 +28,10 @@ pub struct PluginRegistrar {
 }
 
 impl PluginRegistrar {
-    pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
+    pub fn new(init_data: Weak<InitData>) -> Self {
         Self {
             plugins: HashMap::new(),
-            channel_registry: ChannelRegistry::new(runtime_data),
+            channel_registry: ChannelRegistry::new(init_data),
         }
     }
 

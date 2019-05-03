@@ -1,4 +1,7 @@
-use std::{error, fmt};
+use std::{
+    error, fmt,
+    sync::mpsc::{RecvError, SendError},
+};
 
 use crate::codec::{MethodCallResult, Value};
 
@@ -31,6 +34,7 @@ pub enum MethodCallError {
     ArgParseError(MethodArgsError),
     DeserializeError(ValueError),
     ChannelClosed,
+    SendError(String),
     RustError(Box<error::Error>),
     CustomError {
         code: String,
@@ -58,6 +62,18 @@ impl From<ValueError> for MethodCallError {
     }
 }
 
+impl<T> From<SendError<T>> for MethodCallError {
+    fn from(error: SendError<T>) -> Self {
+        MethodCallError::SendError(format!("{}", error))
+    }
+}
+
+impl From<RecvError> for MethodCallError {
+    fn from(error: RecvError) -> Self {
+        MethodCallError::RustError(Box::new(error))
+    }
+}
+
 impl fmt::Display for MethodCallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -67,6 +83,7 @@ impl fmt::Display for MethodCallError {
                 write!(f, "failed to deserialize value: {}", err)
             }
             MethodCallError::ChannelClosed => write!(f, "channel already closed"),
+            MethodCallError::SendError(msg) => write!(f, "message send error: {}", msg),
             MethodCallError::RustError(error) => write!(f, "rust error: {}", error),
             MethodCallError::CustomError {
                 code,
@@ -91,26 +108,6 @@ impl Into<MethodCallResult> for MethodCallError {
     fn into(self) -> MethodCallResult {
         match self {
             MethodCallError::NotImplemented => MethodCallResult::NotImplemented,
-            MethodCallError::ArgParseError(err) => MethodCallResult::Err {
-                code: "".into(),
-                message: format!("failed to parse arguments: {}", err),
-                details: Value::Null,
-            },
-            MethodCallError::DeserializeError(err) => MethodCallResult::Err {
-                code: "".into(),
-                message: format!("failed to deserialize value: {}", err),
-                details: Value::Null,
-            },
-            MethodCallError::ChannelClosed => MethodCallResult::Err {
-                code: "".into(),
-                message: "channel closed".into(),
-                details: Value::Null,
-            },
-            MethodCallError::RustError(error) => MethodCallResult::Err {
-                code: "".into(),
-                message: format!("{}", error),
-                details: Value::Null,
-            },
             MethodCallError::CustomError {
                 code,
                 message,
@@ -120,9 +117,9 @@ impl Into<MethodCallResult> for MethodCallError {
                 message,
                 details,
             },
-            MethodCallError::UnspecifiedError => MethodCallResult::Err {
+            error => MethodCallResult::Err {
                 code: "".into(),
-                message: "unspecified error".into(),
+                message: format!("{}", error),
                 details: Value::Null,
             },
         }

@@ -36,20 +36,29 @@ impl MethodCallHandler for PlatformPlugin {
         &mut self,
         _: &str,
         call: MethodCall,
-        window: &mut Window,
+        runtime_data: Arc<RuntimeData>,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;
                 // label and primaryColor
-                window.set_title(args.label.as_str());
+                runtime_data
+                    .main_thread_sender
+                    .send(Box::new(move |window| {
+                        window.set_title(args.label.as_str());
+                    }))?;
                 Ok(Value::Null)
             }
             "Clipboard.setData" => {
                 if let Value::Map(v) = &call.args {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
-                            window.set_clipboard_string(text);
+                            let text = text.clone();
+                            runtime_data
+                                .main_thread_sender
+                                .send(Box::new(move |window| {
+                                    window.set_clipboard_string(text.as_str());
+                                }))?;
                             return Ok(Value::Null);
                         }
                     }
@@ -59,9 +68,16 @@ impl MethodCallHandler for PlatformPlugin {
             "Clipboard.getData" => {
                 if let Value::String(mime) = &call.args {
                     match mime.as_str() {
-                        "text/plain" => Ok(json_value!({
-                            "text": window.get_clipboard_string()
-                        })),
+                        "text/plain" => {
+                            let (tx, rx) = std::sync::mpsc::sync_channel(0);
+                            runtime_data
+                                .main_thread_sender
+                                .send(Box::new(move |window| {
+                                    tx.send(window.get_clipboard_string()).unwrap();
+                                }))?;
+                            let text = rx.recv()?;
+                            Ok(json_value!({ "text": text }))
+                        }
                         _ => {
                             error!(
                                 "Don't know how to handle {} clipboard message",

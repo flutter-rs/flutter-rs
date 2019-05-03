@@ -76,7 +76,7 @@ impl MethodCallHandler for TextInputPlugin {
         &mut self,
         _: &str,
         call: MethodCall,
-        _: &mut Window,
+        _: Arc<RuntimeData>,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "TextInput.setClient" => {

@@ -43,7 +43,10 @@ impl StandardMethodCodec {
             VALUE_INT32 => Value::I32(reader.read_i32()),
             VALUE_INT64 => Value::I64(reader.read_i64()),
             VALUE_LARGEINT => panic!("Not implemented"),
-            VALUE_FLOAT64 => Value::F64(reader.read_f64()),
+            VALUE_FLOAT64 => {
+                reader.align_to(8);
+                Value::F64(reader.read_f64())
+            }
             VALUE_STRING => {
                 let len = reader.read_size();
                 Value::String(reader.read_string(len))
@@ -119,19 +122,24 @@ impl StandardMethodCodec {
                 writer.write_u8(VALUE_INT64);
                 writer.write_i64(*n);
             }
+            Value::F64(n) => {
+                writer.write_u8(VALUE_FLOAT64);
+                writer.align_to(8);
+                writer.write_f64(*n);
+            }
             Value::String(s) => {
                 Self::write_string(writer, s);
             }
             Value::U8List(list) => {
                 writer.write_u8(VALUE_UINT8LIST);
-                writer.align_to(8);
+                writer.align_to(1);
                 for n in list {
                     writer.write_u8(*n);
                 }
             }
             Value::I32List(list) => {
                 writer.write_u8(VALUE_INT32LIST);
-                writer.align_to(8);
+                writer.align_to(4);
                 for n in list {
                     writer.write_i32(*n);
                 }
@@ -305,6 +313,7 @@ impl<'a> Reader<'a> {
     }
     fn read_i32_list(&mut self, len: usize) -> Vec<i32> {
         let mut v = Vec::with_capacity(len);
+        self.align_to(4);
         for _ in 0..len {
             v.push(self.read_i32());
         }
@@ -312,6 +321,7 @@ impl<'a> Reader<'a> {
     }
     fn read_i64_list(&mut self, len: usize) -> Vec<i64> {
         let mut v = Vec::with_capacity(len);
+        self.align_to(8);
         for _ in 0..len {
             v.push(self.read_i64());
         }
@@ -319,6 +329,7 @@ impl<'a> Reader<'a> {
     }
     fn read_f64_list(&mut self, len: usize) -> Vec<f64> {
         let mut v = Vec::with_capacity(len);
+        self.align_to(8);
         for _ in 0..len {
             let n = self.read_i64();
             v.push(unsafe { mem::transmute::<i64, f64>(n) });
@@ -327,6 +338,12 @@ impl<'a> Reader<'a> {
     }
     fn ended(&self) -> bool {
         self.pos >= self.buf.len()
+    }
+    fn align_to(&mut self, align: usize) {
+        let m = self.pos % align;
+        if m > 0 {
+            self.pos += align - m;
+        }
     }
 }
 
@@ -374,8 +391,12 @@ impl Writer {
     fn write_string(&mut self, s: &str) {
         self.0.extend_from_slice(s.as_bytes());
     }
-    fn align_to(&mut self, align: u8) {
-        let m = self.0.len() % align as usize;
+    fn align_to(&mut self, align: usize) {
+        let m = self.0.len() % align;
+        if m == 0 {
+            return;
+        }
+        let m = align - m;
         for _ in 0..m {
             self.write_u8(0);
         }

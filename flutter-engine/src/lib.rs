@@ -228,6 +228,7 @@ impl FlutterDesktop {
     pub fn run_window_loop(
         mut self,
         mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
+        mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
     ) {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
             while !window_state.window().should_close() {
@@ -261,6 +262,10 @@ impl FlutterDesktop {
                         .with_channel(f.0, |channel| {
                             f.1(channel);
                         });
+                }
+
+                if let Some(callback) = &mut frame_callback {
+                    callback(&mut window_state);
                 }
 
                 unsafe {

@@ -3,24 +3,26 @@ use std::sync::{Arc, RwLock, Weak};
 use crate::{
     channel::{Channel, MethodCallHandler},
     codec::{json_codec::CODEC, MethodCodec},
-    desktop_window_state::RuntimeData,
-    ffi::FlutterEngine,
+    desktop_window_state::InitData,
 };
 
 use log::error;
 
 pub struct JsonMethodChannel {
-    name: String,
-    engine: Weak<FlutterEngine>,
+    name: &'static str,
+    init_data: Weak<InitData>,
     method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl JsonMethodChannel {
-    pub fn new(name: &str, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) -> Self {
+    pub fn new(
+        name: &'static str,
+        method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+    ) -> Self {
         Self {
-            name: name.to_owned(),
-            engine: Weak::new(),
+            name,
+            init_data: Weak::new(),
             method_handler,
             plugin_name: None,
         }
@@ -32,21 +34,19 @@ impl JsonMethodChannel {
 }
 
 impl Channel for JsonMethodChannel {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         &self.name
     }
 
-    fn engine(&self) -> Option<Arc<FlutterEngine>> {
-        self.engine.upgrade()
+    fn init_data(&self) -> Option<Arc<InitData>> {
+        self.init_data.upgrade()
     }
 
-    fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str) {
-        if self.engine.upgrade().is_some() {
+    fn init(&mut self, init_data: Weak<InitData>, plugin_name: &'static str) {
+        if self.init_data.upgrade().is_some() {
             error!("Channel {} was already initialized", self.name);
         }
-        if let Some(runtime_data) = runtime_data.upgrade() {
-            self.engine = Arc::downgrade(&runtime_data.engine);
-        }
+        self.init_data = init_data;
         self.plugin_name.replace(plugin_name);
     }
 

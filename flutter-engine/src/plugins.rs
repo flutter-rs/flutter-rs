@@ -11,7 +11,7 @@ pub use self::{
 
 use crate::{
     channel::{ChannelRegistrar, ChannelRegistry},
-    desktop_window_state::RuntimeData,
+    desktop_window_state::InitData,
     ffi::PlatformMessage,
 };
 
@@ -24,14 +24,14 @@ use std::{
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
-    channel_registry: ChannelRegistry,
+    pub channel_registry: ChannelRegistry,
 }
 
 impl PluginRegistrar {
-    pub fn new(runtime_data: Weak<RuntimeData>) -> Self {
+    pub fn new(init_data: Weak<InitData>) -> Self {
         Self {
             plugins: HashMap::new(),
-            channel_registry: ChannelRegistry::new(runtime_data),
+            channel_registry: ChannelRegistry::new(init_data),
         }
     }
 
@@ -50,7 +50,7 @@ impl PluginRegistrar {
             let mut plugin = arc.write().unwrap();
             self.channel_registry
                 .with_channel_registrar(P::plugin_name(), |registrar| {
-                    plugin.init_channels(Arc::downgrade(&arc), registrar);
+                    plugin.init_channels(registrar);
                 });
         }
         self.plugins.insert(P::plugin_name().to_owned(), arc);
@@ -88,5 +88,5 @@ impl PluginRegistrar {
 
 pub trait Plugin {
     fn plugin_name() -> &'static str;
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar);
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar);
 }

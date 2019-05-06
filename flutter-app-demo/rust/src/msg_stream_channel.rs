@@ -1,4 +1,4 @@
-use std::{iter::repeat, sync::Weak, time::Duration};
+use std::{iter::repeat, time::Duration};
 
 use flutter_engine::plugins::prelude::*;
 use log::info;
@@ -10,8 +10,7 @@ const CHANNEL_NAME: &str = "rust/msg_stream";
 
 pub struct MsgStreamPlugin {
     channel: Weak<EventChannel>,
-    stop_trigger: Option<Trigger>,
-    executor: TaskExecutor,
+    handler: Arc<RwLock<Handler>>,
 }
 
 impl Plugin for MsgStreamPlugin {
@@ -19,23 +18,31 @@ impl Plugin for MsgStreamPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(EventChannel::new(CHANNEL_NAME, plugin));
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
+        let event_handler = Arc::downgrade(&self.handler);
+        self.channel = registrar.register_channel(EventChannel::new(CHANNEL_NAME, event_handler));
     }
 }
 
 impl MsgStreamPlugin {
-    pub fn new(executor: TaskExecutor) -> Self {
+    pub fn new() -> Self {
         Self {
             channel: Weak::new(),
-            stop_trigger: None,
-            executor,
+            handler: Arc::new(RwLock::new(Handler { stop_trigger: None })),
         }
     }
 }
 
-impl EventHandler for MsgStreamPlugin {
-    fn on_listen(&mut self, _channel: &str, args: Value) -> Result<Value, MethodCallError> {
+struct Handler {
+    stop_trigger: Option<Trigger>,
+}
+
+impl EventHandler for Handler {
+    fn on_listen(
+        &mut self,
+        args: Value,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError> {
         if let Value::I32(n) = args {
             info!("Random stream invoked with params {}", n);
         }
@@ -43,8 +50,8 @@ impl EventHandler for MsgStreamPlugin {
         let (trigger, tripwire) = Tripwire::new();
         self.stop_trigger = Some(trigger);
 
-        let channel = self.channel.clone();
-        self.executor.spawn(futures::lazy(move || {
+        let rt = runtime_data.clone();
+        runtime_data.task_executor.spawn(futures::lazy(move || {
             let v = vec![
                 "Hello?",
                 "What's your name?",
@@ -57,16 +64,18 @@ impl EventHandler for MsgStreamPlugin {
                 .map_err(|e| eprintln!("Error = {:?}", e))
                 .take_until(tripwire)
                 .for_each(move |v| {
-                    let ret = Value::String(String::from(v));
-                    let channel = channel.upgrade().unwrap();
-                    channel.send_success_event(&ret);
+                    rt.with_channel(CHANNEL_NAME, move |channel| {
+                        let ret = Value::String(String::from(v));
+                        channel.send_success_event(&ret);
+                    })
+                    .unwrap();
                     Ok(())
                 })
         }));
         Ok(Value::Null)
     }
 
-    fn on_cancel(&mut self, _channel: &str) -> Result<Value, MethodCallError> {
+    fn on_cancel(&mut self, _: RuntimeData) -> Result<Value, MethodCallError> {
         // drop the trigger to stop stream
         self.stop_trigger.take();
         Ok(Value::Null)

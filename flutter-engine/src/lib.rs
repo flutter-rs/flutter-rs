@@ -10,11 +10,14 @@ mod flutter_callbacks;
 pub mod plugins;
 mod utils;
 
-pub use crate::desktop_window_state::{DesktopWindowState, RuntimeData};
+pub use crate::desktop_window_state::{
+    ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
+};
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
+use tokio::prelude::Future;
 
 pub use glfw::Window;
 use log::error;
@@ -50,13 +53,11 @@ enum DesktopUserData {
 }
 
 impl DesktopUserData {
-    pub fn get_window(&self) -> Option<&mut glfw::Window> {
+    pub fn get_window(&mut self) -> Option<&mut glfw::Window> {
         unsafe {
             match self {
                 DesktopUserData::Window(window) => Some(&mut **window),
-                DesktopUserData::WindowState(window_state) => {
-                    Some(window_state.runtime_data.window())
-                }
+                DesktopUserData::WindowState(window_state) => Some(window_state.window()),
                 DesktopUserData::None => None,
             }
         }
@@ -126,7 +127,7 @@ impl FlutterDesktop {
 
             window_state.plugin_registrar.add_system_plugins();
 
-            let window = window_state.runtime_data.window();
+            let window = window_state.window();
             // enable event polling
             window.set_char_polling(true);
             window.set_cursor_pos_polling(true);
@@ -229,13 +230,12 @@ impl FlutterDesktop {
         mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
     ) {
         if let DesktopUserData::WindowState(mut window_state) = self.user_data {
-            while !window_state.runtime_data.window().should_close() {
+            while !window_state.window().should_close() {
                 self.glfw.poll_events();
                 self.glfw.wait_events_timeout(1.0 / 60.0);
 
                 let events: Vec<(f64, glfw::WindowEvent)> =
-                    glfw::flush_messages(&window_state.runtime_data.window_event_receiver)
-                        .collect();
+                    glfw::flush_messages(&window_state.window_event_receiver).collect();
                 for (_, event) in events {
                     let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
                         custom_handler(&mut window_state, event.clone())
@@ -247,12 +247,29 @@ impl FlutterDesktop {
                     }
                 }
 
+                let fns: Vec<MainThreadFn> = window_state.main_thread_receiver.try_iter().collect();
+                let window = window_state.window();
+                for mut f in fns {
+                    f(window);
+                }
+
+                let fns: Vec<ChannelFn> = window_state.channel_receiver.try_iter().collect();
+                for mut f in fns {
+                    window_state
+                        .plugin_registrar
+                        .channel_registry
+                        .with_channel(f.0, |channel| {
+                            f.1(channel);
+                        });
+                }
+
                 unsafe {
                     flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
                 }
             }
 
-            window_state.runtime_data.engine.shutdown();
+            window_state.init_data.engine.shutdown();
+            window_state.runtime.shutdown_now().wait().unwrap();
         }
     }
 }

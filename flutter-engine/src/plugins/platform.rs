@@ -8,15 +8,16 @@ use log::error;
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
-#[derive(Default)]
 pub struct PlatformPlugin {
     channel: Weak<JsonMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
 
 impl PlatformPlugin {
     pub fn new() -> Self {
         Self {
             channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -26,30 +27,38 @@ impl Plugin for PlatformPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, plugin));
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
+        let method_handler = Arc::downgrade(&self.handler);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
-impl MethodCallHandler for PlatformPlugin {
+struct Handler;
+
+impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        window: &mut Window,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;
                 // label and primaryColor
-                window.set_title(args.label.as_str());
+                runtime_data.with_window(move |window| {
+                    window.set_title(args.label.as_str());
+                })?;
                 Ok(Value::Null)
             }
             "Clipboard.setData" => {
                 if let Value::Map(v) = &call.args {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
-                            window.set_clipboard_string(text);
+                            let text = text.clone();
+                            runtime_data.with_window(move |window| {
+                                window.set_clipboard_string(text.as_str());
+                            })?;
                             return Ok(Value::Null);
                         }
                     }
@@ -59,9 +68,11 @@ impl MethodCallHandler for PlatformPlugin {
             "Clipboard.getData" => {
                 if let Value::String(mime) = &call.args {
                     match mime.as_str() {
-                        "text/plain" => Ok(json_value!({
-                            "text": window.get_clipboard_string()
-                        })),
+                        "text/plain" => {
+                            let text = runtime_data
+                                .with_window_result(|window| window.get_clipboard_string())?;
+                            Ok(json_value!({ "text": text }))
+                        }
                         _ => {
                             error!(
                                 "Don't know how to handle {} clipboard message",

@@ -10,7 +10,6 @@ use std::{env, path::PathBuf};
 
 use fern::colors::{Color, ColoredLevelConfig};
 use log::info;
-use tokio::{prelude::*, runtime::Runtime};
 
 #[cfg(target_os = "macos")]
 use core_foundation::bundle;
@@ -78,7 +77,6 @@ fn main() {
     };
 
     let mut engine = flutter_engine::init().unwrap();
-    let rt = Runtime::new().unwrap();
     engine
         .create_window(
             1800,
@@ -94,9 +92,8 @@ fn main() {
             .plugin_registrar
             .add_plugin(calc_channel::CalcPlugin::new())
             .add_plugin(dialog::DialogPlugin::new())
-            .add_plugin(msg_stream_channel::MsgStreamPlugin::new(rt.executor()))
+            .add_plugin(msg_stream_channel::MsgStreamPlugin::new())
             .add_plugin(window::WindowPlugin::new());
     });
     engine.run_window_loop(None);
-    rt.shutdown_now().wait().unwrap();
 }

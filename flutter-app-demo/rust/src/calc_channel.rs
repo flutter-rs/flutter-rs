@@ -4,13 +4,15 @@ const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "rust/calc";
 
 pub struct CalcPlugin {
-    channel: Weak<StandardMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
+
+struct Handler;
 
 impl CalcPlugin {
     pub fn new() -> Self {
         Self {
-            channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -20,21 +22,20 @@ impl Plugin for CalcPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, plugin: Weak<RwLock<Self>>, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(StandardMethodChannel::new(CHANNEL_NAME, plugin));
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
+        let method_handler = Arc::downgrade(&self.handler);
+        registrar.register_channel(StandardMethodChannel::new(CHANNEL_NAME, method_handler));
     }
 }
 
-impl MethodCallHandler for CalcPlugin {
+impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
-        _: &str,
         call: MethodCall,
-        _: &mut Window,
+        _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "fibonacci" => {
-                // TODO: what if we want this processor to be async? we need to cache engine and handle?
                 if let Value::String(s) = call.args {
                     if let Ok(n) = s.parse() {
                         if n >= 0 {
@@ -74,7 +75,6 @@ impl MethodCallHandler for CalcPlugin {
     }
 }
 
-// TODO: we can move this to a async context and do the calc
 fn fibonacci(n: i64) -> Option<i64> {
     if n <= 0 {
         return Some(0);

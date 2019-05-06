@@ -7,7 +7,7 @@ use log::trace;
 pub extern "C" fn present(user_data: *mut c_void) -> bool {
     trace!("present");
     unsafe {
-        let user_data = &*(user_data as *mut DesktopUserData);
+        let user_data = &mut *(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
             window.swap_buffers();
             true
@@ -20,7 +20,7 @@ pub extern "C" fn present(user_data: *mut c_void) -> bool {
 pub extern "C" fn make_current(user_data: *mut c_void) -> bool {
     trace!("make_current");
     unsafe {
-        let user_data = &*(user_data as *mut DesktopUserData);
+        let user_data = &mut *(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
             window.make_current();
             true
@@ -49,7 +49,7 @@ pub extern "C" fn make_resource_current(_user_data: *mut c_void) -> bool {
 pub extern "C" fn gl_proc_resolver(user_data: *mut c_void, proc: *const c_char) -> *mut c_void {
     trace!("gl_proc_resolver");
     unsafe {
-        let user_data = &*(user_data as *mut DesktopUserData);
+        let user_data = &mut *(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {
             window
                 .glfw

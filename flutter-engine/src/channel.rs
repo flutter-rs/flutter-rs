@@ -10,19 +10,18 @@ pub use self::{
 };
 use crate::{
     codec::{MethodCall, MethodCallResult, MethodCodec, Value},
-    desktop_window_state::RuntimeData,
+    desktop_window_state::{InitData, RuntimeData},
     error::MethodCallError,
-    ffi::{FlutterEngine, PlatformMessage, PlatformMessageResponseHandle},
-    Window,
+    ffi::{PlatformMessage, PlatformMessageResponseHandle},
 };
 
 use std::{
     borrow::Cow,
-    ops::Deref,
     sync::{Arc, RwLock, Weak},
 };
 
 use log::error;
+use tokio::prelude::Future;
 
 mod event_channel;
 mod json_method_channel;
@@ -30,44 +29,53 @@ mod registry;
 mod standard_method_channel;
 
 pub trait Channel {
-    fn name(&self) -> &str;
-    fn engine(&self) -> Option<Arc<FlutterEngine>>;
-    fn init(&mut self, runtime_data: Weak<RuntimeData>, plugin_name: &'static str);
+    fn name(&self) -> &'static str;
+    fn init_data(&self) -> Option<Arc<InitData>>;
+    fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
     fn plugin_name(&self) -> &'static str;
     fn codec(&self) -> &MethodCodec;
 
     /// Handle a method call received on this channel
-    fn handle_method(&self, msg: &mut PlatformMessage, window: &mut Window) {
+    fn handle_method(&self, mut msg: PlatformMessage) {
         debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.method_handler() {
-            let mut handler = handler.write().unwrap();
-            let call = self.decode_method_call(&msg).unwrap();
-            if handler.handle_async(&call) {
-                handler.on_async_method_call(
-                    msg.channel.deref(),
-                    call,
-                    window,
-                    msg.response_handle.take(),
-                );
-            } else {
-                let method = call.method.clone();
-                let result = handler.on_method_call(msg.channel.deref(), call, window);
-                let response = match result {
-                    Ok(value) => MethodCallResult::Ok(value),
-                    Err(error) => {
-                        error!(
-                            target: handler
-                                .log_target()
-                                .unwrap_or_else(|| self.plugin_name()),
-                            "error in method call {}#{}: {}",
-                            msg.channel,
-                            method,
-                            error);
-                        error.into()
-                    }
-                };
-                self.send_method_call_response(&mut msg.response_handle, response);
+            if let Some(init_data) = self.init_data() {
+                let runtime_data = (*init_data.runtime_data).clone();
+                let call = self.decode_method_call(&msg).unwrap();
+                let channel = self.name();
+                let plugin_name = self.plugin_name();
+                let mut response_handle = msg.response_handle.take();
+                init_data
+                    .runtime_data
+                    .task_executor
+                    .spawn(tokio::prelude::future::ok(()).map(move |_| {
+                        let mut handler = handler.write().unwrap();
+                        let method = call.method.clone();
+                        let tx = runtime_data.channel_sender.clone();
+                        let result = handler.on_method_call(call, runtime_data);
+                        let response = match result {
+                            Ok(value) => MethodCallResult::Ok(value),
+                            Err(error) => {
+                                error!(
+                                target: handler
+                                    .log_target()
+                                    .unwrap_or(plugin_name),
+                                "error in method call {}#{}: {}",
+                                channel,
+                                method,
+                                error);
+                                error.into()
+                            }
+                        };
+                        tx.send((
+                            channel,
+                            Box::new(move |channel| {
+                                channel.send_method_call_response(&mut response_handle, &response);
+                            }),
+                        ))
+                        .unwrap();
+                    }));
             }
         }
     }
@@ -115,18 +123,16 @@ pub trait Channel {
     fn send_method_call_response(
         &self,
         response_handle: &mut Option<PlatformMessageResponseHandle>,
-        response: MethodCallResult,
+        response: &MethodCallResult,
     ) {
         if let Some(response_handle) = response_handle.take() {
             let buf = match response {
-                MethodCallResult::Ok(data) => self.codec().encode_success_envelope(&data),
+                MethodCallResult::Ok(data) => self.codec().encode_success_envelope(data),
                 MethodCallResult::Err {
                     code,
                     message,
                     details,
-                } => self
-                    .codec()
-                    .encode_error_envelope(&code, &message, &details),
+                } => self.codec().encode_error_envelope(code, message, details),
                 MethodCallResult::NotImplemented => vec![],
             };
             self.send_response(response_handle, &buf);
@@ -138,8 +144,10 @@ pub trait Channel {
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
     fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(engine) = self.engine() {
-            engine.send_platform_message_response(response_handle, buf);
+        if let Some(init_data) = self.init_data() {
+            init_data
+                .engine
+                .send_platform_message_response(response_handle, buf);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -147,8 +155,8 @@ pub trait Channel {
 
     /// Send a platform message over this channel. This is a low level method.
     fn send_platform_message(&self, message: PlatformMessage) {
-        if let Some(engine) = self.engine() {
-            engine.send_platform_message(message);
+        if let Some(init_data) = self.init_data() {
+            init_data.engine.send_platform_message(message);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -160,33 +168,18 @@ pub trait MethodCallHandler {
         None
     }
 
-    fn handle_async(&self, call: &MethodCall) -> bool {
-        let _ = call;
-        false
-    }
-
     fn on_method_call(
         &mut self,
-        channel: &str,
         call: MethodCall,
-        window: &mut Window,
+        runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError>;
-
-    fn on_async_method_call(
-        &mut self,
-        channel: &str,
-        call: MethodCall,
-        window: &mut Window,
-        response_handle: Option<PlatformMessageResponseHandle>,
-    ) {
-        let _ = channel;
-        let _ = call;
-        let _ = window;
-        let _ = response_handle;
-    }
 }
 
 pub trait EventHandler {
-    fn on_listen(&mut self, channel: &str, args: Value) -> Result<Value, MethodCallError>;
-    fn on_cancel(&mut self, channel: &str) -> Result<Value, MethodCallError>;
+    fn on_listen(
+        &mut self,
+        args: Value,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, runtime_data: RuntimeData) -> Result<Value, MethodCallError>;
 }

@@ -107,6 +107,19 @@ impl OwnedStringUtils for String {
     }
 }
 
+/// This is a hacky trait to easier get a ref from the window pointer in [`DesktopWindowState`]. This
+/// trait allows getting a reference without borrowing the entire state, only the window pointer has
+/// to be borrowed mutably.
+pub(crate) trait WindowUnwrap {
+    fn window(&mut self) -> &mut glfw::Window;
+}
+
+impl WindowUnwrap for *mut glfw::Window {
+    fn window(&mut self) -> &mut glfw::Window {
+        unsafe { &mut **self }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

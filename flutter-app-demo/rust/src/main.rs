@@ -95,5 +95,5 @@ fn main() {
             .add_plugin(msg_stream_channel::MsgStreamPlugin::new())
             .add_plugin(window::WindowPlugin::new());
     });
-    engine.run_window_loop(None);
+    engine.run_window_loop(None, None);
 }

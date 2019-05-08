@@ -19,7 +19,7 @@ RUST_PROJ_DIR = os.path.join(PROJ_DIR, 'rust')
 class CargoThread(threading.Thread):
     def __init__(self):
         super().__init__()
-        self.observatory_port = ''
+        self.observatory_uri = ''
         self.observatory_open = threading.Event()
 
     def run(self):
@@ -34,9 +34,10 @@ class CargoThread(threading.Thread):
                 # proc ended
                 return
             print(line.decode(), end = '')
-            match = re.search(r'http://(.*?):(\d+)/', line.decode())
+            match = re.search(r'Observatory listening on (?P<schema>https?://)(\S*)', line.decode())
+
             if match:
-                self.observatory_port = match.group(1)
+                self.observatory_uri = match.group('schema') + match.group(2)
                 self.observatory_open.set()
 
 
@@ -44,7 +45,7 @@ def cargo_run():
     cargo = CargoThread()
     cargo.start()
     cargo.observatory_open.wait()
-    return cargo.observatory_port
+    return cargo.observatory_uri
 
 if __name__ == '__main__':
     print('🍀  Building flutter bundle')
@@ -53,11 +54,11 @@ if __name__ == '__main__':
         cwd = PROJ_DIR, check = True)
 
     print('🦀  Building rust project')
-    port = cargo_run()
-    if not port:
+    uri = cargo_run()
+    if not uri:
         raise Exception('Launch cargo error')
 
     print('🍹  Attaching dart debugger')
     subprocess.run(
-        [FLUTTER, 'attach', '--device-id=flutter-tester', '--debug-port=50300'],
+        [FLUTTER, 'attach', '--device-id=flutter-tester', '--debug-uri=' + uri],
         cwd = PROJ_DIR, check = True)

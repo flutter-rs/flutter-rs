@@ -2,9 +2,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod calc_channel;
-mod dialog;
 mod msg_stream_channel;
-mod window;
+use flutter_plugins::{window, dialog};
 
 use std::{env, path::PathBuf};
 

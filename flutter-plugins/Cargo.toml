@@ -1,0 +1,11 @@
+[package]
+name = "flutter-plugins"
+version = "0.1.0"
+authors = ["juju <gliheng@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+flutter-engine = { path = "../flutter-engine" }
+tinyfiledialogs = "3.3.5"
+serde_json = "^1.0"
+serde = { version = "^1.0", features = ["derive"] }

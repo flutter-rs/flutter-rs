@@ -17,16 +17,17 @@ use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
-use tokio::prelude::Future;
 
 pub use glfw::Window;
 use log::error;
+use tokio::prelude::Future;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
     WindowAlreadyCreated,
     WindowCreationFailed,
     EngineFailed,
+    MonitorNotFound,
 }
 
 impl std::fmt::Display for Error {
@@ -42,8 +43,22 @@ impl std::error::Error for Error {
             Error::EngineFailed => "Engine call failed",
             Error::WindowCreationFailed => "Failed to create a window",
             Error::WindowAlreadyCreated => "Window was already created",
+            Error::MonitorNotFound => "No monitor with the specified index found",
         }
     }
+}
+
+pub enum WindowMode {
+    Fullscreen(usize),
+    Windowed,
+    Borderless,
+}
+
+pub struct WindowArgs<'a> {
+    pub width: i32,
+    pub height: i32,
+    pub title: &'a str,
+    pub mode: WindowMode,
 }
 
 enum DesktopUserData {
@@ -85,9 +100,7 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
 impl FlutterDesktop {
     pub fn create_window(
         &mut self,
-        width: i32,
-        height: i32,
-        title: &str,
+        window_args: &WindowArgs,
         assets_path: String,
         icu_data_path: String,
         arguments: Vec<String>,
@@ -96,15 +109,41 @@ impl FlutterDesktop {
             DesktopUserData::None => {}
             _ => return Err(Error::WindowAlreadyCreated),
         }
-        let (window, receiver) = self
-            .glfw
-            .create_window(
-                width as u32,
-                height as u32,
-                title,
-                glfw::WindowMode::Windowed,
-            )
-            .ok_or(Error::WindowCreationFailed)?;
+        let (window, receiver) = match window_args.mode {
+            WindowMode::Windowed => self
+                .glfw
+                .create_window(
+                    window_args.width as u32,
+                    window_args.height as u32,
+                    window_args.title,
+                    glfw::WindowMode::Windowed,
+                )
+                .ok_or(Error::WindowCreationFailed)?,
+            WindowMode::Borderless => {
+                self.glfw.window_hint(glfw::WindowHint::Decorated(false));
+                self.glfw
+                    .create_window(
+                        window_args.width as u32,
+                        window_args.height as u32,
+                        window_args.title,
+                        glfw::WindowMode::Windowed,
+                    )
+                    .ok_or(Error::WindowCreationFailed)?
+            }
+            WindowMode::Fullscreen(index) => {
+                self.glfw
+                    .with_connected_monitors(|glfw, monitors| -> Result<_, Error> {
+                        let monitor = monitors.get(index).ok_or(Error::MonitorNotFound)?;
+                        glfw.create_window(
+                            window_args.width as u32,
+                            window_args.height as u32,
+                            window_args.title,
+                            glfw::WindowMode::FullScreen(monitor),
+                        )
+                        .ok_or(Error::WindowCreationFailed)
+                    })?
+            }
+        };
         self.window = Some(window);
         let window_ref = if let Some(window) = &mut self.window {
             window as *mut glfw::Window

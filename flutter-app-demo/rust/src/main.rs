@@ -78,9 +78,12 @@ fn main() {
     let mut engine = flutter_engine::init().unwrap();
     engine
         .create_window(
-            1800,
-            1200,
-            "Flutter App Demo",
+            &flutter_engine::WindowArgs {
+                height: 1200,
+                width: 1800,
+                title: "Flutter App Demo",
+                mode: flutter_engine::WindowMode::Windowed,
+            },
             assets_path.to_string_lossy().to_string(),
             icu_data_path.to_string_lossy().to_string(),
             vec![],

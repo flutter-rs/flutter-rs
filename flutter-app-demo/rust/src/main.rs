@@ -3,11 +3,12 @@
 
 mod calc_channel;
 mod msg_stream_channel;
-use flutter_plugins::{window, dialog};
 
 use std::{env, path::PathBuf};
 
 use fern::colors::{Color, ColoredLevelConfig};
+use flutter_engine::DesktopWindowState;
+use flutter_plugins::{dialog, window};
 use log::info;
 
 #[cfg(target_os = "macos")]
@@ -94,5 +95,21 @@ fn main() {
             .add_plugin(msg_stream_channel::MsgStreamPlugin::new())
             .add_plugin(window::WindowPlugin::new());
     });
-    engine.run_window_loop(None, None);
+    engine.run_window_loop(Some(&mut glfw_event_handler), None);
+}
+
+fn glfw_event_handler(window_state: &mut DesktopWindowState, event: glfw::WindowEvent) -> bool {
+    match event {
+        glfw::WindowEvent::CursorPos(x, y) => {
+            let dragging = window_state.with_window_and_plugin_mut_result(
+                |window, p: &mut window::WindowPlugin| p.drag_window(window, x, y),
+            );
+            if let Some(dragging) = dragging {
+                !dragging
+            } else {
+                true
+            }
+        }
+        _ => true,
+    }
 }

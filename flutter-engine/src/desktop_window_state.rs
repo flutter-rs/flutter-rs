@@ -59,7 +59,7 @@ impl RuntimeData {
         F: FnMut(&mut glfw::Window) -> R + Send + 'static,
         R: Send + 'static,
     {
-        let (tx, rx) = mpsc::sync_channel(0);
+        let (tx, rx) = mpsc::channel();
         self.main_thread_sender.send(Box::new(move |window| {
             let result = f(window);
             tx.send(result).unwrap();
@@ -411,5 +411,19 @@ impl DesktopWindowState {
             },
             _ => {}
         }
+    }
+
+    pub fn with_window_and_plugin_mut_result<F, P, R>(&mut self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut glfw::Window, &mut P) -> R,
+        P: crate::plugins::Plugin + 'static,
+    {
+        let window = self.window_ref.window();
+        let mut result = None;
+        self.plugin_registrar.with_plugin_mut(|p: &mut P| {
+            result = Some(f(window, p));
+        });
+
+        result
     }
 }

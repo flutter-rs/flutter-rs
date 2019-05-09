@@ -13,8 +13,8 @@ pub struct PlatformPlugin {
     handler: Arc<RwLock<Handler>>,
 }
 
-impl PlatformPlugin {
-    pub fn new() -> Self {
+impl Default for PlatformPlugin {
+    fn default() -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler)),

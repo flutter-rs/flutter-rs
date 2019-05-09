@@ -36,9 +36,9 @@ impl PluginRegistrar {
     }
 
     pub fn add_system_plugins(&mut self) {
-        self.add_plugin(platform::PlatformPlugin::new())
-            .add_plugin(textinput::TextInputPlugin::new())
-            .add_plugin(navigation::NavigationPlugin::new());
+        self.add_plugin(platform::PlatformPlugin::default())
+            .add_plugin(textinput::TextInputPlugin::default())
+            .add_plugin(navigation::NavigationPlugin::default());
     }
 
     pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self

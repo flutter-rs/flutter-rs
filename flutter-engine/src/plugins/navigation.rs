@@ -25,14 +25,16 @@ impl Plugin for NavigationPlugin {
     }
 }
 
-impl NavigationPlugin {
-    pub fn new() -> Self {
+impl Default for NavigationPlugin {
+    fn default() -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler)),
         }
     }
+}
 
+impl NavigationPlugin {
     fn with_channel<F>(&self, f: F)
     where
         F: FnOnce(&Channel),

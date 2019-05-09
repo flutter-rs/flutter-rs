@@ -38,8 +38,8 @@ impl Plugin for TextInputPlugin {
     }
 }
 
-impl TextInputPlugin {
-    pub fn new() -> Self {
+impl Default for TextInputPlugin {
+    fn default() -> Self {
         let data = Arc::new(RwLock::new(Data {
             client_id: None,
             editing_state: None,
@@ -52,7 +52,9 @@ impl TextInputPlugin {
             data,
         }
     }
+}
 
+impl TextInputPlugin {
     fn with_channel<F>(&self, f: F)
     where
         F: FnOnce(&Channel),

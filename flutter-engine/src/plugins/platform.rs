@@ -5,7 +5,7 @@ use super::prelude::*;
 
 use log::{debug, error};
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
 pub struct PlatformPlugin {

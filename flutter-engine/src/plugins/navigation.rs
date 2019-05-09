@@ -5,7 +5,7 @@ use super::prelude::*;
 
 use log::debug;
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
 pub struct NavigationPlugin {

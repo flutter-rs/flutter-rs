@@ -8,7 +8,7 @@ use super::prelude::*;
 
 use log::debug;
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
 pub struct TextInputPlugin {

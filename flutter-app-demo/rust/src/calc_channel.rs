@@ -9,8 +9,8 @@ pub struct CalcPlugin {
 
 struct Handler;
 
-impl CalcPlugin {
-    pub fn new() -> Self {
+impl Default for CalcPlugin {
+    fn default() -> Self {
         Self {
             handler: Arc::new(RwLock::new(Handler)),
         }

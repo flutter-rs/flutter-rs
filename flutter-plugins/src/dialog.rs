@@ -12,9 +12,9 @@ pub struct DialogPlugin {
 
 struct Handler;
 
-impl DialogPlugin {
-    pub fn new() -> Self {
-        DialogPlugin {
+impl Default for DialogPlugin {
+    fn default() -> Self {
+        Self {
             handler: Arc::new(RwLock::new(Handler)),
         }
     }

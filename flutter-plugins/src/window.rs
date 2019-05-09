@@ -22,14 +22,16 @@ impl Plugin for WindowPlugin {
     }
 }
 
-impl WindowPlugin {
-    pub fn new() -> Self {
-        WindowPlugin {
+impl Default for WindowPlugin {
+    fn default() -> Self {
+        Self {
             channel: Weak::new(),
             state: Arc::new(RwLock::new(WindowState::new())),
         }
     }
+}
 
+impl WindowPlugin {
     pub fn drag_window(&self, window: &mut Window, x: f64, y: f64) -> bool {
         let state = self.state.read().unwrap();
         if state.dragging {

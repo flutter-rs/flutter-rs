@@ -89,10 +89,10 @@ fn main() {
     engine.init_with_window_state(|window_state| {
         window_state
             .plugin_registrar
-            .add_plugin(calc_channel::CalcPlugin::new())
-            .add_plugin(dialog::DialogPlugin::new())
-            .add_plugin(msg_stream_channel::MsgStreamPlugin::new())
-            .add_plugin(window::WindowPlugin::new());
+            .add_plugin(calc_channel::CalcPlugin::default())
+            .add_plugin(dialog::DialogPlugin::default())
+            .add_plugin(msg_stream_channel::MsgStreamPlugin::default())
+            .add_plugin(window::WindowPlugin::default());
     });
     engine.run_window_loop(None, None);
 }

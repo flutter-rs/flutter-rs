@@ -3,7 +3,7 @@
 
 use super::prelude::*;
 
-use log::info;
+use log::debug;
 
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
 pub const CHANNEL_NAME: &str = "flutter/navigation";
@@ -78,10 +78,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
-        info!(
-            "navigation method {:?} called with args {:?}",
-            call.method, call.args
-        );
+        debug!("got method call {} with args {:?}", call.method, call.args);
         Err(MethodCallError::NotImplemented)
     }
 }

@@ -20,7 +20,7 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use log::error;
+use log::{error, trace};
 use tokio::prelude::Future;
 
 mod event_channel;
@@ -44,6 +44,12 @@ pub trait Channel {
                 let runtime_data = (*init_data.runtime_data).clone();
                 let call = self.decode_method_call(&msg).unwrap();
                 let channel = self.name();
+                trace!(
+                    "on channel {}, got method call {} with args {:?}",
+                    channel,
+                    call.method,
+                    call.args
+                );
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
                 init_data

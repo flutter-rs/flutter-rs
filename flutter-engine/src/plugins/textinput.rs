@@ -6,6 +6,8 @@ mod text_editing_state;
 use self::text_editing_state::TextEditingState;
 use super::prelude::*;
 
+use log::debug;
+
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
@@ -97,6 +99,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
+        debug!("got method call {} with args {:?}", call.method, call.args);
         match call.method.as_str() {
             "TextInput.setClient" => {
                 if let Value::List(v) = &call.args {

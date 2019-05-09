@@ -3,7 +3,7 @@
 
 use super::prelude::*;
 
-use log::error;
+use log::{debug, error};
 
 pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
 pub const CHANNEL_NAME: &str = "flutter/platform";
@@ -42,6 +42,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
+        debug!("got method call {} with args {:?}", call.method, call.args);
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;

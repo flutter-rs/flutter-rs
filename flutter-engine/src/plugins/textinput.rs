@@ -99,16 +99,10 @@ impl MethodCallHandler for Handler {
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "TextInput.setClient" => {
-                if let Value::List(v) = &call.args {
-                    if !v.is_empty() {
-                        if let Value::I64(n) = v[0] {
-                            let mut data = self.data.write().unwrap();
-                            data.client_id = Some(n);
-                            return Ok(Value::Null);
-                        }
-                    }
-                }
-                Err(MethodCallError::UnspecifiedError)
+                let mut data = self.data.write().unwrap();
+                let args: SetClientArgs = from_value(&call.args)?;
+                data.client_id = Some(args.0);
+                Ok(Value::Null)
             }
             "TextInput.clearClient" => {
                 let mut data = self.data.write().unwrap();
@@ -127,4 +121,26 @@ impl MethodCallHandler for Handler {
             _ => Err(MethodCallError::NotImplemented),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetClientArgs(i64, SetClientArgsText);
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetClientArgsText {
+    autocorrect: bool,
+    input_action: String,
+    obscure_text: bool,
+    keyboard_appearance: String,
+    action_label: Option<String>,
+    text_capitalization: String,
+    input_type: SetClientArgsInputType,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetClientArgsInputType {
+    signed: Option<bool>,
+    name: String,
+    decimal: Option<bool>,
 }

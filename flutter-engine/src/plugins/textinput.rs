@@ -118,13 +118,9 @@ impl MethodCallHandler for Handler {
             }
             "TextInput.setEditingState" => {
                 let mut data = self.data.write().unwrap();
-                if data.client_id.is_some() {
-                    let state: TextEditingState = from_value(&call.args)?;
-                    data.editing_state.replace(state);
-                    Ok(Value::Null)
-                } else {
-                    Err(MethodCallError::UnspecifiedError)
-                }
+                let state: TextEditingState = from_value(&call.args)?;
+                data.editing_state.replace(state);
+                Ok(Value::Null)
             }
             "TextInput.show" => Ok(Value::Null),
             "TextInput.hide" => Ok(Value::Null),

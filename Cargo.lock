@@ -421,6 +421,7 @@ dependencies = [
  "flutter-engine 0.2.1",
  "flutter-plugins 0.1.0",
  "futures 0.1.26 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glfw 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "stream-cancel 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)",

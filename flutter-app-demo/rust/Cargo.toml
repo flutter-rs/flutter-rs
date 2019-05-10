@@ -19,6 +19,7 @@ flutter-engine = { path = "../../flutter-engine" }
 flutter-plugins = { path = "../../flutter-plugins" }
 fern = { version = "^0.5", features = ["colored"] }
 chrono = "^0.4"
+glfw = "^0.28"
 
 [target.'cfg(target_os="macos")'.dependencies]
 core-foundation = "0.6.3"

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
+import 'package:flutter_app_demo/ui/widgets.dart' as ui;
 import 'demos/demos.dart';
-import 'utils.dart';
+import 'theme.dart';
 
 
 void main() {
@@ -15,17 +16,19 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      // Since flutter tool is unable to generate AOT code for desktop,
-      // our only option is to hide this banner and use JIT
-      debugShowCheckedModeBanner: false,
-      theme: getTheme(ThemeType.Base),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => Material(child: GetStartedPage()),
-        '/demo': (context) => Material(child: DemoPage()),
-      },
+    return ui.DesktopTheme(
+      child: MaterialApp(
+        title: 'Flutter Demo',
+        // Since flutter tool is unable to generate AOT code for desktop,
+        // our only option is to hide this banner and use JIT
+        debugShowCheckedModeBanner: false,
+        theme: getTheme(ThemeType.Base),
+        initialRoute: '/',
+        routes: {
+          '/': (context) => Material(child: GetStartedPage()),
+          '/demo': (context) => Material(child: DemoPage()),
+        },
+      ),
     );
   }
 }
@@ -116,12 +119,89 @@ class GetStartedPage extends StatelessWidget {
 
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Builder(
-        builder: (context) => _buildBody(context)
+      body: Column(
+        mainAxisSize: MainAxisSize.max,
+        children: <Widget>[
+          ui.MenuBar(),
+          Expanded(
+            child: Builder(
+              builder: (context) => _buildBody(context)
+            ),
+          )
+        ],
       )
     );
   }
 }
+
+class MenuBar extends StatefulWidget {
+  @override
+  _MenuBarState createState() => _MenuBarState();
+}
+
+class _MenuBarState extends State<MenuBar> {
+  bool show = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return ui.MenuBar(
+      logo: FlutterLogo(size: 40, colors: Colors.red),
+      menus: <ui.Menu>[
+        ui.Menu<String>(
+          label: "File",
+          itemBuilder: (BuildContext context) {
+            return <PopupMenuEntry<String>> [
+              PopupMenuItem<String>(
+                value: 'Open',
+                child: Text("Open"),
+              ),
+              PopupMenuItem<String>(
+                value: "Save",
+                child: Text("Save"),
+              ),
+              PopupMenuItem<String>(
+                value: "Close",
+                child: Text("Close"),
+              ),
+            ];
+          },
+        ),
+        ui.Menu<String>(
+          label: "View",
+          onSelect: (String v) {
+            print("select  $v");
+            setState(() {
+              if (v == 'ShowHide') {
+                show = !show;
+              }              
+            });
+          },
+          itemBuilder: (BuildContext context) {
+            return <PopupMenuEntry<String>> [
+              CheckedPopupMenuItem<String>(
+                checked: show,
+                value: 'ShowHide',
+                child: Text('Show'),
+              ),
+              CheckedPopupMenuItem<String>(
+                checked: !show,
+                value: 'ShowHide',
+                child: Text('Hide'),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
+                value: 'Do it',
+                child: Text('Do it'),
+              ),
+            ];
+          },
+        ),
+        ui.Menu(label: "Window"),
+      ]
+    );
+  }
+}
+
 
 class DemoPage extends StatefulWidget {
   @override
@@ -149,23 +229,33 @@ class _DemoPageState extends State<DemoPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: <Widget>[
-        SizedBox(
-          width: 300,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Color.fromARGB(255, 50, 50, 50),
-            ),
-            child: Theme(
-              data: getTheme(ThemeType.Inverted),
-              child: _buildList()
-            ),
-          ),
+        Theme(
+          data: getTheme(ThemeType.Inverted),
+          child: MenuBar(),
         ),
         Expanded(
-          child: demos[currentIdx].builder(context)
-        ),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 300,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Color.fromARGB(255, 50, 50, 50),
+                  ),
+                  child: Theme(
+                    data: getTheme(ThemeType.Inverted),
+                    child: _buildList()
+                  ),
+                ),
+              ),
+              Expanded(
+                child: demos[currentIdx].builder(context)
+              ),
+            ],
+          )
+        )
       ],
     );
   }

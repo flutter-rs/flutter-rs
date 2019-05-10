@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../ui/widgets.dart' as UI;
+
 
 class MethodChannelDemo extends StatefulWidget {
   @override
@@ -28,7 +28,7 @@ class _MethodChannelDemoState extends State<MethodChannelDemo> {
     }
     var theme = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: UI.AppBar(title: Text('MethodChannel Demo')),
+      appBar: AppBar(title: Text('MethodChannel Demo')),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../ui/widgets.dart' as UI;
+
 
 class FileDialogDemo extends StatefulWidget {
   @override
@@ -15,7 +15,7 @@ class _FileDialogDemoState extends State<FileDialogDemo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: UI.AppBar(title: Text('File Dialog Demo')),
+      appBar: AppBar(title: Text('File Dialog Demo')),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

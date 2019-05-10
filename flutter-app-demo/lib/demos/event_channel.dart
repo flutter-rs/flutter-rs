@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../ui/widgets.dart' as UI;
+
 
 class EventChannelDemo extends StatefulWidget {
   @override
@@ -62,7 +62,7 @@ class _EventChannelDemoState extends State<EventChannelDemo> {
     }
 
     return Scaffold(
-      appBar: UI.AppBar(title: Text('EventChannel Demo')),
+      appBar: AppBar(title: Text('EventChannel Demo')),
       body: ListView.builder(
         itemBuilder: (context, i) {
           return ListTile(title: Text(data[i].toString()));

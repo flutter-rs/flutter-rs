@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../ui/widgets.dart' as UI;
+
 
 class WindowDemo extends StatelessWidget {
   final MethodChannel channel = MethodChannel('flutter-rs/window', JSONMethodCodec());
@@ -8,7 +8,7 @@ class WindowDemo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: UI.AppBar(title: Text('Window Demo')),
+      appBar: AppBar(title: Text('Window Demo')),
       body: Center(
         child: Wrap(
           spacing: 10.0,

@@ -1,56 +1,113 @@
 //! Plugins use MethodChannel to interop with flutter/dart.
-//! It contains two implementations StandardMethodChannel using binary encoding 
+//! It contains two implementations StandardMethodChannel using binary encoding
 //! and JsonMethodChannel using json encoding.
 
-use std::{
-    sync::Weak,
-    borrow::Cow,
-    cell::RefCell,
+pub use self::{
+    event_channel::EventChannel,
+    json_method_channel::JsonMethodChannel,
+    registry::{ChannelRegistrar, ChannelRegistry},
+    standard_method_channel::StandardMethodChannel,
 };
 use crate::{
-    FlutterEngineInner,
-    codec::{
-        MethodCodec,
-        MethodCall,
-        MethodCallResult,
-        json_codec,
-        standard_codec
-    },
-    plugins::{ PluginRegistry, PlatformMessage},
+    codec::{MethodCall, MethodCallResult, MethodCodec, Value},
+    desktop_window_state::{InitData, RuntimeData},
+    error::MethodCallError,
+    ffi::{PlatformMessage, PlatformMessageResponseHandle},
 };
 
-use flutter_engine_sys::FlutterPlatformMessageResponseHandle;
+use std::{
+    borrow::Cow,
+    sync::{Arc, RwLock, Weak},
+};
+
+use log::{error, trace};
+use tokio::prelude::Future;
+
+mod event_channel;
+mod json_method_channel;
+mod registry;
+mod standard_method_channel;
 
 pub trait Channel {
-    type R;
-    type Codec: MethodCodec<R=Self::R>;
+    fn name(&self) -> &'static str;
+    fn init_data(&self) -> Option<Arc<InitData>>;
+    fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
+    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
+    fn plugin_name(&self) -> &'static str;
+    fn codec(&self) -> &MethodCodec;
 
-    fn get_name(&self) -> &str;
-    fn init(&self, registry: *const PluginRegistry);
-    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>>;
+    /// Handle a method call received on this channel
+    fn handle_method(&self, mut msg: PlatformMessage) {
+        debug_assert_eq!(msg.channel, self.name());
+        if let Some(handler) = self.method_handler() {
+            if let Some(init_data) = self.init_data() {
+                let runtime_data = (*init_data.runtime_data).clone();
+                let call = self.decode_method_call(&msg).unwrap();
+                let channel = self.name();
+                trace!(
+                    "on channel {}, got method call {} with args {:?}",
+                    channel,
+                    call.method,
+                    call.args
+                );
+                let plugin_name = self.plugin_name();
+                let mut response_handle = msg.response_handle.take();
+                init_data
+                    .runtime_data
+                    .task_executor
+                    .spawn(tokio::prelude::future::ok(()).map(move |_| {
+                        let mut handler = handler.write().unwrap();
+                        let method = call.method.clone();
+                        let tx = runtime_data.channel_sender.clone();
+                        let result = handler.on_method_call(call, runtime_data);
+                        let response = match result {
+                            Ok(value) => MethodCallResult::Ok(value),
+                            Err(error) => {
+                                error!(
+                                target: handler
+                                    .log_target()
+                                    .unwrap_or(plugin_name),
+                                "error in method call {}#{}: {}",
+                                channel,
+                                method,
+                                error);
+                                error.into()
+                            }
+                        };
+                        tx.send((
+                            channel,
+                            Box::new(move |channel| {
+                                channel.send_method_call_response(&mut response_handle, &response);
+                            }),
+                        ))
+                        .unwrap();
+                    }));
+            }
+        }
+    }
 
     /// Invoke a flutter method using this channel
-    fn invoke_method(&self, method_call: MethodCall<Self::R>) {
-        let buf = Self::Codec::encode_method_call(&method_call);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(self.get_name()),
+    fn invoke_method(&self, method_call: MethodCall) {
+        let buf = self.codec().encode_method_call(&method_call);
+        self.send_platform_message(PlatformMessage {
+            channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
         });
     }
 
     /// Decode dart method call
-    fn decode_method_call(&self, msg: &PlatformMessage) -> MethodCall<Self::R> {
-        Self::Codec::decode_method_call(msg.message).unwrap()
+    fn decode_method_call(&self, msg: &PlatformMessage) -> Option<MethodCall> {
+        self.codec().decode_method_call(msg.message)
     }
 
     /// When flutter listen to a stream of events using EventChannel.
     /// This method send back a success event.
     /// It can be call multiple times to simulate stream.
-    fn send_success_event(&self, data: &Self::R) {
-        let buf = Self::Codec::encode_success_envelope(data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(self.get_name()),
+    fn send_success_event(&self, data: &Value) {
+        let buf = self.codec().encode_success_envelope(data);
+        self.send_platform_message(PlatformMessage {
+            channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
         });
@@ -59,31 +116,32 @@ pub trait Channel {
     /// When flutter listen to a stream of events using EventChannel.
     /// This method send back a error event.
     /// It can be call multiple times to simulate stream.
-    fn send_error_event(&self, code: &str, message: &str, data: &Self::R) {
-        let buf = Self::Codec::encode_error_envelope(code, message, data);
-        self.send_platform_message(&PlatformMessage {
-            channel: Cow::Borrowed(self.get_name()),
+    fn send_error_event(&self, code: &str, message: &str, data: &Value) {
+        let buf = self.codec().encode_error_envelope(code, message, data);
+        self.send_platform_message(PlatformMessage {
+            channel: Cow::Borrowed(self.name()),
             message: &buf,
             response_handle: None,
         });
     }
 
     /// Send a method call response
-    fn send_method_call_response(&self, response_handle: Option<&FlutterPlatformMessageResponseHandle>, ret: MethodCallResult<Self::R>) -> bool {
-        // TODO: This is too long, need a short version
-        if let Some(handle) = response_handle {
-            let buf = match ret {
-                MethodCallResult::Ok(data) => (
-                    Self::Codec::encode_success_envelope(&data)
-                ),
-                MethodCallResult::Err{code, message, details} => (
-                    Self::Codec::encode_error_envelope(&code, &message, &details)
-                )
+    fn send_method_call_response(
+        &self,
+        response_handle: &mut Option<PlatformMessageResponseHandle>,
+        response: &MethodCallResult,
+    ) {
+        if let Some(response_handle) = response_handle.take() {
+            let buf = match response {
+                MethodCallResult::Ok(data) => self.codec().encode_success_envelope(data),
+                MethodCallResult::Err {
+                    code,
+                    message,
+                    details,
+                } => self.codec().encode_error_envelope(code, message, details),
+                MethodCallResult::NotImplemented => vec![],
             };
-            self.send_response(handle, &buf);
-            true       
-        } else {
-            false
+            self.send_response(response_handle, &buf);
         }
     }
 
@@ -91,97 +149,43 @@ pub trait Channel {
     /// it can wait for rust response using await syntax.
     /// This method send a response to flutter. This is a low level method.
     /// Please use send_method_call_response if that will work.
-    fn send_response(&self, response_handle: &FlutterPlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message_response(
-                response_handle,
-                buf,
-            );
+    fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
+        if let Some(init_data) = self.init_data() {
+            init_data
+                .engine
+                .send_platform_message_response(response_handle, buf);
+        } else {
+            error!("Channel {} was not initialized", self.name());
         }
     }
 
     /// Send a platform message over this channel. This is a low level method.
-    fn send_platform_message(&self, msg: &PlatformMessage) {
-        if let Some(engine) = self.get_engine() {
-            engine.upgrade().unwrap().send_platform_message(msg);
+    fn send_platform_message(&self, message: PlatformMessage) {
+        if let Some(init_data) = self.init_data() {
+            init_data.engine.send_platform_message(message);
         } else {
-            error!("Cannot get engine");
+            error!("Channel {} was not initialized", self.name());
         }
     }
 }
 
-pub struct JsonMethodChannel {
-    name: String,
-    registry: RefCell<Option<*const PluginRegistry>>,
+pub trait MethodCallHandler {
+    fn log_target(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn on_method_call(
+        &mut self,
+        call: MethodCall,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError>;
 }
 
-unsafe impl Send for JsonMethodChannel {}
-unsafe impl Sync for JsonMethodChannel {}
-
-impl JsonMethodChannel {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            registry: RefCell::new(None),
-        }
-    }
-}
-
-impl Channel for JsonMethodChannel {
-    type Codec = json_codec::JsonMethodCodec;
-    type R = json_codec::Value;
-
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-    fn init(&self, registry: *const PluginRegistry) {
-        self.registry.replace(Some(registry));
-    }
-
-    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
-        self.registry.borrow().map(|ptr| {
-            unsafe {
-                let registry = &*ptr;
-                registry.engine.clone()
-            }
-        })
-    }
-}
-
-
-pub struct StandardMethodChannel {
-    name: String,
-    registry: RefCell<Option<*const PluginRegistry>>,
-}
-
-unsafe impl Send for StandardMethodChannel {}
-unsafe impl Sync for StandardMethodChannel {}
-
-impl StandardMethodChannel {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            registry: RefCell::new(None),
-        }
-    }
-}
-
-impl Channel for StandardMethodChannel {
-    type Codec = standard_codec::StandardMethodCodec;
-    type R = standard_codec::Value;
-
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-    fn init(&self, registry: *const PluginRegistry) {
-        self.registry.replace(Some(registry));
-    }
-    fn get_engine(&self) -> Option<Weak<FlutterEngineInner>> {
-        self.registry.borrow().map(|ptr| {
-            unsafe {
-                let registry = &*ptr;
-                registry.engine.clone()
-            }
-        })
-    }
+pub trait EventHandler {
+    fn on_listen(
+        &mut self,
+        args: Value,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, runtime_data: RuntimeData) -> Result<Value, MethodCallError>;
 }

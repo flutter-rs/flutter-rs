@@ -1,65 +1,97 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
 
-use crate::{FlutterEngineInner};
-use super::{Plugin, PlatformMessage, PluginRegistry};
-use serde_json::Value;
-use channel::{ Channel, JsonMethodChannel };
-use codec::MethodCallResult;
-use std::sync::Arc;
+use super::prelude::*;
+
+use log::{debug, error};
+
+pub const PLUGIN_NAME: &str = module_path!();
+pub const CHANNEL_NAME: &str = "flutter/platform";
 
 pub struct PlatformPlugin {
-    channel: JsonMethodChannel,
+    channel: Weak<JsonMethodChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
 
-impl PlatformPlugin {
-    pub fn new() -> Self {
-        PlatformPlugin {
-            channel: JsonMethodChannel::new("flutter/platform")
+impl Default for PlatformPlugin {
+    fn default() -> Self {
+        Self {
+            channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
 
 impl Plugin for PlatformPlugin {
-    fn init_channel(&self, registry: &PluginRegistry) -> &str {
-        self.channel.init(registry);
-        return self.channel.get_name();
+    fn plugin_name() -> &'static str {
+        PLUGIN_NAME
     }
-    fn handle(&mut self, msg: &PlatformMessage, _engine: Arc<FlutterEngineInner>, window: &mut glfw::Window) {
-        let decoded = self.channel.decode_method_call(msg);
-        match decoded.method.as_str() {
+
+    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
+        let method_handler = Arc::downgrade(&self.handler);
+        self.channel =
+            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+    }
+}
+
+struct Handler;
+
+impl MethodCallHandler for Handler {
+    fn on_method_call(
+        &mut self,
+        call: MethodCall,
+        runtime_data: RuntimeData,
+    ) -> Result<Value, MethodCallError> {
+        debug!("got method call {} with args {:?}", call.method, call.args);
+        match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
+                let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;
                 // label and primaryColor
-                window.set_title(decoded.args.as_object().unwrap().get("label").unwrap().as_str().unwrap());
-            },
+                runtime_data.with_window(move |window| {
+                    window.set_title(args.label.as_str());
+                })?;
+                Ok(Value::Null)
+            }
             "Clipboard.setData" => {
-                if let Value::Object(v) = &decoded.args {
+                if let Value::Map(v) = &call.args {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
-                            window.set_clipboard_string(text);
+                            let text = text.clone();
+                            runtime_data.with_window(move |window| {
+                                window.set_clipboard_string(text.as_str());
+                            })?;
+                            return Ok(Value::Null);
                         }
                     }
                 }
-            },
-            "Clipboard.getData" => (
-                if let Value::String(mime) = &decoded.args {
+                Err(MethodCallError::UnspecifiedError)
+            }
+            "Clipboard.getData" => {
+                if let Value::String(mime) = &call.args {
                     match mime.as_str() {
                         "text/plain" => {
-                            self.channel.send_method_call_response(
-                                msg.response_handle,
-                                MethodCallResult::Ok(json!({
-                                    "text": window.get_clipboard_string(),
-                                })),
-                            );
-                        },
+                            let text = runtime_data
+                                .with_window_result(|window| window.get_clipboard_string())?;
+                            Ok(json_value!({ "text": text }))
+                        }
                         _ => {
-                            error!("Dont know how to handle {} clipboard message", mime.as_str());
-                            ()
-                        },
+                            error!(
+                                "Don't know how to handle {} clipboard message",
+                                mime.as_str()
+                            );
+                            Err(MethodCallError::UnspecifiedError)
+                        }
                     }
+                } else {
+                    Err(MethodCallError::UnspecifiedError)
                 }
-            ),
-            method => warn!("Unknown method {} called", method),
+            }
+            _ => Err(MethodCallError::NotImplemented),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetApplicationSwitcherDescriptionArgs {
+    pub label: String,
 }

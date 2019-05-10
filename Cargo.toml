@@ -3,6 +3,7 @@ members = [
     "flutter-engine",
     "flutter-engine-sys",
     "flutter-download",
+    "flutter-plugins",
 ]
 
 exclude = [

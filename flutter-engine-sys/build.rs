@@ -10,10 +10,6 @@ use std::path::{Path, PathBuf};
 fn gen_bindings() {
     let bindings = bindgen::Builder::default()
         .header("flutter-engine.h")
-        .header("flutter_export.h")
-        .header("flutter_glfw.h")
-        .header("flutter_messenger.h")
-        .header("flutter_plugin_registrar.h")
         .default_enum_style(EnumVariation::Rust)
         .generate()
         .expect("Unable to generate bindings");
@@ -100,7 +96,7 @@ rustflags = ["-C", "link-args=-Wl,-rpath,{libs},-rpath,@executable_path/../Frame
         )
     } else if cfg!(target_os = "windows") {
         // windows does not use rpath, we have to copy dll to OUT_DIR
-        let src = libs_dir.join("flutter_windows.dll");
+        let src = libs_dir.join("flutter_engine.dll");
         let tar = Path::new(&std::env::var("OUT_DIR").unwrap())
             .parent()
             .unwrap()
@@ -108,7 +104,7 @@ rustflags = ["-C", "link-args=-Wl,-rpath,{libs},-rpath,@executable_path/../Frame
             .unwrap()
             .parent()
             .unwrap()
-            .join("flutter_windows.dll");
+            .join("flutter_engine.dll");
 
         let _ = fs::copy(src, tar);
         format!(r#""#)

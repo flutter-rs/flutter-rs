@@ -79,7 +79,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         // mac framework file is a double zip file
         if target() == Target::MacOS {
             Command::new("unzip")
-                .args(&["FlutterMacOS.framework.zip", "-d", "FlutterMacOS.framework"])
+                .args(&["FlutterEmbedder.framework.zip", "-d", "FlutterEmbedder.framework"])
                 .current_dir(&dir)
                 .status()
                 .unwrap();
@@ -105,13 +105,13 @@ pub fn home_download_path() -> PathBuf {
 pub fn download_url(version: &str) -> String {
     let url = match target() {
         Target::Linux => {
-            "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-flutter.zip"
+            "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder"
         }
         Target::MacOS => {
-            "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterMacOS.framework.zip"
+            "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip"
         }
         Target::Windows => {
-            "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-flutter.zip"
+            "{base_url}/flutter_infra/flutter/{version}/windows-x64/windows-x64-embedder.zip"
         }
     };
     let base_url = std::env::var("FLUTTER_STORAGE_BASE_URL");
@@ -125,9 +125,9 @@ pub fn download_url(version: &str) -> String {
 
 fn should_download(path: &Path) -> bool {
     match target() {
-        Target::Linux => !path.join("libflutter_linux.so").exists(),
-        Target::MacOS => !path.join("FlutterMacOS.framework").exists(),
-        Target::Windows => !path.join("flutter_windows.dll").exists(),
+        Target::Linux => !path.join("libflutter_engine.so").exists(),
+        Target::MacOS => !path.join("FlutterEmbedder.framework").exists(),
+        Target::Windows => !path.join("flutter_engine.dll").exists(),
     }
 }
 
@@ -141,13 +141,5 @@ fn target() -> Target {
         Target::Windows
     } else {
         panic!("Unknown target {}", target)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
     }
 }

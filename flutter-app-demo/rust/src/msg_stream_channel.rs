@@ -3,7 +3,7 @@ use std::{iter::repeat, time::Duration};
 use flutter_engine::plugins::prelude::*;
 use log::info;
 use stream_cancel::{StreamExt as StreamExt2, Trigger, Tripwire};
-use tokio::{prelude::*, runtime::TaskExecutor};
+use tokio::prelude::*;
 
 const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "rust/msg_stream";
@@ -24,8 +24,8 @@ impl Plugin for MsgStreamPlugin {
     }
 }
 
-impl MsgStreamPlugin {
-    pub fn new() -> Self {
+impl Default for MsgStreamPlugin {
+    fn default() -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler { stop_trigger: None })),

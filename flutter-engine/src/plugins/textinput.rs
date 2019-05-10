@@ -6,7 +6,9 @@ mod text_editing_state;
 use self::text_editing_state::TextEditingState;
 use super::prelude::*;
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::textinput";
+use log::debug;
+
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/textinput";
 
 pub struct TextInputPlugin {
@@ -36,8 +38,8 @@ impl Plugin for TextInputPlugin {
     }
 }
 
-impl TextInputPlugin {
-    pub fn new() -> Self {
+impl Default for TextInputPlugin {
+    fn default() -> Self {
         let data = Arc::new(RwLock::new(Data {
             client_id: None,
             editing_state: None,
@@ -50,7 +52,9 @@ impl TextInputPlugin {
             data,
         }
     }
+}
 
+impl TextInputPlugin {
     fn with_channel<F>(&self, f: F)
     where
         F: FnOnce(&Channel),
@@ -97,6 +101,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
+        debug!("got method call {} with args {:?}", call.method, call.args);
         match call.method.as_str() {
             "TextInput.setClient" => {
                 let mut data = self.data.write().unwrap();

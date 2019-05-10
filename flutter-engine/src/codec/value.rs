@@ -36,7 +36,7 @@ impl Serialize for Value {
         match self {
             Value::Null => serializer.serialize_unit(),
             Value::Boolean(b) => serializer.serialize_bool(*b),
-            Value::I32(i) => serializer.serialize_i64(*i as i64),
+            Value::I32(i) => serializer.serialize_i64(i64::from(*i)),
             Value::I64(i) => serializer.serialize_i64(*i),
             Value::F64(f) => serializer.serialize_f64(*f),
             Value::String(s) => serializer.serialize_str(s.as_str()),

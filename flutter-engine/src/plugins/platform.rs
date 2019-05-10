@@ -3,9 +3,9 @@
 
 use super::prelude::*;
 
-use log::error;
+use log::{debug, error};
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::platform";
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/platform";
 
 pub struct PlatformPlugin {
@@ -13,8 +13,8 @@ pub struct PlatformPlugin {
     handler: Arc<RwLock<Handler>>,
 }
 
-impl PlatformPlugin {
-    pub fn new() -> Self {
+impl Default for PlatformPlugin {
+    fn default() -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler)),
@@ -42,6 +42,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         runtime_data: RuntimeData,
     ) -> Result<Value, MethodCallError> {
+        debug!("got method call {} with args {:?}", call.method, call.args);
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: SetApplicationSwitcherDescriptionArgs = from_value(&call.args)?;

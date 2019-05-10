@@ -1,6 +1,6 @@
 use super::{MethodCall, MethodCallResult, MethodCodec, Value};
 
-use std::{collections::HashMap, mem, slice, u16, u32};
+use std::{collections::HashMap, slice};
 
 use log::error;
 
@@ -101,7 +101,7 @@ impl StandardMethodCodec {
             _ => Value::Null,
         })
     }
-    fn write_string(writer: &mut Writer, s: &String) {
+    fn write_string(writer: &mut Writer, s: &str) {
         writer.write_u8(VALUE_STRING);
         writer.write_size(s.len());
         writer.write_string(s);
@@ -173,7 +173,6 @@ impl StandardMethodCodec {
                     Self::write_value(writer, v);
                 });
             }
-            _ => (),
         }
     }
 }
@@ -283,7 +282,7 @@ impl<'a> Reader<'a> {
     }
     fn read_f64(&mut self) -> f64 {
         let n = self.read_u64();
-        unsafe { mem::transmute::<u64, f64>(n) }
+        f64::from_bits(n)
     }
     fn read_size(&mut self) -> usize {
         let n = self.read_u8();
@@ -331,8 +330,8 @@ impl<'a> Reader<'a> {
         let mut v = Vec::with_capacity(len);
         self.align_to(8);
         for _ in 0..len {
-            let n = self.read_i64();
-            v.push(unsafe { mem::transmute::<i64, f64>(n) });
+            let n = self.read_u64();
+            v.push(f64::from_bits(n));
         }
         v
     }
@@ -372,7 +371,7 @@ impl Writer {
         self.0.extend_from_slice(&n.to_ne_bytes());
     }
     fn write_f64(&mut self, n: f64) {
-        self.write_u64(unsafe { mem::transmute::<f64, u64>(n) });
+        self.write_u64(n.to_bits());
     }
     fn write_size(&mut self, n: usize) {
         if n < 254 {
@@ -400,9 +399,6 @@ impl Writer {
         for _ in 0..m {
             self.write_u8(0);
         }
-    }
-    fn write_buf(&mut self, list: &[u8]) {
-        self.0.extend_from_slice(list);
     }
 }
 

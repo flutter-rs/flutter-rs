@@ -135,7 +135,8 @@ impl DesktopWindowState {
         let window_size = window.get_size();
         let framebuffer_size = window.get_framebuffer_size();
         let scale = window.get_content_scale();
-        self.window_pixels_per_screen_coordinate = framebuffer_size.0 as f64 / window_size.0 as f64;
+        self.window_pixels_per_screen_coordinate =
+            f64::from(framebuffer_size.0) / f64::from(window_size.0);
         debug!(
             "Setting framebuffer size to {:?}, scale to {}",
             framebuffer_size, scale.0
@@ -143,7 +144,7 @@ impl DesktopWindowState {
         self.init_data.engine.send_window_metrics_event(
             framebuffer_size.0,
             framebuffer_size.1,
-            scale.0 as f64,
+            f64::from(scale.0),
         );
     }
 

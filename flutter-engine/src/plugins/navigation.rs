@@ -3,9 +3,9 @@
 
 use super::prelude::*;
 
-use log::info;
+use log::debug;
 
-pub const PLUGIN_NAME: &str = "flutter-engine::plugins::navigation";
+pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
 pub struct NavigationPlugin {
@@ -25,14 +25,16 @@ impl Plugin for NavigationPlugin {
     }
 }
 
-impl NavigationPlugin {
-    pub fn new() -> Self {
+impl Default for NavigationPlugin {
+    fn default() -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler)),
         }
     }
+}
 
+impl NavigationPlugin {
     fn with_channel<F>(&self, f: F)
     where
         F: FnOnce(&Channel),
@@ -78,10 +80,7 @@ impl MethodCallHandler for Handler {
         call: MethodCall,
         _: RuntimeData,
     ) -> Result<Value, MethodCallError> {
-        info!(
-            "navigation method {:?} called with args {:?}",
-            call.method, call.args
-        );
+        debug!("got method call {} with args {:?}", call.method, call.args);
         Err(MethodCallError::NotImplemented)
     }
 }

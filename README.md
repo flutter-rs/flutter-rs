@@ -43,8 +43,11 @@ You may want to checkout flutter-app-demo for an example.
 # Contribution
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
+# ChangeLog
+[CHANGELOG](CHANGELOG.md).
+
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
-[flutter-badge]: https://img.shields.io/badge/flutter-v1.2.1-blueviolet.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v1.5.4-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [appveyor-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
 [appveyor-url]: https://ci.appveyor.com/project/gliheng/flutter-rs

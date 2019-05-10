@@ -69,6 +69,24 @@ impl MethodCallHandler for WindowState {
                 })?;
                 Ok(Value::Null)
             }
+            "isMaximized" => {
+                let ret = runtime_data.with_window_result(|window| {
+                    window.is_maximized()
+                })?;
+                Ok(Value::Boolean(ret))
+            }
+            "isIconified" => {
+                let ret = runtime_data.with_window_result(|window| {
+                    window.is_iconified()
+                })?;
+                Ok(Value::Boolean(ret))
+            }
+            "isVisible" => {
+                let ret = runtime_data.with_window_result(|window| {
+                    window.is_visible()
+                })?;
+                Ok(Value::Boolean(ret))
+            }
             "show" => {
                 runtime_data.with_window(|window| {
                     window.show();

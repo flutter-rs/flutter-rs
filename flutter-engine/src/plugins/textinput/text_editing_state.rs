@@ -145,6 +145,18 @@ impl TextEditingState {
     pub fn move_to_end(&mut self, select: bool) {
         self.select_or_move_to(self.text.char_count(), select);
     }
+    pub fn move_up(&mut self, select: bool) {
+        let selection = self.get_selection_range();
+
+        let p = self.get_next_line_pos(selection.start, false);
+        self.select_or_move_to(p, select);
+    }
+    pub fn move_down(&mut self, select: bool) {
+        let selection = self.get_selection_range();
+
+        let p = self.get_next_line_pos(selection.end, true);
+        self.select_or_move_to(p, select);
+    }
 
     pub fn get_selected_text(&self) -> &str {
         if let Some(range) = self.text.byte_range_of_chars(self.get_selection_range()) {

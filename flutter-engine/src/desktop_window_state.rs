@@ -288,16 +288,22 @@ impl DesktopWindowState {
                 //                        }
                 //                    });
                 //                },
-                //                Key::Up => {
-                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
-                //                        p.move_cursor_up(modifiers);
-                //                    });
-                //                },
-                //                Key::Down => {
-                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
-                //                        p.move_cursor_down(modifiers);
-                //                    });
-                //                },
+                glfw::Key::Up => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_up(modifiers.contains(SELECT_MODIFIER_KEY));
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
+                glfw::Key::Down => self.plugin_registrar.with_plugin_mut(
+                    |text_input: &mut crate::plugins::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.move_down(modifiers.contains(SELECT_MODIFIER_KEY));
+                        });
+                        text_input.notify_changes();
+                    },
+                ),
                 glfw::Key::Backspace => self.plugin_registrar.with_plugin_mut(
                     |text_input: &mut crate::plugins::TextInputPlugin| {
                         text_input.with_state(|state| {

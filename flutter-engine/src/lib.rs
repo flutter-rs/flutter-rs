@@ -9,6 +9,7 @@ mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 mod utils;
+mod draw;
 
 pub use crate::desktop_window_state::{
     ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
@@ -59,6 +60,7 @@ pub struct WindowArgs<'a> {
     pub height: i32,
     pub title: &'a str,
     pub mode: WindowMode,
+    pub bg_color: (u8, u8, u8),
 }
 
 enum DesktopUserData {
@@ -109,7 +111,7 @@ impl FlutterDesktop {
             DesktopUserData::None => {}
             _ => return Err(Error::WindowAlreadyCreated),
         }
-        let (window, receiver) = match window_args.mode {
+        let (mut window, receiver) = match window_args.mode {
             WindowMode::Windowed => self
                 .glfw
                 .create_window(
@@ -146,8 +148,8 @@ impl FlutterDesktop {
         };
 
         // draw initial screen to avoid blinking
-        // draw::init_gl(&mut window);
-        // draw::draw_bg(&mut window, window_args.bg_color);
+        draw::init_gl(&mut window);
+        draw::draw_bg(&mut window, window_args.bg_color);
 
         self.window = Some(window);
         let window_ref = if let Some(window) = &mut self.window {

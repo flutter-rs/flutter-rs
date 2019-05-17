@@ -370,6 +370,7 @@ dependencies = [
  "flutter-engine-sys 0.1.0",
  "gl 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.54 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",

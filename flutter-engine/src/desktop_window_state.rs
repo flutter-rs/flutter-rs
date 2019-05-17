@@ -6,12 +6,21 @@ use crate::{
 };
 
 use log::{debug, info};
-use std::sync::{
-    mpsc,
-    mpsc::{Receiver, Sender},
-    Arc,
+use std::{
+    collections::HashMap,
+    sync::Mutex,
+    sync::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+        Arc,
+    },
 };
+use tokio::prelude::Future;
 use tokio::runtime::{Runtime, TaskExecutor};
+
+#[macro_use]
+use lazy_static::lazy_static;
+
 
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
@@ -113,10 +122,20 @@ impl DesktopWindowState {
             channel_sender: channel_tx,
             task_executor: runtime.executor(),
         });
+        let engine = Arc::new(engine);
         let init_data = Arc::new(InitData {
-            engine: Arc::new(engine),
+            engine: engine.clone(),
             runtime_data,
         });
+
+        // register window and engine globally
+        unsafe {
+            use glfw::Context;
+            let window: &glfw::Window = &*window_ref;
+            let mut guard = ENGINES.lock().unwrap();
+            guard.insert(WindowSafe(window.window_ptr()), FlutterEngineSafe(engine));
+        }
+
         Self {
             window_ref,
             window_event_receiver,
@@ -433,4 +452,39 @@ impl DesktopWindowState {
 
         result
     }
+
+    pub fn shutdown(self) {
+        let mut guard = ENGINES.lock().unwrap();
+        unsafe {
+            use glfw::Context;
+            let window: &glfw::Window = &*self.window_ref;
+            guard.remove(&WindowSafe(window.window_ptr()));
+        }
+
+        self.init_data.engine.shutdown();
+        self.runtime.shutdown_now().wait().unwrap();
+    }
+}
+
+
+/// Wrap glfw::Window, so that it could be used in a lazy_static HashMap
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash,)]
+struct WindowSafe(*mut glfw::ffi::GLFWwindow);
+
+unsafe impl Send for WindowSafe {}
+unsafe impl Sync for WindowSafe {}
+
+struct FlutterEngineSafe(Arc<FlutterEngine>);
+
+unsafe impl Send for FlutterEngineSafe {}
+unsafe impl Sync for FlutterEngineSafe {}
+
+/// This HashMap is usded to look up FlutterEngine using glfw Window
+lazy_static! {
+    static ref ENGINES: Mutex<HashMap<WindowSafe, FlutterEngineSafe>> = Mutex::new(HashMap::new());
+}
+
+pub fn get_engine(window: *mut glfw::ffi::GLFWwindow) -> Option<Arc<FlutterEngine>> {
+    let guard = ENGINES.lock().unwrap();
+    guard.get(&WindowSafe(window)).map(|v| v.0.clone())
 }

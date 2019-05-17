@@ -19,9 +19,8 @@ pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
 
-pub use glfw::Window;
+pub use glfw::{ Window, Context };
 use log::error;
-use tokio::prelude::Future;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -185,6 +184,10 @@ impl FlutterDesktop {
             window.set_scroll_polling(true);
             window.set_size_polling(true);
             window.set_content_scale_polling(true);
+    
+            unsafe {
+                glfw::ffi::glfwSetWindowRefreshCallback(window.window_ptr(), Some(window_refreshed));
+            }
         }
 
         Ok(())
@@ -320,12 +323,42 @@ impl FlutterDesktop {
                 }
             }
 
-            window_state.init_data.engine.shutdown();
-            window_state.runtime.shutdown_now().wait().unwrap();
+            window_state.shutdown();
         }
     }
 }
 
 fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
     error!("GLFW error: {}", description);
+}
+
+extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
+    if let Some(engine) = desktop_window_state::get_engine(window) {
+
+        let mut window_size: (i32, i32) = (0, 0);
+        let mut framebuffer_size: (i32, i32) = (0, 0);
+        let mut scale: (f32, f32) = (0.0, 0.0);
+
+        unsafe {
+            glfw::ffi::glfwGetWindowSize(window, &mut window_size.0, &mut window_size.1);
+            glfw::ffi::glfwGetFramebufferSize(window, &mut framebuffer_size.0, &mut framebuffer_size.1);
+            glfw::ffi::glfwGetWindowContentScale(window, &mut scale.0, &mut scale.1);
+        }
+
+        // probably dont need this, since after resize a framebuffer size
+        // change event is sent and set this regardless
+        // self.window_pixels_per_screen_coordinate =
+        //     f64::from(framebuffer_size.0) / f64::from(window_size.0);
+
+        log::debug!(
+            "Setting framebuffer size to {:?}, scale to {}",
+            framebuffer_size, scale.0
+        );
+
+        engine.send_window_metrics_event(
+            framebuffer_size.0,
+            framebuffer_size.1,
+            f64::from(scale.0),
+        );
+    }
 }

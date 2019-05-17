@@ -47,7 +47,7 @@ pub extern "C" fn make_resource_current(_user_data: *mut c_void) -> bool {
 }
 
 pub extern "C" fn gl_proc_resolver(user_data: *mut c_void, proc: *const c_char) -> *mut c_void {
-    trace!("gl_proc_resolver");
+    trace!("gl_proc_resolver"); 
     unsafe {
         let user_data = &mut *(user_data as *mut DesktopUserData);
         if let Some(window) = user_data.get_window() {

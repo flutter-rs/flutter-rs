@@ -111,7 +111,7 @@ impl FlutterDesktop {
             DesktopUserData::None => {}
             _ => return Err(Error::WindowAlreadyCreated),
         }
-        let (mut window, receiver) = match window_args.mode {
+        let (window, receiver) = match window_args.mode {
             WindowMode::Windowed => self
                 .glfw
                 .create_window(
@@ -147,10 +147,6 @@ impl FlutterDesktop {
             }
         };
 
-        // draw initial screen to avoid blinking
-        draw::init_gl(&mut window);
-        draw::draw_bg(&mut window, window_args.bg_color);
-
         self.window = Some(window);
         let window_ref = if let Some(window) = &mut self.window {
             window as *mut glfw::Window
@@ -160,6 +156,13 @@ impl FlutterDesktop {
 
         // as FlutterEngineRun already calls the make_current callback, user_data must be set now
         self.user_data = DesktopUserData::Window(window_ref);
+
+        // draw initial screen to avoid blinking
+        if let Some(window) = self.user_data.get_window() {
+            draw::init_gl(window);
+            draw::draw_bg(window, window_args.bg_color);
+        }
+
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
         self.user_data =

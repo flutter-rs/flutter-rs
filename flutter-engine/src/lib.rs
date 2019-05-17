@@ -158,10 +158,10 @@ impl FlutterDesktop {
         self.user_data = DesktopUserData::Window(window_ref);
 
         // draw initial screen to avoid blinking
-        if let Some(window) = self.user_data.get_window() {
-            draw::init_gl(window);
-            draw::draw_bg(window, window_args.bg_color);
-        }
+        // if let Some(window) = self.user_data.get_window() {
+        //     draw::init_gl(window);
+        //     draw::draw_bg(window, window_args.bg_color);
+        // }
 
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state

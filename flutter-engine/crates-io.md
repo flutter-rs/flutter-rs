@@ -3,35 +3,27 @@
 ## flutter-engine in action
 
 ```rust
-use std::{
-    env,
-    path::PathBuf,
-};
-use flutter_engine::{FlutterEngineArgs, FlutterEngine, WindowMode};
+const ASSETS_PATH: &str = "../build/flutter_assets";
+const ICU_DATA_PATH: &str = "./assets/icudtl.dat";
 
 fn main() {
-    flutter_engine::init();
-
-    // This is flutter_assets direcotry you get with command `flutter build bundle`
-    let assets_path = PathBuf::from(&env::var("ASSETS_PATH").unwrap());
-    // This is a static file you get in flutter project
-    let icu_data_path = PathBuf::from(&env::var("ICU_DATA_PATH").unwrap());
-
-    let args = FlutterEngineArgs{
-        assets_path: assets_path.to_string_lossy().into_owned(),
-        icu_data_path: icu_data_path.to_string_lossy().into_owned(),
-        title: String::from("Flutter Demo"),
-        width: 800,
-        height: 600,
-        window_mode: WindowMode::Windowed,
-        ..Default::default()
-    };
-
-    let engine = FlutterEngine::new(args);
-    engine.run();    // This blocks until window is closed
-    engine.shutdown();
+    let mut engine = flutter_engine::init().unwrap();
+    engine
+        .create_window(
+            &flutter_engine::WindowArgs {
+                height: 1200,
+                width: 1800,
+                title: "Flutter App Demo",
+                mode: flutter_engine::WindowMode::Windowed,
+                bg_color: (255, 255, 255),
+            },
+            ASSETS_PATH.to_string(),
+            ICU_DATA_PATH.to_string(),
+            vec![],
+        )
+        .unwrap();
+    engine.run_window_loop(None, None);
 }
-
 ```
 
 ## demo

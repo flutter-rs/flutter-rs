@@ -9,4 +9,4 @@ build = "build.rs"
 
 [build-dependencies]
 bindgen = "0.42.2"
-flutter-download = { path = "../flutter-download" }
+flutter-download = { version = "0.3.0", path = "../flutter-download" }

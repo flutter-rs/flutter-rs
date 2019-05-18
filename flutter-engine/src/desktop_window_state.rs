@@ -18,7 +18,6 @@ use std::{
 use tokio::prelude::Future;
 use tokio::runtime::{Runtime, TaskExecutor};
 
-#[macro_use]
 use lazy_static::lazy_static;
 
 

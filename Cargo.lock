@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "flutter-download"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "curl 0.4.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -367,7 +367,7 @@ dependencies = [
 name = "flutter-engine"
 version = "0.3.0"
 dependencies = [
- "flutter-engine-sys 0.1.0",
+ "flutter-engine-sys 0.3.0",
  "gl 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -380,10 +380,10 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine-sys"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "bindgen 0.42.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "flutter-download 0.1.0",
+ "flutter-download 0.3.0",
 ]
 
 [[package]]

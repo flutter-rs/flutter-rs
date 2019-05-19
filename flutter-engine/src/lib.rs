@@ -11,16 +11,18 @@ pub mod plugins;
 mod utils;
 mod draw;
 
+use std::{
+    ffi::CString,
+};
+
+pub use glfw::{ Window, Context };
+use log::error;
+
 pub use crate::desktop_window_state::{
     ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
 };
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
-
-use std::ffi::CString;
-
-pub use glfw::{ Window, Context };
-use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -64,7 +66,7 @@ pub struct WindowArgs<'a> {
 
 enum DesktopUserData {
     None,
-    Window(*mut glfw::Window),
+    Window(*mut glfw::Window, *mut glfw::Window),
     WindowState(DesktopWindowState),
 }
 
@@ -72,13 +74,23 @@ impl DesktopUserData {
     pub fn get_window(&mut self) -> Option<&mut glfw::Window> {
         unsafe {
             match self {
-                DesktopUserData::Window(window) => Some(&mut **window),
+                DesktopUserData::Window(window, _) => Some(&mut **window),
                 DesktopUserData::WindowState(window_state) => Some(window_state.window()),
                 DesktopUserData::None => None,
             }
         }
     }
-}
+    pub fn get_resource_window(&mut self) -> Option<&mut glfw::Window> {    
+        match self {
+            DesktopUserData::None => None,
+            DesktopUserData::Window(_, resource_window) => {
+                unsafe {
+                    Some(&mut **resource_window)
+                }
+            },
+            DesktopUserData::WindowState(window_state) => Some(&mut window_state.resource_window),
+        }
+    }}
 
 pub struct FlutterDesktop {
     glfw: glfw::Glfw,
@@ -146,7 +158,17 @@ impl FlutterDesktop {
             }
         };
 
+    
+        // create resource window
+        self.glfw.window_hint(glfw::WindowHint::Decorated(false));
+        self.glfw.window_hint(glfw::WindowHint::Visible(false));
+        let (mut resource_window, _) = window.create_shared(1, 1, "", glfw::WindowMode::Windowed)
+            .unwrap();
+        self.glfw.default_window_hints();
+
+
         self.window = Some(window);
+
         let window_ref = if let Some(window) = &mut self.window {
             window as *mut glfw::Window
         } else {
@@ -154,7 +176,7 @@ impl FlutterDesktop {
         };
 
         // as FlutterEngineRun already calls the make_current callback, user_data must be set now
-        self.user_data = DesktopUserData::Window(window_ref);
+        self.user_data = DesktopUserData::Window(window_ref, &mut resource_window as *mut glfw::Window);
 
         // draw initial screen to avoid blinking
         if let Some(window) = self.user_data.get_window() {
@@ -167,7 +189,7 @@ impl FlutterDesktop {
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
         self.user_data =
-            DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine));
+            DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, resource_window, engine));
 
         if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
             // send initial size callback to engine

@@ -38,6 +38,7 @@ pub type ChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    pub resource_window: glfw::Window,
     pub runtime: Runtime,
     pub main_thread_receiver: Receiver<MainThreadFn>,
     pub channel_receiver: Receiver<ChannelFn>,
@@ -111,6 +112,7 @@ impl DesktopWindowState {
     pub fn new(
         window_ref: *mut glfw::Window,
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
+        resource_window: glfw::Window,
         engine: FlutterEngine,
     ) -> Self {
         let runtime = Runtime::new().unwrap();
@@ -138,6 +140,7 @@ impl DesktopWindowState {
         Self {
             window_ref,
             window_event_receiver,
+            resource_window,
             runtime,
             main_thread_receiver: main_rx,
             channel_receiver: channel_rx,

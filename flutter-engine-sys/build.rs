@@ -23,14 +23,26 @@ fn gen_bindings() {
 fn main() {
     gen_bindings();
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("Cannot get project dir");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("Cannot get manifest dir");
+    let out_dir = std::env::var("OUT_DIR").expect("Cannot get out dir");
     let mut project_path = Path::new(&manifest_dir);
 
-    // This project is in a workspace
+    let mut is_dev = false;
     if let Some(p) = project_path.parent() {
+        // This project is in a workspace
         if p.join("Cargo.toml").is_file() {
+            is_dev = true;
             project_path = p;
         }
+    }
+
+    if !is_dev {
+        project_path = Path::new(&out_dir)
+            .parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap();
     }
 
     let version = get_flutter_version().expect("Cannot get flutter engine version");
@@ -40,6 +52,7 @@ fn main() {
     println!("Checking flutter engine status");
     if let Ok(rx) = flutter_download::download_to(&version, &libs_dir) {
         // THis is /bin/internal/engine.version file in your flutter sdk
+        println!("Engine will be downloaded to {:?}", libs_dir);
         for (total, done) in rx.iter() {
             println!("Downloading flutter engine {} of {}", done, total);
         }

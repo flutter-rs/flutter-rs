@@ -31,15 +31,19 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
-pub type MainThreadFn = Box<FnMut(&mut glfw::Window) + Send>;
-pub type ChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
+pub(crate) type MainThreadWindowFn = Box<FnMut(&mut glfw::Window) + Send>;
+pub(crate) type MainThreadChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
+
+pub(crate) enum MainThreadCallback {
+    WindowFn(MainThreadWindowFn),
+    ChannelFn(MainThreadChannelFn),
+}
 
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     pub runtime: Runtime,
-    pub main_thread_receiver: Receiver<MainThreadFn>,
-    pub channel_receiver: Receiver<ChannelFn>,
+    main_thread_receiver: Receiver<MainThreadCallback>,
     pub init_data: Arc<InitData>,
     pointer_currently_added: bool,
     window_pixels_per_screen_coordinate: f64,
@@ -55,8 +59,7 @@ pub struct InitData {
 /// Data accessible during runtime. Implements Send to be used in message handling.
 #[derive(Clone)]
 pub struct RuntimeData {
-    main_thread_sender: Sender<MainThreadFn>,
-    pub(crate) channel_sender: Sender<ChannelFn>,
+    pub(crate) main_thread_sender: Sender<MainThreadCallback>,
     pub task_executor: TaskExecutor,
 }
 
@@ -67,10 +70,11 @@ impl RuntimeData {
         R: Send + 'static,
     {
         let (tx, rx) = mpsc::channel();
-        self.main_thread_sender.send(Box::new(move |window| {
-            let result = f(window);
-            tx.send(result).unwrap();
-        }))?;
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowFn(Box::new(move |window| {
+                let result = f(window);
+                tx.send(result).unwrap();
+            })))?;
         Ok(rx.recv()?)
     }
 
@@ -78,9 +82,10 @@ impl RuntimeData {
     where
         F: FnMut(&mut glfw::Window) + Send + 'static,
     {
-        self.main_thread_sender.send(Box::new(move |window| {
-            f(window);
-        }))?;
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowFn(Box::new(move |window| {
+                f(window);
+            })))?;
         Ok(())
     }
 
@@ -92,12 +97,13 @@ impl RuntimeData {
     where
         F: FnMut(&Channel) + Send + 'static,
     {
-        self.channel_sender.send((
-            channel_name,
-            Box::new(move |channel| {
-                f(channel);
-            }),
-        ))?;
+        self.main_thread_sender
+            .send(MainThreadCallback::ChannelFn((
+                channel_name,
+                Box::new(move |channel| {
+                    f(channel);
+                }),
+            )))?;
         Ok(())
     }
 }
@@ -114,10 +120,8 @@ impl DesktopWindowState {
     ) -> Self {
         let runtime = Runtime::new().unwrap();
         let (main_tx, main_rx) = mpsc::channel();
-        let (channel_tx, channel_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
             main_thread_sender: main_tx,
-            channel_sender: channel_tx,
             task_executor: runtime.executor(),
         });
         let engine = Arc::new(engine);
@@ -139,7 +143,6 @@ impl DesktopWindowState {
             window_event_receiver,
             runtime,
             main_thread_receiver: main_rx,
-            channel_receiver: channel_rx,
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
@@ -434,6 +437,21 @@ impl DesktopWindowState {
                 _ => {}
             },
             _ => {}
+        }
+    }
+
+    pub fn handle_main_thread_callbacks(&mut self) {
+        for mut cb in self.main_thread_receiver.try_iter() {
+            match cb {
+                MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
+                MainThreadCallback::ChannelFn((name, mut f)) => {
+                    self.plugin_registrar
+                        .channel_registry
+                        .with_channel(name, |channel| {
+                            f(channel);
+                        });
+                }
+            }
         }
     }
 

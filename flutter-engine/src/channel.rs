@@ -58,7 +58,7 @@ pub trait Channel {
                     .spawn(tokio::prelude::future::ok(()).map(move |_| {
                         let mut handler = handler.write().unwrap();
                         let method = call.method.clone();
-                        let tx = runtime_data.channel_sender.clone();
+                        let tx = runtime_data.main_thread_sender.clone();
                         let result = handler.on_method_call(call, runtime_data);
                         let response = match result {
                             Ok(value) => MethodCallResult::Ok(value),
@@ -74,11 +74,14 @@ pub trait Channel {
                                 error.into()
                             }
                         };
-                        tx.send((
-                            channel,
-                            Box::new(move |channel| {
-                                channel.send_method_call_response(&mut response_handle, &response);
-                            }),
+                        tx.send(crate::desktop_window_state::MainThreadCallback::ChannelFn(
+                            (
+                                channel,
+                                Box::new(move |channel| {
+                                    channel
+                                        .send_method_call_response(&mut response_handle, &response);
+                                }),
+                            ),
                         ))
                         .unwrap();
                     }));

@@ -33,10 +33,12 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub(crate) type MainThreadWindowFn = Box<FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
+pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 
 pub(crate) enum MainThreadCallback {
     WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
+    PlatformMessage(MainThreadPlatformMsg),
 }
 
 pub struct DesktopWindowState {
@@ -104,6 +106,16 @@ impl RuntimeData {
                     f(channel);
                 }),
             )))?;
+        Ok(())
+    }
+
+    pub fn send_message(
+        &self,
+        channel_name: String,
+        data: Vec<u8>,
+    ) -> Result<(), crate::error::MethodCallError> {
+        self.main_thread_sender
+            .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
         Ok(())
     }
 }
@@ -450,6 +462,14 @@ impl DesktopWindowState {
                         .with_channel(name, |channel| {
                             f(channel);
                         });
+                }
+                MainThreadCallback::PlatformMessage(msg) => {
+                    let platform_msg = crate::ffi::PlatformMessage {
+                        channel: msg.0.into(),
+                        message: &msg.1,
+                        response_handle: None,
+                    };
+                    self.init_data.engine.send_platform_message(platform_msg);
                 }
             }
         }

@@ -20,7 +20,6 @@ use tokio::runtime::{Runtime, TaskExecutor};
 
 use lazy_static::lazy_static;
 
-
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
@@ -465,9 +464,8 @@ impl DesktopWindowState {
     }
 }
 
-
 /// Wrap glfw::Window, so that it could be used in a lazy_static HashMap
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash,)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct WindowSafe(*mut glfw::ffi::GLFWwindow);
 
 unsafe impl Send for WindowSafe {}

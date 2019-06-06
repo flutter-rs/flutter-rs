@@ -6,12 +6,12 @@ include!(concat!(env!("OUT_DIR"), "/flutter-engine-sys.rs"));
 
 #[cfg(target_os = "linux")]
 #[link(name = "flutter_engine")]
-extern {}
+extern "C" {}
 
 #[cfg(target_os = "macos")]
 #[link(name = "FlutterEmbedder", kind = "framework")]
-extern {}
+extern "C" {}
 
 #[cfg(target_os = "windows")]
 #[link(name = "flutter_engine.dll")]
-extern {}
+extern "C" {}

@@ -8,7 +8,7 @@ pub use crate::{
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},
-    MainThreadFn, RuntimeData, Window,
+    RuntimeData, Window,
 };
 
 pub use std::{

@@ -11,9 +11,7 @@ mod flutter_callbacks;
 pub mod plugins;
 mod utils;
 
-pub use crate::desktop_window_state::{
-    ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
-};
+pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
@@ -303,21 +301,7 @@ impl FlutterDesktop {
                     }
                 }
 
-                let fns: Vec<MainThreadFn> = window_state.main_thread_receiver.try_iter().collect();
-                let window = window_state.window();
-                for mut f in fns {
-                    f(window);
-                }
-
-                let fns: Vec<ChannelFn> = window_state.channel_receiver.try_iter().collect();
-                for mut f in fns {
-                    window_state
-                        .plugin_registrar
-                        .channel_registry
-                        .with_channel(f.0, |channel| {
-                            f.1(channel);
-                        });
-                }
+                window_state.handle_main_thread_callbacks();
 
                 if let Some(callback) = &mut frame_callback {
                     callback(&mut window_state);

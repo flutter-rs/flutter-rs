@@ -4,12 +4,12 @@ mod macros;
 pub mod channel;
 pub mod codec;
 mod desktop_window_state;
+mod draw;
 pub mod error;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 mod utils;
-mod draw;
 
 pub use crate::desktop_window_state::{
     ChannelFn, DesktopWindowState, InitData, MainThreadFn, RuntimeData,
@@ -19,7 +19,7 @@ pub use crate::ffi::PlatformMessage;
 
 use std::ffi::CString;
 
-pub use glfw::{ Window, Context };
+pub use glfw::{Context, Window};
 use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -186,9 +186,12 @@ impl FlutterDesktop {
             window.set_scroll_polling(true);
             window.set_size_polling(true);
             window.set_content_scale_polling(true);
-    
+
             unsafe {
-                glfw::ffi::glfwSetWindowRefreshCallback(window.window_ptr(), Some(window_refreshed));
+                glfw::ffi::glfwSetWindowRefreshCallback(
+                    window.window_ptr(),
+                    Some(window_refreshed),
+                );
             }
         }
 
@@ -336,14 +339,17 @@ fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
 
 extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
     if let Some(engine) = desktop_window_state::get_engine(window) {
-
         let mut window_size: (i32, i32) = (0, 0);
         let mut framebuffer_size: (i32, i32) = (0, 0);
         let mut scale: (f32, f32) = (0.0, 0.0);
 
         unsafe {
             glfw::ffi::glfwGetWindowSize(window, &mut window_size.0, &mut window_size.1);
-            glfw::ffi::glfwGetFramebufferSize(window, &mut framebuffer_size.0, &mut framebuffer_size.1);
+            glfw::ffi::glfwGetFramebufferSize(
+                window,
+                &mut framebuffer_size.0,
+                &mut framebuffer_size.1,
+            );
             glfw::ffi::glfwGetWindowContentScale(window, &mut scale.0, &mut scale.1);
         }
 
@@ -354,7 +360,8 @@ extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
 
         log::debug!(
             "Setting framebuffer size to {:?}, scale to {}",
-            framebuffer_size, scale.0
+            framebuffer_size,
+            scale.0
         );
 
         engine.send_window_metrics_event(

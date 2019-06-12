@@ -79,7 +79,11 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         // mac framework file is a double zip file
         if target() == Target::MacOS {
             Command::new("unzip")
-                .args(&["FlutterEmbedder.framework.zip", "-d", "FlutterEmbedder.framework"])
+                .args(&[
+                    "FlutterEmbedder.framework.zip",
+                    "-d",
+                    "FlutterEmbedder.framework",
+                ])
                 .current_dir(&dir)
                 .status()
                 .unwrap();
@@ -104,9 +108,7 @@ pub fn home_download_path() -> PathBuf {
 
 pub fn download_url(version: &str) -> String {
     let url = match target() {
-        Target::Linux => {
-            "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder"
-        }
+        Target::Linux => "{base_url}/flutter_infra/flutter/{version}/linux-x64/linux-x64-embedder",
         Target::MacOS => {
             "{base_url}/flutter_infra/flutter/{version}/darwin-x64/FlutterEmbedder.framework.zip"
         }

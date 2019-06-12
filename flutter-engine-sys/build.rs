@@ -38,11 +38,16 @@ fn main() {
 
     if !is_dev {
         project_path = Path::new(&out_dir)
-            .parent().unwrap()
-            .parent().unwrap()
-            .parent().unwrap()
-            .parent().unwrap()
-            .parent().unwrap();
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
     }
 
     let version = get_flutter_version().expect("Cannot get flutter engine version");

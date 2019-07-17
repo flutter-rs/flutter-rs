@@ -92,6 +92,11 @@ pub trait Channel {
     /// Invoke a flutter method using this channel
     fn invoke_method(&self, method_call: MethodCall) {
         let buf = self.codec().encode_method_call(&method_call);
+        self.send(&buf)
+    }
+
+    /// Send a buffer
+    fn send(&self, buf: &[u8]) {
         self.send_platform_message(PlatformMessage {
             channel: Cow::Borrowed(self.name()),
             message: &buf,

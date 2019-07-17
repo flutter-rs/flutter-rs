@@ -316,155 +316,159 @@ impl DesktopWindowState {
                     text_input.notify_changes();
                 },
             ),
-            glfw::WindowEvent::Key(key, _, glfw::Action::Press, modifiers)
-            | glfw::WindowEvent::Key(key, _, glfw::Action::Repeat, modifiers) => match key {
-                glfw::Key::Enter => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.add_characters(&"\n");
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                //                Key::Enter => {
-                //                    FlutterEngine::with_plugin(window.window_ptr(), "flutter/textinput", |p: &Box<TextInputPlugin>| {
-                //                        if modifiers.contains(Modifiers::Control) {
-                //                            p.perform_action("done");
-                //                        } else {
-                //                            // TODO
-                //                            // why add_char plus newline action?
-                //                            p.add_chars("\n");
-                //                            p.perform_action("newline");
-                //                        }
-                //                    });
-                //                },
-                glfw::Key::Up => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_up(modifiers.contains(SELECT_MODIFIER_KEY));
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Down => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_down(modifiers.contains(SELECT_MODIFIER_KEY));
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Backspace => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.backspace();
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Delete => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.delete();
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Left => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_left(
-                                modifiers.contains(BY_WORD_MODIFIER_KEY),
-                                modifiers.contains(SELECT_MODIFIER_KEY),
-                            );
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Right => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_right(
-                                modifiers.contains(BY_WORD_MODIFIER_KEY),
-                                modifiers.contains(SELECT_MODIFIER_KEY),
-                            );
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::Home => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_to_beginning(modifiers.contains(SELECT_MODIFIER_KEY));
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::End => self.plugin_registrar.with_plugin_mut(
-                    |text_input: &mut crate::plugins::TextInputPlugin| {
-                        text_input.with_state(|state| {
-                            state.move_to_end(modifiers.contains(SELECT_MODIFIER_KEY));
-                        });
-                        text_input.notify_changes();
-                    },
-                ),
-                glfw::Key::A => {
-                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        self.plugin_registrar.with_plugin_mut(
-                            |text_input: &mut crate::plugins::TextInputPlugin| {
-                                text_input.with_state(|state| {
-                                    state.select_all();
-                                });
-                                text_input.notify_changes();
-                            },
-                        )
+            glfw::WindowEvent::Key(key, scancode, glfw::Action::Press, modifiers)
+            | glfw::WindowEvent::Key(key, scancode, glfw::Action::Repeat, modifiers) => {
+                // TODO: move this to TextInputPlugin
+                match key {
+                    glfw::Key::Enter => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.add_characters(&"\n");
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Up => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_up(modifiers.contains(SELECT_MODIFIER_KEY));
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Down => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_down(modifiers.contains(SELECT_MODIFIER_KEY));
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Backspace => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.backspace();
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Delete => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.delete();
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Left => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_left(
+                                    modifiers.contains(BY_WORD_MODIFIER_KEY),
+                                    modifiers.contains(SELECT_MODIFIER_KEY),
+                                );
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Right => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_right(
+                                    modifiers.contains(BY_WORD_MODIFIER_KEY),
+                                    modifiers.contains(SELECT_MODIFIER_KEY),
+                                );
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::Home => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_to_beginning(modifiers.contains(SELECT_MODIFIER_KEY));
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::End => self.plugin_registrar.with_plugin_mut(
+                        |text_input: &mut crate::plugins::TextInputPlugin| {
+                            text_input.with_state(|state| {
+                                state.move_to_end(modifiers.contains(SELECT_MODIFIER_KEY));
+                            });
+                            text_input.notify_changes();
+                        },
+                    ),
+                    glfw::Key::A => {
+                        if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                            self.plugin_registrar.with_plugin_mut(
+                                |text_input: &mut crate::plugins::TextInputPlugin| {
+                                    text_input.with_state(|state| {
+                                        state.select_all();
+                                    });
+                                    text_input.notify_changes();
+                                },
+                            )
+                        }
                     }
-                }
-                glfw::Key::X => {
-                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.window_ref.window();
-                        self.plugin_registrar.with_plugin_mut(
-                            |text_input: &mut crate::plugins::TextInputPlugin| {
-                                text_input.with_state(|state| {
-                                    window.set_clipboard_string(state.get_selected_text());
-                                    state.delete_selected();
-                                });
-                                text_input.notify_changes();
-                            },
-                        )
+                    glfw::Key::X => {
+                        if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                            let window = self.window_ref.window();
+                            self.plugin_registrar.with_plugin_mut(
+                                |text_input: &mut crate::plugins::TextInputPlugin| {
+                                    text_input.with_state(|state| {
+                                        window.set_clipboard_string(state.get_selected_text());
+                                        state.delete_selected();
+                                    });
+                                    text_input.notify_changes();
+                                },
+                            )
+                        }
                     }
-                }
-                glfw::Key::C => {
-                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.window_ref.window();
-                        self.plugin_registrar.with_plugin_mut(
-                            |text_input: &mut crate::plugins::TextInputPlugin| {
-                                text_input.with_state(|state| {
-                                    window.set_clipboard_string(state.get_selected_text());
-                                });
-                                text_input.notify_changes();
-                            },
-                        )
+                    glfw::Key::C => {
+                        if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                            let window = self.window_ref.window();
+                            self.plugin_registrar.with_plugin_mut(
+                                |text_input: &mut crate::plugins::TextInputPlugin| {
+                                    text_input.with_state(|state| {
+                                        window.set_clipboard_string(state.get_selected_text());
+                                    });
+                                    text_input.notify_changes();
+                                },
+                            )
+                        }
                     }
-                }
-                glfw::Key::V => {
-                    if modifiers.contains(FUNCTION_MODIFIER_KEY) {
-                        let window = self.window_ref.window();
-                        self.plugin_registrar.with_plugin_mut(
-                            |text_input: &mut crate::plugins::TextInputPlugin| {
-                                text_input.with_state(|state| {
-                                    if let Some(text) = window.get_clipboard_string() {
-                                        state.add_characters(&text);
-                                    } else {
-                                        info!("Tried to paste non-text data");
-                                    }
-                                });
-                                text_input.notify_changes();
-                            },
-                        )
+                    glfw::Key::V => {
+                        if modifiers.contains(FUNCTION_MODIFIER_KEY) {
+                            let window = self.window_ref.window();
+                            self.plugin_registrar.with_plugin_mut(
+                                |text_input: &mut crate::plugins::TextInputPlugin| {
+                                    text_input.with_state(|state| {
+                                        if let Some(text) = window.get_clipboard_string() {
+                                            state.add_characters(&text);
+                                        } else {
+                                            info!("Tried to paste non-text data");
+                                        }
+                                    });
+                                    text_input.notify_changes();
+                                },
+                            )
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+
+                self.plugin_registrar.with_plugin_mut(
+                    |keyevent: &mut crate::plugins::KeyEventPlugin| {
+                        keyevent.key_action(true, key, scancode, modifiers);
+                    },
+                );
+            },
+            glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
+                self.plugin_registrar.with_plugin_mut(
+                    |keyevent: &mut crate::plugins::KeyEventPlugin| {
+                        keyevent.key_action(false, key, scancode, modifiers);
+                    },
+                );
             },
             _ => {}
         }

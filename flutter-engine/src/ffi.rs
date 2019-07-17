@@ -7,7 +7,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
+use flutter_engine_sys::{
+    FlutterPlatformMessage,
+    FlutterPlatformMessageResponseHandle,
+};
 use log::{error, trace};
 
 #[derive(Debug)]
@@ -127,6 +130,37 @@ impl From<FlutterPointerSignalKind> for flutter_engine_sys::FlutterPointerSignal
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FlutterPointerMouseButtons {
+    Primary,
+    Secondary,
+    Middle,
+    Back,
+    Forward,
+}
+
+impl From<FlutterPointerMouseButtons> for flutter_engine_sys::FlutterPointerMouseButtons {
+    fn from(btn: FlutterPointerMouseButtons) -> Self {
+        match btn {
+            FlutterPointerMouseButtons::Primary => {
+                flutter_engine_sys::FlutterPointerMouseButtons::kFlutterPointerButtonMousePrimary
+            }
+            FlutterPointerMouseButtons::Secondary => {
+                flutter_engine_sys::FlutterPointerMouseButtons::kFlutterPointerButtonMouseSecondary
+            }
+            FlutterPointerMouseButtons::Middle => {
+                flutter_engine_sys::FlutterPointerMouseButtons::kFlutterPointerButtonMouseMiddle
+            }
+            FlutterPointerMouseButtons::Back => {
+                flutter_engine_sys::FlutterPointerMouseButtons::kFlutterPointerButtonMouseBack
+            }
+            FlutterPointerMouseButtons::Forward => {
+                flutter_engine_sys::FlutterPointerMouseButtons::kFlutterPointerButtonMouseForward
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FlutterEngine {
     engine_ptr: flutter_engine_sys::FlutterEngine,
@@ -161,8 +195,10 @@ impl FlutterEngine {
         signal_kind: FlutterPointerSignalKind,
         scroll_delta_x: f64,
         scroll_delta_y: f64,
+        buttons: FlutterPointerMouseButtons,
     ) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
         let event = flutter_engine_sys::FlutterPointerEvent {
             struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
             timestamp: timestamp.as_micros() as usize,
@@ -173,6 +209,8 @@ impl FlutterEngine {
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,
+            device_kind: flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            buttons: buttons as i64,
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr, &event, 1);

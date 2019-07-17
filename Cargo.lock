@@ -365,9 +365,9 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
- "flutter-engine-sys 0.3.2",
+ "flutter-engine-sys 0.3.4",
  "gl 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine-sys"
-version = "0.3.2"
+version = "0.3.4"
 dependencies = [
  "bindgen 0.42.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-download 0.3.0",
@@ -390,7 +390,7 @@ dependencies = [
 name = "flutter-plugins"
 version = "0.1.0"
 dependencies = [
- "flutter-engine 0.3.3",
+ "flutter-engine 0.3.4",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
  "tinyfiledialogs 3.3.5 (registry+https://github.com/rust-lang/crates.io-index)",

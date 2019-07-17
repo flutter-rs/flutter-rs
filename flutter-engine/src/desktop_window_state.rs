@@ -1,6 +1,11 @@
 use crate::{
     channel::Channel,
-    ffi::{FlutterEngine, FlutterPointerPhase, FlutterPointerSignalKind},
+    ffi::{
+        FlutterEngine,
+        FlutterPointerPhase,
+        FlutterPointerSignalKind,
+        FlutterPointerMouseButtons,
+    },
     plugins::PluginRegistrar,
     utils::WindowUnwrap,
 };
@@ -188,6 +193,7 @@ impl DesktopWindowState {
         signal_kind: FlutterPointerSignalKind,
         scroll_delta_x: f64,
         scroll_delta_y: f64,
+        buttons: FlutterPointerMouseButtons,
     ) {
         if !self.pointer_currently_added && phase != FlutterPointerPhase::Add {
             self.send_pointer_event(
@@ -197,6 +203,7 @@ impl DesktopWindowState {
                 FlutterPointerSignalKind::None,
                 0.0,
                 0.0,
+                buttons,
             );
         }
         if self.pointer_currently_added && phase == FlutterPointerPhase::Add {
@@ -210,6 +217,7 @@ impl DesktopWindowState {
             signal_kind,
             scroll_delta_x * self.window_pixels_per_screen_coordinate,
             scroll_delta_y * self.window_pixels_per_screen_coordinate,
+            buttons,
         );
 
         match phase {
@@ -234,6 +242,7 @@ impl DesktopWindowState {
                     FlutterPointerSignalKind::None,
                     0.0,
                     0.0,
+                    FlutterPointerMouseButtons::Primary,
                 );
             }
             glfw::WindowEvent::CursorPos(x, y) => {
@@ -244,16 +253,7 @@ impl DesktopWindowState {
                 } else {
                     FlutterPointerPhase::Hover
                 };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0);
-            }
-            glfw::WindowEvent::MouseButton(glfw::MouseButtonLeft, action, _modifiers) => {
-                let (x, y) = self.window().get_cursor_pos();
-                let phase = if action == glfw::Action::Press {
-                    FlutterPointerPhase::Down
-                } else {
-                    FlutterPointerPhase::Up
-                };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0);
+                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, FlutterPointerMouseButtons::Primary);
             }
             glfw::WindowEvent::MouseButton(
                 glfw::MouseButton::Button4,
@@ -265,6 +265,23 @@ impl DesktopWindowState {
                         navigation.pop_route();
                     },
                 );
+            }
+            glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
+                let (x, y) = self.window().get_cursor_pos();
+                let phase = if action == glfw::Action::Press {
+                    FlutterPointerPhase::Down
+                } else {
+                    FlutterPointerPhase::Up
+                };
+                let buttons = match buttons {
+                    glfw::MouseButtonLeft => FlutterPointerMouseButtons::Primary,
+                    glfw::MouseButtonRight => FlutterPointerMouseButtons::Secondary,
+                    glfw::MouseButtonMiddle => FlutterPointerMouseButtons::Middle,
+                    glfw::MouseButton::Button4 => FlutterPointerMouseButtons::Back,
+                    glfw::MouseButton::Button5 => FlutterPointerMouseButtons::Forward,
+                    _ => FlutterPointerMouseButtons::Primary,
+                };
+                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, buttons);
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.window().get_cursor_pos();
@@ -282,6 +299,7 @@ impl DesktopWindowState {
                     FlutterPointerSignalKind::Scroll,
                     scroll_delta_x * SCROLL_SPEED,
                     -scroll_delta_y * SCROLL_SPEED,
+                    FlutterPointerMouseButtons::Primary,
                 );
             }
             glfw::WindowEvent::FramebufferSize(_, _) => {

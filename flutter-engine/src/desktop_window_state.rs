@@ -195,20 +195,23 @@ impl DesktopWindowState {
         scroll_delta_y: f64,
         buttons: FlutterPointerMouseButtons,
     ) {
-        if !self.pointer_currently_added && phase != FlutterPointerPhase::Add {
-            self.send_pointer_event(
-                FlutterPointerPhase::Add,
-                x,
-                y,
-                FlutterPointerSignalKind::None,
-                0.0,
-                0.0,
-                buttons,
-            );
-        }
-        if self.pointer_currently_added && phase == FlutterPointerPhase::Add {
-            return;
-        }
+        if !self.pointer_currently_added
+            && phase != FlutterPointerPhase::Add
+            && phase != FlutterPointerPhase::Remove {
+                self.send_pointer_event(
+                    FlutterPointerPhase::Add,
+                    x,
+                    y,
+                    FlutterPointerSignalKind::None,
+                    0.0,
+                    0.0,
+                    buttons,
+                );
+            }
+        if self.pointer_currently_added && phase == FlutterPointerPhase::Add
+            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove {
+                return;
+            }
 
         self.init_data.engine.send_pointer_event(
             phase,
@@ -246,6 +249,10 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::CursorPos(x, y) => {
+                // fix error when dragging cursor out of a window
+                if !self.pointer_currently_added {
+                    return;
+                }
                 let phase = if self.window().get_mouse_button(glfw::MouseButtonLeft)
                     == glfw::Action::Press
                 {
@@ -267,6 +274,11 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
+                // fix error when keeping primary button down 
+                // and alt+tab away from the window and release
+                if !self.pointer_currently_added {
+                    return;
+                }
                 let (x, y) = self.window().get_cursor_pos();
                 let phase = if action == glfw::Action::Press {
                     FlutterPointerPhase::Down

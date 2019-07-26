@@ -1,10 +1,6 @@
-//! This plugin is used by TextField to edit text and control caret movement.
-//! It handles flutter/textinput type message.
-
 use super::prelude::*;
 
 use glfw;
-use log::debug;
 use serde_json::json;
 
 pub const PLUGIN_NAME: &str = module_path!();

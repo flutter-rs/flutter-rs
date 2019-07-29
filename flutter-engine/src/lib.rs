@@ -15,7 +15,10 @@ pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData}
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
-use std::ffi::CString;
+use std::{
+    ffi::CString,
+    cell::RefCell,
+};
 
 pub use glfw::{Context, Window};
 use log::error;
@@ -81,7 +84,7 @@ impl DesktopUserData {
 pub struct FlutterDesktop {
     glfw: glfw::Glfw,
     window: Option<glfw::Window>,
-    user_data: DesktopUserData,
+    user_data: Box<RefCell<DesktopUserData>>,
 }
 
 pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
@@ -92,7 +95,7 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
     .map(|glfw| FlutterDesktop {
         glfw,
         window: None,
-        user_data: DesktopUserData::None,
+        user_data: Box::new(RefCell::new(DesktopUserData::None)),
     })
 }
 
@@ -104,7 +107,7 @@ impl FlutterDesktop {
         icu_data_path: String,
         arguments: Vec<String>,
     ) -> Result<(), Error> {
-        match self.user_data {
+        match *self.user_data.borrow() {
             DesktopUserData::None => {}
             _ => return Err(Error::WindowAlreadyCreated),
         }
@@ -152,10 +155,10 @@ impl FlutterDesktop {
         };
 
         // as FlutterEngineRun already calls the make_current callback, user_data must be set now
-        self.user_data = DesktopUserData::Window(window_ref);
+        self.user_data.replace(DesktopUserData::Window(window_ref));
 
         // draw initial screen to avoid blinking
-        if let Some(window) = self.user_data.get_window() {
+        if let Some(window) = self.user_data.borrow_mut().get_window() {
             window.make_current();
             draw::init_gl(window);
             draw::draw_bg(window, window_args.bg_color);
@@ -164,10 +167,9 @@ impl FlutterDesktop {
 
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
-        self.user_data =
-            DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine));
+        self.user_data.replace(DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine)));
 
-        if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
+        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             // send initial size callback to engine
             window_state.send_scale_or_size_change();
 
@@ -256,7 +258,7 @@ impl FlutterDesktop {
                 1,
                 &renderer_config,
                 &project_args,
-                &mut self.user_data as *mut DesktopUserData as *mut std::ffi::c_void,
+                &mut *self.user_data.borrow_mut() as *mut DesktopUserData as *mut std::ffi::c_void,
                 &engine_ptr as *const flutter_engine_sys::FlutterEngine
                     as *mut flutter_engine_sys::FlutterEngine,
             ) != flutter_engine_sys::FlutterEngineResult::kSuccess
@@ -273,7 +275,7 @@ impl FlutterDesktop {
     where
         F: FnOnce(&mut DesktopWindowState),
     {
-        if let DesktopUserData::WindowState(window_state) = &mut self.user_data {
+        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             init_fn(window_state);
         }
     }
@@ -283,7 +285,7 @@ impl FlutterDesktop {
         mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
         mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
     ) {
-        if let DesktopUserData::WindowState(mut window_state) = self.user_data {
+        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             while !window_state.window().should_close() {
                 self.glfw.poll_events();
                 self.glfw.wait_events_timeout(1.0 / 60.0);
@@ -292,7 +294,7 @@ impl FlutterDesktop {
                     glfw::flush_messages(&window_state.window_event_receiver).collect();
                 for (_, event) in events {
                     let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
-                        custom_handler(&mut window_state, event.clone())
+                        custom_handler(window_state, event.clone())
                     } else {
                         true
                     };
@@ -304,14 +306,19 @@ impl FlutterDesktop {
                 window_state.handle_main_thread_callbacks();
 
                 if let Some(callback) = &mut frame_callback {
-                    callback(&mut window_state);
+                    callback(window_state);
                 }
 
                 unsafe {
                     flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
                 }
             }
+        }
+        self.shutdown();
+    }
 
+    fn shutdown(self) {
+        if let DesktopUserData::WindowState(window_state) = self.user_data.into_inner() {
             window_state.shutdown();
         }
     }

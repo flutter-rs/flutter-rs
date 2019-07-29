@@ -12,7 +12,10 @@ use crate::{
 
 use log::{debug, info};
 use std::{
-    collections::HashMap,
+    collections::{
+        VecDeque,
+        HashMap,
+    },
     sync::Mutex,
     sync::{
         mpsc,
@@ -54,6 +57,8 @@ pub struct DesktopWindowState {
     pub init_data: Arc<InitData>,
     pointer_currently_added: bool,
     window_pixels_per_screen_coordinate: f64,
+    isolate_created: bool,
+    event_pool: VecDeque<glfw::WindowEvent>,
     pub plugin_registrar: PluginRegistrar,
 }
 
@@ -163,6 +168,8 @@ impl DesktopWindowState {
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
+            isolate_created: false,
+            event_pool: VecDeque::new(),
             init_data,
         }
     }
@@ -212,7 +219,6 @@ impl DesktopWindowState {
             || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove {
                 return;
             }
-
         self.init_data.engine.send_pointer_event(
             phase,
             x * self.window_pixels_per_screen_coordinate,
@@ -231,6 +237,11 @@ impl DesktopWindowState {
     }
 
     pub fn handle_glfw_event(&mut self, event: glfw::WindowEvent) {
+        if !self.isolate_created {
+            self.event_pool.push_back(event);
+            return;
+        }
+
         match event {
             glfw::WindowEvent::CursorEnter(entered) => {
                 let cursor_pos = self.window().get_cursor_pos();
@@ -274,7 +285,7 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
-                // fix error when keeping primary button down 
+                // fix error when keeping primary button down
                 // and alt+tab away from the window and release
                 if !self.pointer_currently_added {
                     return;
@@ -521,6 +532,15 @@ impl DesktopWindowState {
         });
 
         result
+    }
+
+    pub fn set_isolate_created(&mut self) {
+        self.isolate_created = true;
+
+        while self.event_pool.len() > 0 {
+            let evt = self.event_pool.pop_front().unwrap();
+            self.handle_glfw_event(evt);
+        }
     }
 
     pub fn shutdown(self) {

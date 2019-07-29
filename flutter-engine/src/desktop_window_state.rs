@@ -58,7 +58,7 @@ pub struct DesktopWindowState {
     pointer_currently_added: bool,
     window_pixels_per_screen_coordinate: f64,
     isolate_created: bool,
-    event_pool: VecDeque<glfw::WindowEvent>,
+    defered_events: VecDeque<glfw::WindowEvent>,
     pub plugin_registrar: PluginRegistrar,
 }
 
@@ -169,7 +169,7 @@ impl DesktopWindowState {
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
             isolate_created: false,
-            event_pool: VecDeque::new(),
+            defered_events: VecDeque::new(),
             init_data,
         }
     }
@@ -238,7 +238,7 @@ impl DesktopWindowState {
 
     pub fn handle_glfw_event(&mut self, event: glfw::WindowEvent) {
         if !self.isolate_created {
-            self.event_pool.push_back(event);
+            self.defered_events.push_back(event);
             return;
         }
 
@@ -537,8 +537,8 @@ impl DesktopWindowState {
     pub fn set_isolate_created(&mut self) {
         self.isolate_created = true;
 
-        while self.event_pool.len() > 0 {
-            let evt = self.event_pool.pop_front().unwrap();
+        while self.defered_events.len() > 0 {
+            let evt = self.defered_events.pop_front().unwrap();
             self.handle_glfw_event(evt);
         }
     }

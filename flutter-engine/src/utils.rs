@@ -28,6 +28,7 @@ impl CStringVec {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_raw(len: usize, ptr: *const *const c_char) -> CStringVec {
         unsafe {
             let data = slice::from_raw_parts_mut(ptr as *mut _, len as usize);

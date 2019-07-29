@@ -487,7 +487,7 @@ impl DesktopWindowState {
     }
 
     pub fn handle_main_thread_callbacks(&mut self) {
-        for mut cb in self.main_thread_receiver.try_iter() {
+        for cb in self.main_thread_receiver.try_iter() {
             match cb {
                 MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
                 MainThreadCallback::ChannelFn((name, mut f)) => {
@@ -548,7 +548,7 @@ struct FlutterEngineSafe(Arc<FlutterEngine>);
 unsafe impl Send for FlutterEngineSafe {}
 unsafe impl Sync for FlutterEngineSafe {}
 
-/// This HashMap is usded to look up FlutterEngine using glfw Window
+// This HashMap is usded to look up FlutterEngine using glfw Window
 lazy_static! {
     static ref ENGINES: Mutex<HashMap<WindowSafe, FlutterEngineSafe>> = Mutex::new(HashMap::new());
 }

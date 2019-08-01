@@ -286,6 +286,11 @@ impl FlutterDesktop {
         mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
+            window_state.plugin_registrar.with_plugin(
+                |localization: &plugins::LocalizationPlugin| {
+                    localization.send_locale(locale_config::Locale::current());
+                },
+            );
             while !window_state.window().should_close() {
                 self.glfw.poll_events();
                 self.glfw.wait_events_timeout(1.0 / 60.0);

@@ -1,16 +1,15 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-pub mod prelude;
+mod keyevent;
+mod localization;
 mod navigation;
 mod platform;
+pub mod prelude;
 mod textinput;
-mod keyevent;
 
 pub use self::{
-    navigation::NavigationPlugin,
-    platform::PlatformPlugin,
-    textinput::TextInputPlugin,
-    keyevent::KeyEventPlugin,
+    keyevent::KeyEventPlugin, localization::LocalizationPlugin, navigation::NavigationPlugin,
+    platform::PlatformPlugin, textinput::TextInputPlugin,
 };
 
 use crate::{
@@ -43,7 +42,8 @@ impl PluginRegistrar {
         self.add_plugin(platform::PlatformPlugin::default())
             .add_plugin(textinput::TextInputPlugin::default())
             .add_plugin(navigation::NavigationPlugin::default())
-            .add_plugin(keyevent::KeyEventPlugin::default());
+            .add_plugin(keyevent::KeyEventPlugin::default())
+            .add_plugin(localization::LocalizationPlugin::default());
     }
 
     pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self

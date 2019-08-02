@@ -1,6 +1,7 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
 mod keyevent;
+mod lifecycle;
 mod localization;
 mod navigation;
 mod platform;

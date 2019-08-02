@@ -6,6 +6,7 @@ mod localization;
 mod navigation;
 mod platform;
 pub mod prelude;
+mod settings;
 mod system;
 mod textinput;
 

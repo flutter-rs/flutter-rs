@@ -11,8 +11,9 @@ mod system;
 mod textinput;
 
 pub use self::{
-    keyevent::KeyEventPlugin, localization::LocalizationPlugin, navigation::NavigationPlugin,
-    platform::PlatformPlugin, textinput::TextInputPlugin,
+    keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin, localization::LocalizationPlugin,
+    navigation::NavigationPlugin, platform::PlatformPlugin, settings::SettingsPlugin,
+    system::SystemPlugin, textinput::TextInputPlugin,
 };
 
 use crate::{
@@ -46,7 +47,10 @@ impl PluginRegistrar {
             .add_plugin(textinput::TextInputPlugin::default())
             .add_plugin(navigation::NavigationPlugin::default())
             .add_plugin(keyevent::KeyEventPlugin::default())
-            .add_plugin(localization::LocalizationPlugin::default());
+            .add_plugin(localization::LocalizationPlugin::default())
+            .add_plugin(system::SystemPlugin::default())
+            .add_plugin(lifecycle::LifecyclePlugin::default())
+            .add_plugin(settings::SettingsPlugin::default());
     }
 
     pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self

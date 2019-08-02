@@ -1,6 +1,6 @@
 pub use crate::{
     channel::{
-        Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
+        Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel, MessageChannel,
         MethodCallHandler, StandardMethodChannel,
     },
     codec::{value::from_value, MethodCall, MethodCallResult, Value},

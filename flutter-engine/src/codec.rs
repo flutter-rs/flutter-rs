@@ -1,5 +1,6 @@
 pub mod json_codec;
 pub mod standard_codec;
+pub mod string_codec;
 #[macro_use]
 pub mod value;
 

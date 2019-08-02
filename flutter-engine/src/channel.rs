@@ -5,6 +5,7 @@
 pub use self::{
     event_channel::EventChannel,
     json_method_channel::JsonMethodChannel,
+    message_channel::MessageChannel,
     registry::{ChannelRegistrar, ChannelRegistry},
     standard_method_channel::StandardMethodChannel,
 };
@@ -25,6 +26,7 @@ use tokio::prelude::Future;
 
 mod event_channel;
 mod json_method_channel;
+mod message_channel;
 mod registry;
 mod standard_method_channel;
 

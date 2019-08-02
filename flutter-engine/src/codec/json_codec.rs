@@ -58,4 +58,17 @@ impl MethodCodec for JsonMethodCodec {
         let s = serde_json::to_string(&json).unwrap();
         s.into_bytes()
     }
+
+    fn encode_message(&self, v: &Value) -> Vec<u8> {
+        let json = json!(v);
+        let s = serde_json::to_string(&json).unwrap();
+        s.into_bytes()
+    }
+
+    fn decode_message(&self, buf: &[u8]) -> Option<Value> {
+        unsafe {
+            let s = std::str::from_utf8_unchecked(buf);
+            serde_json::from_str::<Value>(s).ok()
+        }
+    }
 }

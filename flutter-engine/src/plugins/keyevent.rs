@@ -58,7 +58,7 @@ impl KeyEventPlugin {
                 "type": if down { "keyup" } else { "keydown" }
             });
             let s = serde_json::to_string(&json).unwrap();
-            channel.send(&s.into_bytes());
+            channel.send_buffer(&s.into_bytes());
         });
     }
 }

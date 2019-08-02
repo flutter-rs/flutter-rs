@@ -32,4 +32,8 @@ pub trait MethodCodec {
     /// Methods for calling into dart
     fn encode_method_call(&self, v: &MethodCall) -> Vec<u8>;
     fn decode_envelope(&self, buf: &[u8]) -> Option<MethodCallResult>;
+
+    /// Methods for plain messages
+    fn encode_message(&self, v: &Value) -> Vec<u8>;
+    fn decode_message(&self, buf: &[u8]) -> Option<Value>;
 }

@@ -239,6 +239,17 @@ impl MethodCodec for StandardMethodCodec {
             None
         }
     }
+
+    fn encode_message(&self, v: &Value) -> Vec<u8> {
+        let mut writer = Writer::new(Vec::new());
+        StandardMethodCodec::write_value(&mut writer, v);
+        writer.0
+    }
+
+    fn decode_message(&self, buf: &[u8]) -> Option<Value> {
+        let mut reader = Reader::new(buf);
+        StandardMethodCodec::read_value(&mut reader).ok()
+    }
 }
 
 struct Reader<'a> {

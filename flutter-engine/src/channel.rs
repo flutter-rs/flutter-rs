@@ -92,11 +92,17 @@ pub trait Channel {
     /// Invoke a flutter method using this channel
     fn invoke_method(&self, method_call: MethodCall) {
         let buf = self.codec().encode_method_call(&method_call);
-        self.send(&buf)
+        self.send_buffer(&buf);
     }
 
-    /// Send a buffer
-    fn send(&self, buf: &[u8]) {
+    /// Send a plain value on this channel.
+    fn send(&self, value: &Value) {
+        let buf = self.codec().encode_message(value);
+        self.send_buffer(&buf);
+    }
+
+    /// Send a buffer. This is a low level method. Please use one of the other send_* methods.
+    fn send_buffer(&self, buf: &[u8]) {
         self.send_platform_message(PlatformMessage {
             channel: Cow::Borrowed(self.name()),
             message: &buf,
@@ -114,11 +120,7 @@ pub trait Channel {
     /// It can be call multiple times to simulate stream.
     fn send_success_event(&self, data: &Value) {
         let buf = self.codec().encode_success_envelope(data);
-        self.send_platform_message(PlatformMessage {
-            channel: Cow::Borrowed(self.name()),
-            message: &buf,
-            response_handle: None,
-        });
+        self.send_buffer(&buf);
     }
 
     /// When flutter listen to a stream of events using EventChannel.
@@ -126,11 +128,7 @@ pub trait Channel {
     /// It can be call multiple times to simulate stream.
     fn send_error_event(&self, code: &str, message: &str, data: &Value) {
         let buf = self.codec().encode_error_envelope(code, message, data);
-        self.send_platform_message(PlatformMessage {
-            channel: Cow::Borrowed(self.name()),
-            message: &buf,
-            response_handle: None,
-        });
+        self.send_buffer(&buf);
     }
 
     /// Send a method call response

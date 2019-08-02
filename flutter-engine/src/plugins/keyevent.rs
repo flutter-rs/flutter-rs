@@ -1,13 +1,12 @@
 use super::prelude::*;
 
 use glfw;
-use serde_json::json;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/keyevent";
 
 pub struct KeyEventPlugin {
-    channel: Weak<JsonMethodChannel>,
+    channel: Weak<BasicMessageChannel>,
     handler: Arc<RwLock<Handler>>,
 }
 
@@ -19,9 +18,12 @@ impl Plugin for KeyEventPlugin {
     }
 
     fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
-        self.channel =
-            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+        let handler = Arc::downgrade(&self.handler);
+        self.channel = registrar.register_channel(BasicMessageChannel::new(
+            CHANNEL_NAME,
+            handler,
+            &json_codec::CODEC,
+        ));
     }
 }
 
@@ -37,7 +39,7 @@ impl Default for KeyEventPlugin {
 impl KeyEventPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&Channel),
+        F: FnOnce(&BasicMessageChannel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);
@@ -46,7 +48,7 @@ impl KeyEventPlugin {
 
     pub fn key_action(&self, down: bool, key: glfw::Key, scancode: glfw::Scancode, modifiers: glfw::Modifiers) {
         self.with_channel(|channel| {
-            let json = json!({
+            let json = json_value!({
                 "toolkit": "glfw",
                 "keyCode": key as i32,
                 "scanCode": scancode as i32,
@@ -57,18 +59,13 @@ impl KeyEventPlugin {
                 "keymap": "linux",
                 "type": if down { "keyup" } else { "keydown" }
             });
-            let s = serde_json::to_string(&json).unwrap();
-            channel.send_buffer(&s.into_bytes());
+            channel.send(&json);
         });
     }
 }
 
-impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        _: MethodCall,
-        _: RuntimeData,
-    ) -> Result<Value, MethodCallError> {
+impl MessageHandler for Handler {
+    fn on_message(&mut self, _: Value, _: RuntimeData) -> Result<Value, MessageError> {
         Ok(Value::Null)
     }
 }

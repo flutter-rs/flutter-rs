@@ -29,6 +29,48 @@ impl fmt::Display for MethodArgsError {
 impl error::Error for MethodArgsError {}
 
 #[derive(Debug)]
+pub enum MessageError {
+    ChannelClosed,
+    RustError(Box<dyn error::Error>),
+    CustomError {
+        code: String,
+        message: String,
+        details: Value,
+    },
+    UnspecifiedError,
+}
+
+impl MessageError {
+    pub fn from_error<T: error::Error + 'static>(error: T) -> Self {
+        MessageError::RustError(Box::new(error))
+    }
+}
+
+impl fmt::Display for MessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MessageError::ChannelClosed => write!(f, "channel already closed"),
+            MessageError::RustError(error) => write!(f, "rust error: {}", error),
+            MessageError::CustomError {
+                code,
+                message,
+                details,
+            } => write!(f, "{} ({})\ndetails: {:?}", message, code, details),
+            MessageError::UnspecifiedError => write!(f, "unspecified error"),
+        }
+    }
+}
+
+impl error::Error for MessageError {
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match self {
+            MessageError::RustError(err) => Some(&**err),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum MethodCallError {
     NotImplemented,
     ArgParseError(MethodArgsError),

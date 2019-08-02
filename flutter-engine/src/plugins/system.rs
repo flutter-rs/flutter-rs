@@ -3,13 +3,13 @@
 
 use super::prelude::*;
 
-use log::{debug, error, info};
+use log::{error, info};
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/system";
 
 pub struct SystemPlugin {
-    channel: Weak<JsonMethodChannel>,
+    channel: Weak<BasicMessageChannel>,
     handler: Arc<RwLock<Handler>>,
 }
 
@@ -28,9 +28,12 @@ impl Plugin for SystemPlugin {
     }
 
     fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
-        self.channel =
-            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+        let handler = Arc::downgrade(&self.handler);
+        self.channel = registrar.register_channel(BasicMessageChannel::new(
+            CHANNEL_NAME,
+            handler,
+            &json_codec::CODEC,
+        ));
     }
 }
 
@@ -47,13 +50,8 @@ impl SystemPlugin {
 
 struct Handler;
 
-impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        call: MethodCall,
-        _runtime_data: RuntimeData,
-    ) -> Result<Value, MethodCallError> {
-        debug!("got method call {} with args {:?}", call.method, call.args);
-        Err(MethodCallError::NotImplemented)
+impl MessageHandler for Handler {
+    fn on_message(&mut self, _: Value, _: RuntimeData) -> Result<Value, MessageError> {
+        Ok(Value::Null)
     }
 }

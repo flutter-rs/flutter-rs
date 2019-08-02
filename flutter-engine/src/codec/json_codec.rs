@@ -1,4 +1,4 @@
-use super::{MethodCall, MethodCallResult, MethodCodec, Value};
+use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
 
 use log::error;
 use serde_json::json;
@@ -58,7 +58,9 @@ impl MethodCodec for JsonMethodCodec {
         let s = serde_json::to_string(&json).unwrap();
         s.into_bytes()
     }
+}
 
+impl MessageCodec for JsonMethodCodec {
     fn encode_message(&self, v: &Value) -> Vec<u8> {
         let json = json!(v);
         let s = serde_json::to_string(&json).unwrap();

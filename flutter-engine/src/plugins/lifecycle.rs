@@ -9,13 +9,15 @@ pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/lifecycle";
 
 pub struct LifecyclePlugin {
-    channel: Weak<MessageChannel>,
+    channel: Weak<BasicMessageChannel>,
+    handler: Arc<RwLock<Handler>>,
 }
 
 impl Default for LifecyclePlugin {
     fn default() -> Self {
         Self {
             channel: Weak::new(),
+            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -26,9 +28,11 @@ impl Plugin for LifecyclePlugin {
     }
 
     fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        self.channel = registrar.register_channel(MessageChannel::new(
+        let handler = Arc::downgrade(&self.handler);
+        self.channel = registrar.register_channel(BasicMessageChannel::new(
             CHANNEL_NAME,
-            &crate::codec::string_codec::CODEC,
+            handler,
+            &string_codec::CODEC,
         ));
     }
 }
@@ -53,5 +57,13 @@ impl LifecyclePlugin {
         if let Some(channel) = self.channel.upgrade() {
             channel.send(&Value::String("AppLifecycleState.paused".to_owned()));
         }
+    }
+}
+
+struct Handler;
+
+impl MessageHandler for Handler {
+    fn on_message(&mut self, _: Value, _: RuntimeData) -> Result<Value, MessageError> {
+        Ok(Value::Null)
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
 use crate::{
-    channel::{Channel, MethodCallHandler},
+    channel::{ChannelImpl, MethodCallHandler, MethodChannel},
     codec::{json_codec::CODEC, MethodCodec},
     desktop_window_state::InitData,
 };
@@ -11,14 +11,14 @@ use log::error;
 pub struct JsonMethodChannel {
     name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+    method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl JsonMethodChannel {
     pub fn new(
         name: &'static str,
-        method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     ) -> Self {
         Self {
             name,
@@ -28,12 +28,15 @@ impl JsonMethodChannel {
         }
     }
 
-    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) {
+    pub fn set_handler(
+        &mut self,
+        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
+    ) {
         self.method_handler = method_handler;
     }
 }
 
-impl Channel for JsonMethodChannel {
+impl ChannelImpl for JsonMethodChannel {
     fn name(&self) -> &'static str {
         &self.name
     }
@@ -50,15 +53,19 @@ impl Channel for JsonMethodChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
-        self.method_handler.upgrade()
-    }
-
     fn plugin_name(&self) -> &'static str {
         self.plugin_name.unwrap()
     }
+}
 
-    fn codec(&self) -> &MethodCodec {
+impl MethodChannel for JsonMethodChannel {
+    fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
+        self.method_handler.upgrade()
+    }
+
+    fn codec(&self) -> &'static dyn MethodCodec {
         &CODEC
     }
 }
+
+method_channel!(JsonMethodChannel);

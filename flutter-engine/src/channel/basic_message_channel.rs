@@ -1,42 +1,42 @@
 use std::sync::{Arc, RwLock, Weak};
 
 use crate::{
-    channel::{ChannelImpl, MethodCallHandler, MethodChannel},
-    codec::{standard_codec::CODEC, MethodCodec},
+    channel::{ChannelImpl, MessageChannel, MessageHandler},
+    codec::MessageCodec,
     desktop_window_state::InitData,
 };
 
 use log::error;
 
-pub struct StandardMethodChannel {
+pub struct BasicMessageChannel {
     name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
+    message_handler: Weak<RwLock<dyn MessageHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
+    codec: &'static dyn MessageCodec,
 }
 
-impl StandardMethodChannel {
+impl BasicMessageChannel {
     pub fn new(
         name: &'static str,
-        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
+        message_handler: Weak<RwLock<dyn MessageHandler + Send + Sync>>,
+        codec: &'static dyn MessageCodec,
     ) -> Self {
         Self {
             name,
             init_data: Weak::new(),
-            method_handler,
+            message_handler,
             plugin_name: None,
+            codec,
         }
     }
 
-    pub fn set_handler(
-        &mut self,
-        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
-    ) {
-        self.method_handler = method_handler;
+    pub fn set_handler(&mut self, message_handler: Weak<RwLock<dyn MessageHandler + Send + Sync>>) {
+        self.message_handler = message_handler;
     }
 }
 
-impl ChannelImpl for StandardMethodChannel {
+impl ChannelImpl for BasicMessageChannel {
     fn name(&self) -> &'static str {
         &self.name
     }
@@ -58,14 +58,14 @@ impl ChannelImpl for StandardMethodChannel {
     }
 }
 
-impl MethodChannel for StandardMethodChannel {
-    fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
-        self.method_handler.upgrade()
+impl MessageChannel for BasicMessageChannel {
+    fn message_handler(&self) -> Option<Arc<RwLock<dyn MessageHandler + Send + Sync>>> {
+        self.message_handler.upgrade()
     }
 
-    fn codec(&self) -> &'static dyn MethodCodec {
-        &CODEC
+    fn codec(&self) -> &'static dyn MessageCodec {
+        self.codec
     }
 }
 
-method_channel!(StandardMethodChannel);
+message_channel!(BasicMessageChannel);

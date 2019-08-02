@@ -1,14 +1,14 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-mod keyevent;
-mod lifecycle;
-mod localization;
-mod navigation;
-mod platform;
+pub mod keyevent;
+pub mod lifecycle;
+pub mod localization;
+pub mod navigation;
+pub mod platform;
 pub mod prelude;
-mod settings;
-mod system;
-mod textinput;
+pub mod settings;
+pub mod system;
+pub mod textinput;
 
 pub use self::{
     keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin, localization::LocalizationPlugin,

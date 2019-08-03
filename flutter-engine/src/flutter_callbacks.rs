@@ -3,7 +3,6 @@ use super::DesktopUserData;
 use glfw::Context;
 use libc::{c_char, c_uint, c_void};
 use log::trace;
-use crate::ffi::PlatformMessage;
 
 pub extern "C" fn present(user_data: *mut c_void) -> bool {
     trace!("present");
@@ -69,16 +68,9 @@ pub extern "C" fn platform_message_callback(
     unsafe {
         let user_data = &mut *(user_data as *mut DesktopUserData);
         if let DesktopUserData::WindowState(window_state) = user_data {
-
-            let msg: PlatformMessage = (*platform_message).into();
-            if msg.channel == "flutter/isolate" {
-                // Special msg to signal isolate is setup
-                window_state.set_isolate_created();
-            }
-
             window_state
                 .plugin_registrar
-                .handle(msg);
+                .handle((*platform_message).into());
         }
     }
 }

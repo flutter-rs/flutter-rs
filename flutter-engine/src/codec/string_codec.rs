@@ -8,11 +8,13 @@ pub const CODEC: StringCodec = StringCodec {};
 
 impl MessageCodec for StringCodec {
     fn encode_message(&self, v: &Value) -> Vec<u8> {
-        if let Value::String(s) = v {
-            s.clone().into_bytes()
-        } else {
-            error!("Can only encode string messages");
-            Vec::new()
+        match v {
+            Value::String(s) => s.clone().into_bytes(),
+            Value::Null => Vec::new(),
+            v => {
+                error!("Invalid value: {:?}, can only encode string or null", v);
+                Vec::new()
+            }
         }
     }
 

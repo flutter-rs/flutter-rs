@@ -1,5 +1,6 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
+pub mod isolate;
 pub mod keyevent;
 pub mod lifecycle;
 pub mod localization;
@@ -11,9 +12,9 @@ pub mod system;
 pub mod textinput;
 
 pub use self::{
-    keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin, localization::LocalizationPlugin,
-    navigation::NavigationPlugin, platform::PlatformPlugin, settings::SettingsPlugin,
-    system::SystemPlugin, textinput::TextInputPlugin,
+    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,
+    localization::LocalizationPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
+    settings::SettingsPlugin, system::SystemPlugin, textinput::TextInputPlugin,
 };
 
 use crate::{
@@ -50,7 +51,8 @@ impl PluginRegistrar {
             .add_plugin(localization::LocalizationPlugin::default())
             .add_plugin(system::SystemPlugin::default())
             .add_plugin(lifecycle::LifecyclePlugin::default())
-            .add_plugin(settings::SettingsPlugin::default());
+            .add_plugin(settings::SettingsPlugin::default())
+            .add_plugin(isolate::IsolatePlugin::default());
     }
 
     pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self

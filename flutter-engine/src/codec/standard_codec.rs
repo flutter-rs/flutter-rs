@@ -132,6 +132,7 @@ impl StandardMethodCodec {
             }
             Value::U8List(list) => {
                 writer.write_u8(VALUE_UINT8LIST);
+                writer.write_size(list.len());
                 writer.align_to(1);
                 for n in list {
                     writer.write_u8(*n);
@@ -139,6 +140,7 @@ impl StandardMethodCodec {
             }
             Value::I32List(list) => {
                 writer.write_u8(VALUE_INT32LIST);
+                writer.write_size(list.len());
                 writer.align_to(4);
                 for n in list {
                     writer.write_i32(*n);
@@ -146,6 +148,7 @@ impl StandardMethodCodec {
             }
             Value::I64List(list) => {
                 writer.write_u8(VALUE_INT64LIST);
+                writer.write_size(list.len());
                 writer.align_to(8);
                 for n in list {
                     writer.write_i64(*n);
@@ -153,6 +156,7 @@ impl StandardMethodCodec {
             }
             Value::F64List(list) => {
                 writer.write_u8(VALUE_FLOAT64LIST);
+                writer.write_size(list.len());
                 writer.align_to(8);
                 for n in list {
                     writer.write_f64(*n);

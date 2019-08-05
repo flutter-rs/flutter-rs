@@ -372,10 +372,12 @@ dependencies = [
  "glfw 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.54 (registry+https://github.com/rust-lang/crates.io-index)",
+ "locale_config 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unic-locale 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -548,6 +550,16 @@ dependencies = [
  "libc 0.2.54 (registry+https://github.com/rust-lang/crates.io-index)",
  "pkg-config 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "vcpkg 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "locale_config"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1383,6 +1395,28 @@ version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "unic-langid-impl"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unic-locale"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unic-langid-impl 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unic-locale-impl 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "unic-locale-impl"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unic-langid-impl 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "unicode-width"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1563,6 +1597,7 @@ dependencies = [
 "checksum libloading 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9c3ad660d7cb8c5822cd83d10897b0f1f1526792737a179e73896152f85b88c2"
 "checksum libnghttp2-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d75d7966bda4730b722d1eab8e668df445368a24394bae9fc1e8dc0ab3dbe4f4"
 "checksum libz-sys 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)" = "2eb5e43362e38e2bca2fd5f5134c4d4564a23a5c28e9b95411652021a8675ebe"
+"checksum locale_config 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "73ac19ebe45489e5d53b4346d8b90bb3dd03275c5fdf2ce22a982516d86b535c"
 "checksum lock_api 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "62ebf1391f6acad60e5c8b43706dde4582df75c06698ab44511d15016bc2442c"
 "checksum log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c84ec4b527950aa83a329754b01dbe3f58361d1c5efacd1f6d68c494d08a17c6"
 "checksum memchr 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2efc7bc57c883d4a4d6e3246905283d8dae951bb3bd32f49d6ef297f546e1c39"
@@ -1657,6 +1692,9 @@ dependencies = [
 "checksum tokio-uds 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "037ffc3ba0e12a0ab4aca92e5234e0dedeb48fddf6ccd260f1f150a36a9f2445"
 "checksum transformation-pipeline 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ce1d17c634c5196b37a2680f31627ab35b9e84e5f7f1abd13731c3fbd71dea36"
 "checksum ucd-util 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "535c204ee4d8434478593480b8f86ab45ec9aae0e83c568ca81abf0fd0e88f86"
+"checksum unic-langid-impl 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0f30ec13e6bc207e9db3cb07d50b43ceb5659a996d019d226e6b0bcfab48b0c3"
+"checksum unic-locale 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b12cd8ce9567de66ebc2ca25b85804dc1f056a44762bcbda7d10a0029043b94a"
+"checksum unic-locale-impl 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ba69a8ab45839f32e41490001f596438650d866bbeae5121d7d8a73458dd1ed"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 "checksum unzip 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "90e59a2baae95b4b60ecd5a1ba39e9654b09b09bf813989c70f52c957c213dfd"

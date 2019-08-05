@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
 use crate::{
-    channel::{Channel, EventHandler, MethodCallHandler},
+    channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel},
     codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
     desktop_window_state::{InitData, RuntimeData},
     error::MethodCallError,
@@ -12,16 +12,16 @@ use log::error;
 pub struct EventChannel {
     name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Arc<RwLock<MethodCallHandler + Send + Sync>>,
+    method_handler: Arc<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 struct EventChannelMethodCallHandler {
-    event_handler: Weak<RwLock<EventHandler + Send + Sync>>,
+    event_handler: Weak<RwLock<dyn EventHandler + Send + Sync>>,
 }
 
 impl EventChannel {
-    pub fn new(name: &'static str, handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
+    pub fn new(name: &'static str, handler: Weak<RwLock<dyn EventHandler + Send + Sync>>) -> Self {
         Self {
             name,
             init_data: Weak::new(),
@@ -31,7 +31,7 @@ impl EventChannel {
     }
 }
 
-impl Channel for EventChannel {
+impl ChannelImpl for EventChannel {
     fn name(&self) -> &'static str {
         &self.name
     }
@@ -48,21 +48,23 @@ impl Channel for EventChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
-        Some(Arc::clone(&self.method_handler))
-    }
-
     fn plugin_name(&self) -> &'static str {
         self.plugin_name.unwrap()
     }
+}
 
-    fn codec(&self) -> &MethodCodec {
+impl MethodChannel for EventChannel {
+    fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
+        Some(Arc::clone(&self.method_handler))
+    }
+
+    fn codec(&self) -> &'static dyn MethodCodec {
         &CODEC
     }
 }
 
 impl EventChannelMethodCallHandler {
-    pub fn new(handler: Weak<RwLock<EventHandler + Send + Sync>>) -> Self {
+    pub fn new(handler: Weak<RwLock<dyn EventHandler + Send + Sync>>) -> Self {
         Self {
             event_handler: handler,
         }
@@ -87,3 +89,5 @@ impl MethodCallHandler for EventChannelMethodCallHandler {
         }
     }
 }
+
+method_channel!(EventChannel);

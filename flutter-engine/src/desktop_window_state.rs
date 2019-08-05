@@ -42,11 +42,13 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 pub(crate) type MainThreadWindowFn = Box<FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
+pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
     WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
     PlatformMessage(MainThreadPlatformMsg),
+    WindowStateFn(MainTheadWindowStateFn),
 }
 
 pub struct DesktopWindowState {
@@ -76,7 +78,7 @@ pub struct RuntimeData {
 }
 
 impl RuntimeData {
-    pub fn with_window_result<F, R>(&self, mut f: F) -> Result<R, crate::error::MethodCallError>
+    pub fn with_window_result<F, R>(&self, mut f: F) -> Result<R, crate::error::RuntimeMessageError>
     where
         F: FnMut(&mut glfw::Window) -> R + Send + 'static,
         R: Send + 'static,
@@ -90,7 +92,7 @@ impl RuntimeData {
         Ok(rx.recv()?)
     }
 
-    pub fn with_window<F>(&self, mut f: F) -> Result<(), crate::error::MethodCallError>
+    pub fn with_window<F>(&self, mut f: F) -> Result<(), crate::error::RuntimeMessageError>
     where
         F: FnMut(&mut glfw::Window) + Send + 'static,
     {
@@ -105,7 +107,7 @@ impl RuntimeData {
         &self,
         channel_name: &'static str,
         mut f: F,
-    ) -> Result<(), crate::error::MethodCallError>
+    ) -> Result<(), crate::error::RuntimeMessageError>
     where
         F: FnMut(&Channel) + Send + 'static,
     {
@@ -123,9 +125,18 @@ impl RuntimeData {
         &self,
         channel_name: String,
         data: Vec<u8>,
-    ) -> Result<(), crate::error::MethodCallError> {
+    ) -> Result<(), crate::error::RuntimeMessageError> {
         self.main_thread_sender
             .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
+        Ok(())
+    }
+
+    pub fn with_window_state<F>(&self, f: F) -> Result<(), crate::error::RuntimeMessageError>
+    where
+        F: FnMut(&mut DesktopWindowState) + Send + 'static,
+    {
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowStateFn(Box::new(f)))?;
         Ok(())
     }
 }
@@ -498,7 +509,8 @@ impl DesktopWindowState {
     }
 
     pub fn handle_main_thread_callbacks(&mut self) {
-        for cb in self.main_thread_receiver.try_iter() {
+        let callbacks: Vec<MainThreadCallback> = self.main_thread_receiver.try_iter().collect();
+        for cb in callbacks {
             match cb {
                 MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
                 MainThreadCallback::ChannelFn((name, mut f)) => {
@@ -516,6 +528,7 @@ impl DesktopWindowState {
                     };
                     self.init_data.engine.send_platform_message(platform_msg);
                 }
+                MainThreadCallback::WindowStateFn(mut f) => f(self),
             }
         }
     }

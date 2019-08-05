@@ -1,10 +1,13 @@
 pub use crate::{
     channel::{
-        Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
-        MethodCallHandler, StandardMethodChannel,
+        BasicMessageChannel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
+        MessageChannel, MessageHandler, MethodCallHandler, MethodChannel, StandardMethodChannel,
     },
-    codec::{value::from_value, MethodCall, MethodCallResult, Value},
-    error::{MethodArgsError, MethodCallError},
+    codec::{
+        json_codec, standard_codec, string_codec, value::from_value, MethodCall, MethodCallResult,
+        Value,
+    },
+    error::{MessageError, MethodArgsError, MethodCallError},
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},

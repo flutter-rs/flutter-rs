@@ -1,4 +1,4 @@
-use super::{MethodCall, MethodCallResult, MethodCodec, Value};
+use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
 
 use std::{collections::HashMap, slice};
 
@@ -238,6 +238,19 @@ impl MethodCodec for StandardMethodCodec {
         } else {
             None
         }
+    }
+}
+
+impl MessageCodec for StandardMethodCodec {
+    fn encode_message(&self, v: &Value) -> Vec<u8> {
+        let mut writer = Writer::new(Vec::new());
+        StandardMethodCodec::write_value(&mut writer, v);
+        writer.0
+    }
+
+    fn decode_message(&self, buf: &[u8]) -> Option<Value> {
+        let mut reader = Reader::new(buf);
+        StandardMethodCodec::read_value(&mut reader).ok()
     }
 }
 

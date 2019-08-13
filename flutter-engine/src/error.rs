@@ -114,7 +114,7 @@ pub enum MethodCallError {
     DeserializeError(ValueError),
     ChannelClosed,
     MessageError(RuntimeMessageError),
-    RustError(Box<error::Error>),
+    RustError(Box<dyn error::Error>),
     CustomError {
         code: String,
         message: String,
@@ -169,7 +169,7 @@ impl fmt::Display for MethodCallError {
 }
 
 impl error::Error for MethodCallError {
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match self {
             MethodCallError::RustError(err) => Some(&**err),
             _ => None,

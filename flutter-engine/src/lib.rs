@@ -1,3 +1,12 @@
+use std::{cell::RefCell, ffi::CString};
+
+pub use glfw::{Context, Window};
+use log::error;
+
+pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
+use crate::ffi::FlutterEngine;
+pub use crate::ffi::PlatformMessage;
+
 #[macro_use]
 mod macros;
 
@@ -10,18 +19,6 @@ mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 mod utils;
-
-pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
-use crate::ffi::FlutterEngine;
-pub use crate::ffi::PlatformMessage;
-
-use std::{
-    ffi::CString,
-    cell::RefCell,
-};
-
-pub use glfw::{Context, Window};
-use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -66,7 +63,11 @@ pub struct WindowArgs<'a> {
 enum DesktopUserData {
     None,
     Window(*mut glfw::Window),
-    WindowState(DesktopWindowState),
+    // boxing here since `DesktopWindowState` has a big size difference
+    // that may be expansive in copy/clone/move, also
+    // enum size is bounded by the largest variant. Having a large variant
+    // can penalize the memory layout of that enum.
+    WindowState(Box<DesktopWindowState>),
 }
 
 impl DesktopUserData {
@@ -167,7 +168,10 @@ impl FlutterDesktop {
 
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
-        self.user_data.replace(DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine)));
+        self.user_data
+            .replace(DesktopUserData::WindowState(Box::new(
+                DesktopWindowState::new(window_ref, receiver, engine),
+            )));
 
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             // send initial size callback to engine
@@ -282,8 +286,10 @@ impl FlutterDesktop {
 
     pub fn run_window_loop(
         mut self,
-        mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
-        mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
+        mut custom_handler: Option<
+            &mut dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool,
+        >,
+        mut frame_callback: Option<&mut dyn FnMut(&mut DesktopWindowState)>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             window_state.plugin_registrar.with_plugin(
@@ -329,6 +335,7 @@ impl FlutterDesktop {
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
     error!("GLFW error: {}", description);
 }

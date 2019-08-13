@@ -1,21 +1,5 @@
-use crate::{
-    channel::Channel,
-    ffi::{
-        FlutterEngine,
-        FlutterPointerPhase,
-        FlutterPointerSignalKind,
-        FlutterPointerMouseButtons,
-    },
-    plugins::PluginRegistrar,
-    utils::WindowUnwrap,
-};
-
-use log::{debug, info};
 use std::{
-    collections::{
-        VecDeque,
-        HashMap,
-    },
+    collections::{HashMap, VecDeque},
     sync::Mutex,
     sync::{
         mpsc,
@@ -23,10 +7,21 @@ use std::{
         Arc,
     },
 };
+
+use log::{debug, info};
 use tokio::prelude::Future;
 use tokio::runtime::{Runtime, TaskExecutor};
 
 use lazy_static::lazy_static;
+
+use crate::{
+    channel::Channel,
+    ffi::{
+        FlutterEngine, FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
+    },
+    plugins::PluginRegistrar,
+    utils::WindowUnwrap,
+};
 
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
@@ -39,8 +34,8 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
-pub(crate) type MainThreadWindowFn = Box<FnMut(&mut glfw::Window) + Send>;
-pub(crate) type MainThreadChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
+pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
+pub(crate) type MainThreadChannelFn = (&'static str, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
@@ -109,7 +104,7 @@ impl RuntimeData {
         mut f: F,
     ) -> Result<(), crate::error::RuntimeMessageError>
     where
-        F: FnMut(&Channel) + Send + 'static,
+        F: FnMut(&dyn Channel) + Send + 'static,
     {
         self.main_thread_sender
             .send(MainThreadCallback::ChannelFn((
@@ -151,6 +146,10 @@ impl DesktopWindowState {
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
+        assert!(
+            !window_ref.is_null(),
+            "got a null reference for glfw::Window"
+        );
         let runtime = Runtime::new().unwrap();
         let (main_tx, main_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
@@ -206,30 +205,28 @@ impl DesktopWindowState {
     fn send_pointer_event(
         &mut self,
         phase: FlutterPointerPhase,
-        x: f64,
-        y: f64,
+        (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
-        scroll_delta_x: f64,
-        scroll_delta_y: f64,
+        (scroll_delta_x, scroll_delta_y): (f64, f64),
         buttons: FlutterPointerMouseButtons,
     ) {
         if !self.pointer_currently_added
             && phase != FlutterPointerPhase::Add
-            && phase != FlutterPointerPhase::Remove {
-                self.send_pointer_event(
-                    FlutterPointerPhase::Add,
-                    x,
-                    y,
-                    FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
-                    buttons,
-                );
-            }
+            && phase != FlutterPointerPhase::Remove
+        {
+            self.send_pointer_event(
+                FlutterPointerPhase::Add,
+                (x, y),
+                FlutterPointerSignalKind::None,
+                (0.0, 0.0),
+                buttons,
+            );
+        }
         if self.pointer_currently_added && phase == FlutterPointerPhase::Add
-            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove {
-                return;
-            }
+            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove
+        {
+            return;
+        }
         self.init_data.engine.send_pointer_event(
             phase,
             x * self.window_pixels_per_screen_coordinate,
@@ -262,11 +259,9 @@ impl DesktopWindowState {
                     } else {
                         FlutterPointerPhase::Remove
                     },
-                    cursor_pos.0,
-                    cursor_pos.1,
+                    (cursor_pos.0, cursor_pos.1),
                     FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
+                    (0.0, 0.0),
                     FlutterPointerMouseButtons::Primary,
                 );
             }
@@ -282,7 +277,13 @@ impl DesktopWindowState {
                 } else {
                     FlutterPointerPhase::Hover
                 };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, FlutterPointerMouseButtons::Primary);
+                self.send_pointer_event(
+                    phase,
+                    (x, y),
+                    FlutterPointerSignalKind::None,
+                    (0.0, 0.0),
+                    FlutterPointerMouseButtons::Primary,
+                );
             }
             glfw::WindowEvent::MouseButton(
                 glfw::MouseButton::Button4,
@@ -315,7 +316,13 @@ impl DesktopWindowState {
                     glfw::MouseButton::Button5 => FlutterPointerMouseButtons::Forward,
                     _ => FlutterPointerMouseButtons::Primary,
                 };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, buttons);
+                self.send_pointer_event(
+                    phase,
+                    (x, y),
+                    FlutterPointerSignalKind::None,
+                    (0.0, 0.0),
+                    buttons,
+                );
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.window().get_cursor_pos();
@@ -328,11 +335,12 @@ impl DesktopWindowState {
                 };
                 self.send_pointer_event(
                     phase,
-                    x,
-                    y,
+                    (x, y),
                     FlutterPointerSignalKind::Scroll,
-                    scroll_delta_x * SCROLL_SPEED,
-                    -scroll_delta_y * SCROLL_SPEED,
+                    (
+                        scroll_delta_x * SCROLL_SPEED,
+                        -scroll_delta_y * SCROLL_SPEED,
+                    ),
                     FlutterPointerMouseButtons::Primary,
                 );
             }
@@ -496,14 +504,14 @@ impl DesktopWindowState {
                         keyevent.key_action(true, key, scancode, modifiers);
                     },
                 );
-            },
+            }
             glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
                         keyevent.key_action(false, key, scancode, modifiers);
                     },
                 );
-            },
+            }
             _ => {}
         }
     }
@@ -550,7 +558,7 @@ impl DesktopWindowState {
     pub fn set_isolate_created(&mut self) {
         self.isolate_created = true;
 
-        while self.defered_events.len() > 0 {
+        while !self.defered_events.is_empty() {
             let evt = self.defered_events.pop_front().unwrap();
             self.handle_glfw_event(evt);
         }
@@ -581,7 +589,7 @@ struct FlutterEngineSafe(Arc<FlutterEngine>);
 unsafe impl Send for FlutterEngineSafe {}
 unsafe impl Sync for FlutterEngineSafe {}
 
-// This HashMap is usded to look up FlutterEngine using glfw Window
+// This HashMap is used to look up FlutterEngine using glfw Window
 lazy_static! {
     static ref ENGINES: Mutex<HashMap<WindowSafe, FlutterEngineSafe>> = Mutex::new(HashMap::new());
 }

@@ -1,6 +1,3 @@
-use super::Channel;
-use crate::{desktop_window_state::InitData, ffi::PlatformMessage};
-
 use std::{
     collections::HashMap,
     ops::Deref,
@@ -8,6 +5,10 @@ use std::{
 };
 
 use log::{trace, warn};
+
+use crate::{desktop_window_state::InitData, ffi::PlatformMessage};
+
+use super::Channel;
 
 pub struct ChannelRegistry {
     channels: HashMap<String, Arc<dyn Channel>>,
@@ -42,7 +43,7 @@ impl ChannelRegistry {
 
     pub fn with_channel<F>(&self, channel_name: &'static str, mut f: F)
     where
-        F: FnMut(&Channel),
+        F: FnMut(&dyn Channel),
     {
         if let Some(channel) = self.channels.get(channel_name) {
             f(&**channel);

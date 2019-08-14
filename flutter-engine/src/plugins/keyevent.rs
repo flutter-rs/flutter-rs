@@ -46,18 +46,24 @@ impl KeyEventPlugin {
         }
     }
 
-    pub fn key_action(&self, down: bool, key: glfw::Key, scancode: glfw::Scancode, modifiers: glfw::Modifiers) {
+    pub fn key_action(
+        &self,
+        up: bool,
+        key: glfw::Key,
+        scancode: glfw::Scancode,
+        modifiers: glfw::Modifiers,
+    ) {
         self.with_channel(|channel| {
             let json = json_value!({
                 "toolkit": "glfw",
                 "keyCode": key as i32,
                 "scanCode": scancode as i32,
-                // "codePoint": 
+                // "codePoint":
                 "modifiers": modifiers.bits() as i32,
                 // TODO: raw_keyboard_listener.dart seems to have limited support for keyboard
                 // need to update later
                 "keymap": "linux",
-                "type": if down { "keyup" } else { "keydown" }
+                "type": if up { "keyup" } else { "keydown" }
             });
             channel.send(&json);
         });

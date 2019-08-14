@@ -501,14 +501,14 @@ impl DesktopWindowState {
 
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
-                        keyevent.key_action(true, key, scancode, modifiers);
+                        keyevent.key_action(false, key, scancode, modifiers);
                     },
                 );
             }
             glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
-                        keyevent.key_action(false, key, scancode, modifiers);
+                        keyevent.key_action(true, key, scancode, modifiers);
                     },
                 );
             }

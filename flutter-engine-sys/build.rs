@@ -52,10 +52,9 @@ fn main() {
 
     let version = get_flutter_version().expect("Cannot get flutter engine version");
 
-    let libs_dir = project_path.join("target").join("flutter-engine");
-
     println!("Checking flutter engine status");
-    if let Ok(rx) = flutter_download::download_to(&version, &libs_dir) {
+    let (libs_dir, rx) = flutter_download::download(&version);
+    if let Ok(rx) = rx {
         // THis is /bin/internal/engine.version file in your flutter sdk
         println!("Engine will be downloaded to {:?}", libs_dir);
         for (total, done) in rx.iter() {

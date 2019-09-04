@@ -23,18 +23,15 @@ enum Target {
     MacOS,
 }
 
-pub fn download(version: &str) -> Result<mpsc::Receiver<(f64, f64)>, Error> {
-    let dir = home_download_path();
-    download_to(version, &dir)
-}
+pub fn download(version: &str) -> (PathBuf, Result<mpsc::Receiver<(f64, f64)>, Error>) {
+    let libs_dir = dirs::cache_dir().expect("Cannot get cache dir").join("flutter-engine");
 
-pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64)>, Error> {
     let url = download_url(version);
-    let dir = dir.to_path_buf().join(version);
+    let dir = libs_dir.to_path_buf().join(version);
 
     if !should_download(&dir) {
         println!("Flutter engine already exist. Download not necessary");
-        return Err(Error::AlreadyDownloaded);
+        return (libs_dir, Err(Error::AlreadyDownloaded));
     }
 
     let (tx, rx) = mpsc::channel();
@@ -97,13 +94,7 @@ pub fn download_to(version: &str, dir: &Path) -> Result<mpsc::Receiver<(f64, f64
         }
     });
 
-    Ok(rx)
-}
-
-pub fn home_download_path() -> PathBuf {
-    let mut dir = dirs::home_dir().unwrap();
-    dir.push(".flutter-rs");
-    dir
+    (libs_dir, Ok(rx))
 }
 
 pub fn download_url(version: &str) -> String {

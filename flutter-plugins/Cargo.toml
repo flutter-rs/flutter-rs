@@ -1,8 +1,12 @@
 [package]
 name = "flutter-plugins"
+description = "flutter-rs plugins"
 version = "0.3.4"
 authors = ["juju <gliheng@gmail.com>"]
 edition = "2018"
+keywords = ["flutter"]
+license = "MIT"
+repository = "https://github.com/gliheng/flutter-rs"
 
 [dependencies]
 flutter-engine = { version = "0.3.4", path = "../flutter-engine" }

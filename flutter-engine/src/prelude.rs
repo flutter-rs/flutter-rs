@@ -8,7 +8,10 @@ pub use crate::{
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},
-    RuntimeData, Window,
+    RuntimeData,
+    RuntimeMode,
+    DesktopWindowState,
+    Window,
 };
 
 pub use std::{

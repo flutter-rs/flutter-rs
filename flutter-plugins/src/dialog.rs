@@ -1,7 +1,7 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
 
-use flutter_engine::plugins::prelude::*;
+use flutter_engine::prelude::*;
 
 const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "flutter-rs/dialog";

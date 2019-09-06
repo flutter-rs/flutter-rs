@@ -1,6 +1,7 @@
 #[macro_use]
 mod macros;
 
+pub mod prelude;
 pub mod channel;
 pub mod codec;
 mod desktop_window_state;
@@ -16,12 +17,14 @@ use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
 use std::{
+    fs::File,
     ffi::CString,
     cell::RefCell,
 };
 
 pub use glfw::{Context, Window};
 use log::error;
+use memmap::MmapOptions;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -61,6 +64,16 @@ pub struct WindowArgs<'a> {
     pub title: &'a str,
     pub mode: WindowMode,
     pub bg_color: (u8, u8, u8),
+}
+
+pub enum RuntimeMode {
+    Debug(String),
+    Release(
+        String,
+        String,
+        String,
+        String,
+    )
 }
 
 enum DesktopUserData {
@@ -103,7 +116,7 @@ impl FlutterDesktop {
     pub fn create_window(
         &mut self,
         window_args: &WindowArgs,
-        assets_path: String,
+        runtime_mode: &RuntimeMode,
         icu_data_path: String,
         arguments: Vec<String>,
     ) -> Result<(), Error> {
@@ -165,7 +178,7 @@ impl FlutterDesktop {
             glfw::make_context_current(None);
         }
 
-        let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
+        let engine = self.run_flutter_engine(runtime_mode, icu_data_path, arguments)?;
         // now create the full desktop state
         self.user_data.replace(DesktopUserData::WindowState(DesktopWindowState::new(window_ref, receiver, engine)));
 
@@ -200,7 +213,7 @@ impl FlutterDesktop {
 
     fn run_flutter_engine(
         &mut self,
-        assets_path: String,
+        runtime_mode: &RuntimeMode,
         icu_data_path: String,
         mut arguments: Vec<String>,
     ) -> Result<FlutterEngine, Error> {
@@ -225,31 +238,91 @@ impl FlutterDesktop {
                 },
             },
         };
-        let project_args = flutter_engine_sys::FlutterProjectArgs {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: CString::new(assets_path).unwrap().into_raw(),
-            main_path__unused__: std::ptr::null(),
-            packages_path__unused__: std::ptr::null(),
-            icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
-            command_line_argc: arguments.len() as i32,
-            command_line_argv: arguments.into_raw(),
-            platform_message_callback: Some(flutter_callbacks::platform_message_callback),
-            vm_snapshot_data: std::ptr::null(),
-            vm_snapshot_data_size: 0,
-            vm_snapshot_instructions: std::ptr::null(),
-            vm_snapshot_instructions_size: 0,
-            isolate_snapshot_data: std::ptr::null(),
-            isolate_snapshot_data_size: 0,
-            isolate_snapshot_instructions: std::ptr::null(),
-            isolate_snapshot_instructions_size: 0,
-            root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
-            update_semantics_node_callback: None,
-            update_semantics_custom_action_callback: None,
-            persistent_cache_path: std::ptr::null(),
-            is_persistent_cache_read_only: false,
-            vsync_callback: None,
-            custom_dart_entrypoint: std::ptr::null(),
-            custom_task_runners: std::ptr::null(),
+
+        let project_args = match runtime_mode {
+            RuntimeMode::Debug(assets_path) => {
+                log::info!(
+                    "Running flutter in debug mode, assets_path: {}", assets_path
+                );
+
+                flutter_engine_sys::FlutterProjectArgs {
+                    struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
+                    assets_path: CString::new(assets_path.as_bytes()).unwrap().into_raw(),
+                    main_path__unused__: std::ptr::null(),
+                    packages_path__unused__: std::ptr::null(),
+                    icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
+                    command_line_argc: arguments.len() as i32,
+                    command_line_argv: arguments.into_raw(),
+                    platform_message_callback: Some(flutter_callbacks::platform_message_callback),
+                    vm_snapshot_data: std::ptr::null(),
+                    vm_snapshot_data_size: 0,
+                    vm_snapshot_instructions: std::ptr::null(),
+                    vm_snapshot_instructions_size: 0,
+                    isolate_snapshot_data: std::ptr::null(),
+                    isolate_snapshot_data_size: 0,
+                    isolate_snapshot_instructions: std::ptr::null(),
+                    isolate_snapshot_instructions_size: 0,
+                    root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
+                    update_semantics_node_callback: None,
+                    update_semantics_custom_action_callback: None,
+                    persistent_cache_path: std::ptr::null(),
+                    is_persistent_cache_read_only: false,
+                    vsync_callback: None,
+                    custom_dart_entrypoint: std::ptr::null(),
+                    custom_task_runners: std::ptr::null(),
+                }
+            }
+            RuntimeMode::Release(
+                vm_snapshot_data,
+                vm_snapshot_instr,
+                isolate_snapshot_data,
+                isolate_snapshot_instr
+            ) => {
+                let vm_snapshot_data_file = File::open(vm_snapshot_data).unwrap();
+                let vm_snapshot_instr_file = File::open(vm_snapshot_instr).unwrap();
+                let isolate_snapshot_data_file = File::open(isolate_snapshot_data).unwrap();
+                let isolate_snapshot_instr_file = File::open(isolate_snapshot_instr).unwrap();
+
+                let vm_snapshot_data_map = unsafe { MmapOptions::new().map(&vm_snapshot_data_file).unwrap() };
+                let vm_snapshot_instr_map = unsafe { MmapOptions::new().map_exec(&vm_snapshot_instr_file).unwrap() };
+                let isolate_snapshot_data_map = unsafe { MmapOptions::new().map(&isolate_snapshot_data_file).unwrap() };
+                let isolate_snapshot_instr_map = unsafe { MmapOptions::new().map_exec(&isolate_snapshot_instr_file).unwrap() };
+                
+                log::info!(
+                    "Running flutter in release mode {:p} {}", vm_snapshot_data_map.as_ptr(), vm_snapshot_data_map.len(),
+                );
+
+
+                flutter_engine_sys::FlutterProjectArgs {
+                    struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
+                    assets_path: CString::new("/home/juju/Develop/flutter-rs/flutter-app-demo/build/flutter_assets").unwrap().into_raw(),
+                    main_path__unused__: std::ptr::null(),
+                    packages_path__unused__: std::ptr::null(),
+                    icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
+                    command_line_argc: arguments.len() as i32,
+                    command_line_argv: arguments.into_raw(),
+                    platform_message_callback: Some(flutter_callbacks::platform_message_callback),
+
+                    vm_snapshot_data: vm_snapshot_data_map.as_ptr(),
+                    vm_snapshot_data_size: vm_snapshot_data_map.len(),
+                    vm_snapshot_instructions: vm_snapshot_instr_map.as_ptr(),
+                    vm_snapshot_instructions_size: vm_snapshot_instr_map.len(),
+                    
+                    isolate_snapshot_data: isolate_snapshot_data_map.as_ptr(),
+                    isolate_snapshot_data_size: isolate_snapshot_data_map.len(),
+                    isolate_snapshot_instructions: isolate_snapshot_instr_map.as_ptr(),
+                    isolate_snapshot_instructions_size: isolate_snapshot_instr_map.len(),
+
+                    root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
+                    update_semantics_node_callback: None,
+                    update_semantics_custom_action_callback: None,
+                    persistent_cache_path: std::ptr::null(),
+                    is_persistent_cache_read_only: false,
+                    vsync_callback: None,
+                    custom_dart_entrypoint: std::ptr::null(),
+                    custom_task_runners: std::ptr::null(),
+                }
+            }
         };
 
         unsafe {

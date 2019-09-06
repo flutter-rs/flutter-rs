@@ -1,7 +1,7 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use super::prelude::*;
+use crate::prelude::*;
 
 use log::debug;
 

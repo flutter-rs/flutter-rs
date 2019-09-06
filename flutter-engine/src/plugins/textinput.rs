@@ -4,7 +4,7 @@
 mod text_editing_state;
 
 use self::text_editing_state::TextEditingState;
-use super::prelude::*;
+use crate::prelude::*;
 
 use log::debug;
 

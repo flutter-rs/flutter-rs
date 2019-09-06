@@ -1,7 +1,7 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
 
-use super::prelude::*;
+use crate::prelude::*;
 
 use log::{debug, error};
 

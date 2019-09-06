@@ -1,6 +1,5 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-pub mod prelude;
 mod navigation;
 mod platform;
 mod textinput;

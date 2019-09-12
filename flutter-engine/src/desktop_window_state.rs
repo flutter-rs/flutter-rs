@@ -51,6 +51,7 @@ pub(crate) enum MainThreadCallback {
 
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
+    res_window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     pub runtime: Runtime,
     main_thread_receiver: Receiver<MainThreadCallback>,
@@ -134,9 +135,13 @@ impl DesktopWindowState {
     pub fn window(&mut self) -> &mut glfw::Window {
         self.window_ref.window()
     }
+    pub fn resource_window(&mut self) -> &mut glfw::Window {
+        self.res_window_ref.window()
+    }
 
     pub fn new(
         window_ref: *mut glfw::Window,
+        res_window_ref: *mut glfw::Window,
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
@@ -162,6 +167,7 @@ impl DesktopWindowState {
 
         Self {
             window_ref,
+            res_window_ref,
             window_event_receiver,
             runtime,
             main_thread_receiver: main_rx,

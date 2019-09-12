@@ -1,3 +1,17 @@
+use std::{
+    cell::RefCell,
+    ffi::CString,
+    sync::{mpsc::Receiver, Arc},
+};
+
+pub use glfw::{Context, Window};
+use log::error;
+
+pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
+use crate::event_loop::EventLoop;
+use crate::ffi::FlutterEngine;
+pub use crate::ffi::PlatformMessage;
+
 #[macro_use]
 mod macros;
 
@@ -6,19 +20,11 @@ pub mod codec;
 mod desktop_window_state;
 mod draw;
 pub mod error;
+mod event_loop;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 mod utils;
-
-pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
-use crate::ffi::FlutterEngine;
-pub use crate::ffi::PlatformMessage;
-
-use std::{cell::RefCell, ffi::CString, sync::mpsc::Receiver};
-
-pub use glfw::{Context, Window};
-use log::error;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Error {
@@ -93,6 +99,7 @@ pub struct FlutterDesktop {
     resource_window: Option<glfw::Window>,
     resource_window_receiver: Option<Receiver<(f64, glfw::WindowEvent)>>,
     user_data: Box<RefCell<DesktopUserData>>,
+    event_loop: Box<RefCell<EventLoop>>,
 }
 
 pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
@@ -106,6 +113,7 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
         resource_window: None,
         resource_window_receiver: None,
         user_data: Box::new(RefCell::new(DesktopUserData::None)),
+        event_loop: Box::new(RefCell::new(EventLoop::new(glfw))),
     })
 }
 
@@ -257,6 +265,20 @@ impl FlutterDesktop {
                 },
             },
         };
+        let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
+            user_data: &mut *self.event_loop.borrow_mut() as *mut EventLoop
+                as *mut std::ffi::c_void,
+            runs_task_on_current_thread_callback: Some(
+                flutter_callbacks::runs_task_on_current_thread,
+            ),
+            post_task_callback: Some(flutter_callbacks::post_task),
+        };
+        let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
+            platform_task_runner: &platform_task_runner
+                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
+        };
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
             assets_path: CString::new(assets_path).unwrap().into_raw(),
@@ -281,7 +303,8 @@ impl FlutterDesktop {
             is_persistent_cache_read_only: false,
             vsync_callback: None,
             custom_dart_entrypoint: std::ptr::null(),
-            custom_task_runners: std::ptr::null(),
+            custom_task_runners: &custom_task_runners
+                as *const flutter_engine_sys::FlutterCustomTaskRunners,
         };
 
         unsafe {
@@ -313,14 +336,14 @@ impl FlutterDesktop {
     }
 
     pub fn run_window_loop(
-        mut self,
+        self,
         mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
         mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
+            let engine = Arc::clone(&window_state.init_data.engine);
             while !window_state.window().should_close() {
-                self.glfw.poll_events();
-                self.glfw.wait_events_timeout(1.0 / 60.0);
+                self.event_loop.borrow_mut().wait_for_events(&engine);
 
                 let events: Vec<(f64, glfw::WindowEvent)> =
                     glfw::flush_messages(&window_state.window_event_receiver).collect();
@@ -340,10 +363,6 @@ impl FlutterDesktop {
                 if let Some(callback) = &mut frame_callback {
                     callback(window_state);
                 }
-
-                unsafe {
-                    flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
-                }
             }
         }
         self.shutdown();
@@ -356,8 +375,8 @@ impl FlutterDesktop {
     }
 }
 
-fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
-    error!("GLFW error: {}", description);
+fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
+    error!("GLFW error ({}): {}", error, description);
 }
 
 extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {

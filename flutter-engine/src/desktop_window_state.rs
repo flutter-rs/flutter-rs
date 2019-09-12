@@ -1,21 +1,5 @@
-use crate::{
-    channel::Channel,
-    ffi::{
-        FlutterEngine,
-        FlutterPointerPhase,
-        FlutterPointerSignalKind,
-        FlutterPointerMouseButtons,
-    },
-    plugins::PluginRegistrar,
-    utils::WindowUnwrap,
-};
-
-use log::{debug, info};
 use std::{
-    collections::{
-        VecDeque,
-        HashMap,
-    },
+    collections::{HashMap, VecDeque},
     sync::Mutex,
     sync::{
         mpsc,
@@ -23,10 +7,22 @@ use std::{
         Arc,
     },
 };
+
+use glfw::Context;
+use log::{debug, info};
 use tokio::prelude::Future;
 use tokio::runtime::{Runtime, TaskExecutor};
 
 use lazy_static::lazy_static;
+
+use crate::{
+    channel::Channel,
+    ffi::{
+        FlutterEngine, FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
+    },
+    plugins::PluginRegistrar,
+    utils::WindowUnwrap,
+};
 
 const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
 #[cfg(not(target_os = "macos"))]
@@ -39,14 +35,16 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
-pub(crate) type MainThreadWindowFn = Box<FnMut(&mut glfw::Window) + Send>;
-pub(crate) type MainThreadChannelFn = (&'static str, Box<FnMut(&Channel) + Send>);
+pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
+pub(crate) type MainThreadChannelFn = (&'static str, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
+pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 
 pub(crate) enum MainThreadCallback {
     WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
     PlatformMessage(MainThreadPlatformMsg),
+    RenderThreadFn(MainThreadRenderThreadFn),
 }
 
 pub struct DesktopWindowState {
@@ -129,6 +127,19 @@ impl RuntimeData {
             .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
         Ok(())
     }
+
+    pub fn post_to_render_thread<F>(&self, mut f: F) -> Result<(), crate::error::MethodCallError>
+    where
+        F: FnMut(&mut glfw::Window) + Send + 'static,
+    {
+        self.main_thread_sender
+            .send(MainThreadCallback::RenderThreadFn(Box::new(
+                move |window| {
+                    f(window);
+                },
+            )))?;
+        Ok(())
+    }
 }
 
 impl DesktopWindowState {
@@ -159,7 +170,6 @@ impl DesktopWindowState {
 
         // register window and engine globally
         unsafe {
-            use glfw::Context;
             let window: &glfw::Window = &*window_ref;
             let mut guard = ENGINES.lock().unwrap();
             guard.insert(WindowSafe(window.window_ptr()), FlutterEngineSafe(engine));
@@ -504,6 +514,7 @@ impl DesktopWindowState {
     }
 
     pub fn handle_main_thread_callbacks(&mut self) {
+        let mut render_thread_fns = Vec::new();
         for cb in self.main_thread_receiver.try_iter() {
             match cb {
                 MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
@@ -522,7 +533,18 @@ impl DesktopWindowState {
                     };
                     self.init_data.engine.send_platform_message(platform_msg);
                 }
+                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
             }
+        }
+        if !render_thread_fns.is_empty() {
+            let resource_window = self.res_window_ref;
+            self.init_data.engine.post_render_thread_task(move || {
+                let mut res_window = resource_window;
+                let window = res_window.window();
+                for mut f in render_thread_fns {
+                    f(window);
+                }
+            });
         }
     }
 
@@ -552,7 +574,6 @@ impl DesktopWindowState {
     pub fn shutdown(self) {
         let mut guard = ENGINES.lock().unwrap();
         unsafe {
-            use glfw::Context;
             let window: &glfw::Window = &*self.window_ref;
             guard.remove(&WindowSafe(window.window_ptr()));
         }
@@ -567,11 +588,13 @@ impl DesktopWindowState {
 struct WindowSafe(*mut glfw::ffi::GLFWwindow);
 
 unsafe impl Send for WindowSafe {}
+
 unsafe impl Sync for WindowSafe {}
 
 struct FlutterEngineSafe(Arc<FlutterEngine>);
 
 unsafe impl Send for FlutterEngineSafe {}
+
 unsafe impl Sync for FlutterEngineSafe {}
 
 // This HashMap is usded to look up FlutterEngine using glfw Window

@@ -1,11 +1,11 @@
+use std::ops::Range;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     codec::{value::from_value, Value},
     utils::{OwnedStringUtils, StringUtils},
 };
-
-use std::ops::Range;
-
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]

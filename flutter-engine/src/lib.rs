@@ -66,6 +66,10 @@ pub struct WindowArgs<'a> {
     pub bg_color: (u8, u8, u8),
 }
 
+pub type WindowEventHandler = dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool;
+pub type PerFrameCallback = dyn FnMut(&mut DesktopWindowState);
+
+#[allow(clippy::large_enum_variant)]
 enum DesktopUserData {
     None,
     Window(*mut glfw::Window, *mut glfw::Window),
@@ -337,8 +341,8 @@ impl FlutterDesktop {
 
     pub fn run_window_loop(
         self,
-        mut custom_handler: Option<&mut FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool>,
-        mut frame_callback: Option<&mut FnMut(&mut DesktopWindowState)>,
+        mut custom_handler: Option<&mut WindowEventHandler>,
+        mut frame_callback: Option<&mut PerFrameCallback>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             let engine = Arc::clone(&window_state.init_data.engine);

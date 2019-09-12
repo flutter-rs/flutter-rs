@@ -1,12 +1,13 @@
 //! This plugin is used by TextField to edit text and control caret movement.
 //! It handles flutter/textinput type message.
 
-mod text_editing_state;
+use log::debug;
 
-use self::text_editing_state::TextEditingState;
 use super::prelude::*;
 
-use log::debug;
+use self::text_editing_state::TextEditingState;
+
+mod text_editing_state;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/textinput";
@@ -57,7 +58,7 @@ impl Default for TextInputPlugin {
 impl TextInputPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&Channel),
+        F: FnOnce(&dyn Channel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);

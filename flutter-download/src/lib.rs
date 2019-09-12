@@ -24,7 +24,9 @@ enum Target {
 }
 
 pub fn download(version: &str) -> (PathBuf, Result<mpsc::Receiver<(f64, f64)>, Error>) {
-    let libs_dir = dirs::cache_dir().expect("Cannot get cache dir").join("flutter-engine");
+    let libs_dir = dirs::cache_dir()
+        .expect("Cannot get cache dir")
+        .join("flutter-engine");
 
     let url = download_url(version);
     let dir = libs_dir.to_path_buf().join(version);

@@ -3,9 +3,9 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-pub use self::deserializer::{from_value, Deserializer};
-
 use serde::{de, ser, Deserialize, Serialize};
+
+pub use self::deserializer::{from_value, Deserializer};
 
 mod deserializer;
 

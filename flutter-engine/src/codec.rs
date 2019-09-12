@@ -1,11 +1,11 @@
+use serde::{Deserialize, Serialize};
+
+pub use self::value::Value;
+
 pub mod json_codec;
 pub mod standard_codec;
 #[macro_use]
 pub mod value;
-
-pub use self::value::Value;
-
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MethodCall {

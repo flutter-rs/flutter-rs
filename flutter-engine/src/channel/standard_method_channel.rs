@@ -1,24 +1,24 @@
 use std::sync::{Arc, RwLock, Weak};
 
+use log::error;
+
 use crate::{
     channel::{Channel, MethodCallHandler},
     codec::{standard_codec::CODEC, MethodCodec},
     desktop_window_state::InitData,
 };
 
-use log::error;
-
 pub struct StandardMethodChannel {
     name: &'static str,
     init_data: Weak<InitData>,
-    method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+    method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl StandardMethodChannel {
     pub fn new(
         name: &'static str,
-        method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>,
+        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     ) -> Self {
         Self {
             name,
@@ -28,7 +28,10 @@ impl StandardMethodChannel {
         }
     }
 
-    pub fn set_handler(&mut self, method_handler: Weak<RwLock<MethodCallHandler + Send + Sync>>) {
+    pub fn set_handler(
+        &mut self,
+        method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
+    ) {
         self.method_handler = method_handler;
     }
 }
@@ -50,7 +53,7 @@ impl Channel for StandardMethodChannel {
         self.plugin_name.replace(plugin_name);
     }
 
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>> {
+    fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
         self.method_handler.upgrade()
     }
 
@@ -58,7 +61,7 @@ impl Channel for StandardMethodChannel {
         self.plugin_name.unwrap()
     }
 
-    fn codec(&self) -> &MethodCodec {
+    fn codec(&self) -> &dyn MethodCodec {
         &CODEC
     }
 }

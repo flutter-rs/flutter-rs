@@ -210,7 +210,8 @@ impl FlutterEngine {
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,
-            device_kind: flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            device_kind:
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
             buttons: buttons as i64,
         };
         unsafe {

@@ -1,16 +1,10 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
-pub mod prelude;
-mod navigation;
-mod platform;
-mod textinput;
-mod keyevent;
-
-pub use self::{
-    navigation::NavigationPlugin,
-    platform::PlatformPlugin,
-    textinput::TextInputPlugin,
-    keyevent::KeyEventPlugin,
+use std::{
+    any::Any,
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::{Arc, RwLock, Weak},
 };
 
 use crate::{
@@ -19,12 +13,16 @@ use crate::{
     ffi::PlatformMessage,
 };
 
-use std::{
-    any::Any,
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    sync::{Arc, RwLock, Weak},
+pub use self::{
+    keyevent::KeyEventPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
+    textinput::TextInputPlugin,
 };
+
+mod keyevent;
+mod navigation;
+mod platform;
+pub mod prelude;
+mod textinput;
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,

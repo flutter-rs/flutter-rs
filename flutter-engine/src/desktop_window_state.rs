@@ -24,7 +24,8 @@ use crate::{
     utils::WindowUnwrap,
 };
 
-const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
+// seems to be about 2.5 lines of text
+const SCROLL_SPEED: f64 = 50.0;
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
@@ -106,7 +107,7 @@ impl RuntimeData {
         mut f: F,
     ) -> Result<(), crate::error::MethodCallError>
     where
-        F: FnMut(&Channel) + Send + 'static,
+        F: FnMut(&dyn Channel) + Send + 'static,
     {
         self.main_thread_sender
             .send(MainThreadCallback::ChannelFn((
@@ -220,21 +221,23 @@ impl DesktopWindowState {
     ) {
         if !self.pointer_currently_added
             && phase != FlutterPointerPhase::Add
-            && phase != FlutterPointerPhase::Remove {
-                self.send_pointer_event(
-                    FlutterPointerPhase::Add,
-                    x,
-                    y,
-                    FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
-                    buttons,
-                );
-            }
+            && phase != FlutterPointerPhase::Remove
+        {
+            self.send_pointer_event(
+                FlutterPointerPhase::Add,
+                x,
+                y,
+                FlutterPointerSignalKind::None,
+                0.0,
+                0.0,
+                buttons,
+            );
+        }
         if self.pointer_currently_added && phase == FlutterPointerPhase::Add
-            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove {
-                return;
-            }
+            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove
+        {
+            return;
+        }
         self.init_data.engine.send_pointer_event(
             phase,
             x * self.window_pixels_per_screen_coordinate,
@@ -287,7 +290,15 @@ impl DesktopWindowState {
                 } else {
                     FlutterPointerPhase::Hover
                 };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, FlutterPointerMouseButtons::Primary);
+                self.send_pointer_event(
+                    phase,
+                    x,
+                    y,
+                    FlutterPointerSignalKind::None,
+                    0.0,
+                    0.0,
+                    FlutterPointerMouseButtons::Primary,
+                );
             }
             glfw::WindowEvent::MouseButton(
                 glfw::MouseButton::Button4,
@@ -320,7 +331,15 @@ impl DesktopWindowState {
                     glfw::MouseButton::Button5 => FlutterPointerMouseButtons::Forward,
                     _ => FlutterPointerMouseButtons::Primary,
                 };
-                self.send_pointer_event(phase, x, y, FlutterPointerSignalKind::None, 0.0, 0.0, buttons);
+                self.send_pointer_event(
+                    phase,
+                    x,
+                    y,
+                    FlutterPointerSignalKind::None,
+                    0.0,
+                    0.0,
+                    buttons,
+                );
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.window().get_cursor_pos();
@@ -501,14 +520,14 @@ impl DesktopWindowState {
                         keyevent.key_action(true, key, scancode, modifiers);
                     },
                 );
-            },
+            }
             glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
                         keyevent.key_action(false, key, scancode, modifiers);
                     },
                 );
-            },
+            }
             _ => {}
         }
     }
@@ -565,8 +584,7 @@ impl DesktopWindowState {
     pub fn set_isolate_created(&mut self) {
         self.isolate_created = true;
 
-        while self.defered_events.len() > 0 {
-            let evt = self.defered_events.pop_front().unwrap();
+        while let Some(evt) = self.defered_events.pop_front() {
             self.handle_glfw_event(evt);
         }
     }

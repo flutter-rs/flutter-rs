@@ -1,9 +1,9 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
 
-use super::prelude::*;
-
 use log::{debug, error};
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/platform";

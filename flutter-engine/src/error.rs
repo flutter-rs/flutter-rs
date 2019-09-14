@@ -29,12 +29,92 @@ impl fmt::Display for MethodArgsError {
 impl error::Error for MethodArgsError {}
 
 #[derive(Debug)]
+pub enum RuntimeMessageError {
+    SendError(String),
+    RecvError(RecvError),
+}
+
+impl fmt::Display for RuntimeMessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RuntimeMessageError::SendError(error) => write!(f, "send error: {}", error),
+            RuntimeMessageError::RecvError(error) => write!(f, "receive error: {}", error),
+        }
+    }
+}
+
+impl error::Error for RuntimeMessageError {}
+
+impl<T> From<SendError<T>> for RuntimeMessageError {
+    fn from(error: SendError<T>) -> Self {
+        RuntimeMessageError::SendError(format!("{}", error))
+    }
+}
+
+impl From<RecvError> for RuntimeMessageError {
+    fn from(error: RecvError) -> Self {
+        RuntimeMessageError::RecvError(error)
+    }
+}
+
+#[derive(Debug)]
+pub enum MessageError {
+    ChannelClosed,
+    RustError(Box<dyn error::Error>),
+    MessageError(RuntimeMessageError),
+    CustomError {
+        code: String,
+        message: String,
+        details: Value,
+    },
+    UnspecifiedError,
+}
+
+impl MessageError {
+    pub fn from_error<T: error::Error + 'static>(error: T) -> Self {
+        MessageError::RustError(Box::new(error))
+    }
+}
+
+impl fmt::Display for MessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MessageError::ChannelClosed => write!(f, "channel already closed"),
+            MessageError::RustError(error) => write!(f, "rust error: {}", error),
+            MessageError::MessageError(msg) => write!(f, "{}", msg),
+            MessageError::CustomError {
+                code,
+                message,
+                details,
+            } => write!(f, "{} ({})\ndetails: {:?}", message, code, details),
+            MessageError::UnspecifiedError => write!(f, "unspecified error"),
+        }
+    }
+}
+
+impl error::Error for MessageError {
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match self {
+            MessageError::RustError(err) => Some(&**err),
+            _ => None,
+        }
+    }
+}
+
+impl From<RuntimeMessageError> for MessageError {
+    fn from(error: RuntimeMessageError) -> Self {
+        MessageError::MessageError(error)
+    }
+}
+
+#[derive(Debug)]
 pub enum MethodCallError {
     NotImplemented,
     ArgParseError(MethodArgsError),
     DeserializeError(ValueError),
     ChannelClosed,
     SendError(String),
+    MessageError(RuntimeMessageError),
     RustError(Box<dyn error::Error>),
     CustomError {
         code: String,
@@ -74,6 +154,12 @@ impl From<RecvError> for MethodCallError {
     }
 }
 
+impl From<RuntimeMessageError> for MethodCallError {
+    fn from(error: RuntimeMessageError) -> Self {
+        MethodCallError::MessageError(error)
+    }
+}
+
 impl fmt::Display for MethodCallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -84,6 +170,7 @@ impl fmt::Display for MethodCallError {
             }
             MethodCallError::ChannelClosed => write!(f, "channel already closed"),
             MethodCallError::SendError(msg) => write!(f, "message send error: {}", msg),
+            MethodCallError::MessageError(msg) => write!(f, "{}", msg),
             MethodCallError::RustError(error) => write!(f, "rust error: {}", error),
             MethodCallError::CustomError {
                 code,

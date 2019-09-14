@@ -68,9 +68,31 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    fn deserialize_enum<V>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        match self.value {
+            Value::String(s) => visitor.visit_enum(s.clone().into_deserializer()),
+            Value::Map(m) => {
+                if m.len() != 1 {
+                    Err(ValueError::WrongType)
+                } else {
+                    visitor.visit_enum(EnumAccess::new(self))
+                }
+            }
+            _ => Err(ValueError::WrongType),
+        }
+    }
+
     forward_to_deserialize_any! {
         i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf unit unit_struct
-        newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
+        newtype_struct seq tuple tuple_struct map struct identifier ignored_any
     }
 }
 
@@ -190,5 +212,138 @@ impl<'a, 'de> de::MapAccess<'de> for MapAccess<'a, 'de> {
         V: de::DeserializeSeed<'de>,
     {
         seed.deserialize(&mut Deserializer::new(self.next_value.take().unwrap()))
+    }
+}
+
+struct EnumAccess<'de> {
+    name: &'de String,
+    value_deserializer: Deserializer<'de>,
+}
+
+impl<'a, 'de> EnumAccess<'de> {
+    pub fn new(de: &'a mut Deserializer<'de>) -> Self {
+        let map = if let Value::Map(map) = de.value {
+            map
+        } else {
+            panic!("deserializer must have a map");
+        };
+        if map.len() != 1 {
+            panic!("map must have length 1");
+        }
+        let (name, sub_value) = map.iter().next().unwrap();
+        Self {
+            name,
+            value_deserializer: Deserializer::new(sub_value),
+        }
+    }
+}
+
+impl<'de> de::EnumAccess<'de> for EnumAccess<'de> {
+    type Error = ValueError;
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        let val = seed.deserialize(self.name.clone().into_deserializer())?;
+        Ok((val, self))
+    }
+}
+
+impl<'de> de::VariantAccess<'de> for EnumAccess<'de> {
+    type Error = ValueError;
+
+    fn unit_variant(mut self) -> Result<()> {
+        de::Deserialize::deserialize(&mut self.value_deserializer)
+    }
+
+    fn newtype_variant_seed<V>(mut self, seed: V) -> Result<V::Value>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut self.value_deserializer)
+    }
+
+    fn tuple_variant<V>(mut self, _len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        de::Deserializer::deserialize_seq(&mut self.value_deserializer, visitor)
+    }
+
+    fn struct_variant<V>(mut self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        de::Deserializer::deserialize_struct(&mut self.value_deserializer, "", fields, visitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+
+    use super::{from_value, Value};
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    enum UnitVariants {
+        A,
+        B,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    enum TupleEnum {
+        A(i32),
+        B(String, i32),
+    }
+
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+    enum StructEnum {
+        A { number: i32 },
+        B { text: String },
+    }
+
+    #[test]
+    fn test_deserialize_unit_enum() {
+        let value = Value::String("A".into());
+        let deserialized = from_value::<UnitVariants>(&value).expect("deserialization failed");
+        assert_eq!(deserialized, UnitVariants::A);
+
+        let value = Value::String("B".into());
+        let deserialized = from_value::<UnitVariants>(&value).expect("deserialization failed");
+        assert_eq!(deserialized, UnitVariants::B);
+    }
+
+    #[test]
+    fn test_deserialize_tuple_enum() {
+        let value = json_value!({ "A": 42 });
+        let deserialized = from_value::<TupleEnum>(&value).expect("deserialization failed");
+        assert_eq!(deserialized, TupleEnum::A(42));
+
+        let value = json_value!({ "B": [ "text", 1337 ] });
+        let deserialized = from_value::<TupleEnum>(&value).expect("deserialization failed");
+        if let TupleEnum::B(s, i) = deserialized {
+            assert_eq!(s, "text");
+            assert_eq!(i, 1337);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn test_deserialize_struct_enum() {
+        let value = json_value!({ "A": { "number": 42 } });
+        let deserialized = from_value::<StructEnum>(&value).expect("deserialization failed");
+        assert_eq!(deserialized, StructEnum::A { number: 42 });
+
+        let value = json_value!({ "B": { "text": "test" } });
+        let deserialized = from_value::<StructEnum>(&value).expect("deserialization failed");
+        assert_eq!(
+            deserialized,
+            StructEnum::B {
+                text: "test".into()
+            }
+        );
     }
 }

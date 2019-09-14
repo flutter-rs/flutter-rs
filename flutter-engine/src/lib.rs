@@ -69,11 +69,14 @@ pub struct WindowArgs<'a> {
 pub type WindowEventHandler = dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool;
 pub type PerFrameCallback = dyn FnMut(&mut DesktopWindowState);
 
-#[allow(clippy::large_enum_variant)]
 enum DesktopUserData {
     None,
     Window(*mut glfw::Window, *mut glfw::Window),
-    WindowState(DesktopWindowState),
+    // boxing here since `DesktopWindowState` has a big size difference
+    // that may be expansive in copy/clone/move, also
+    // enum size is bounded by the largest variant. Having a large variant
+    // can penalize the memory layout of that enum.
+    WindowState(Box<DesktopWindowState>),
 }
 
 impl DesktopUserData {
@@ -206,11 +209,8 @@ impl FlutterDesktop {
         let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
         // now create the full desktop state
         self.user_data
-            .replace(DesktopUserData::WindowState(DesktopWindowState::new(
-                window_ref,
-                res_window_ref,
-                receiver,
-                engine,
+            .replace(DesktopUserData::WindowState(Box::new(
+                DesktopWindowState::new(window_ref, res_window_ref, receiver, engine),
             )));
 
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
@@ -345,6 +345,11 @@ impl FlutterDesktop {
         mut frame_callback: Option<&mut PerFrameCallback>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
+            window_state.plugin_registrar.with_plugin(
+                |localization: &plugins::LocalizationPlugin| {
+                    localization.send_locale(locale_config::Locale::current());
+                },
+            );
             let engine = Arc::clone(&window_state.init_data.engine);
             while !window_state.window().should_close() {
                 self.event_loop.borrow_mut().wait_for_events(&engine);
@@ -379,6 +384,7 @@ impl FlutterDesktop {
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
     error!("GLFW error ({}): {}", error, description);
 }

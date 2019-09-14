@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock, Weak};
 use log::error;
 
 use crate::{
-    channel::{Channel, EventHandler, MethodCallHandler},
+    channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel},
     codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
     desktop_window_state::{InitData, RuntimeData},
     error::MethodCallError,
@@ -31,7 +31,7 @@ impl EventChannel {
     }
 }
 
-impl Channel for EventChannel {
+impl ChannelImpl for EventChannel {
     fn name(&self) -> &'static str {
         &self.name
     }
@@ -48,15 +48,17 @@ impl Channel for EventChannel {
         self.plugin_name.replace(plugin_name);
     }
 
+    fn plugin_name(&self) -> &'static str {
+        self.plugin_name.unwrap()
+    }
+}
+
+impl MethodChannel for EventChannel {
     fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
         Some(Arc::clone(&self.method_handler))
     }
 
-    fn plugin_name(&self) -> &'static str {
-        self.plugin_name.unwrap()
-    }
-
-    fn codec(&self) -> &dyn MethodCodec {
+    fn codec(&self) -> &'static dyn MethodCodec {
         &CODEC
     }
 }
@@ -87,3 +89,5 @@ impl MethodCallHandler for EventChannelMethodCallHandler {
         }
     }
 }
+
+method_channel!(EventChannel);

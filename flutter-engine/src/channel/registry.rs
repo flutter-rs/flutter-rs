@@ -53,7 +53,7 @@ impl ChannelRegistry {
     pub fn handle(&mut self, mut message: PlatformMessage) {
         if let Some(channel) = self.channels.get(message.channel.deref()) {
             trace!("Processing message from channel: {}", message.channel);
-            channel.handle_method(message);
+            channel.handle_platform_message(message);
         } else {
             warn!(
                 "No plugin registered to handle messages from channel: {}",

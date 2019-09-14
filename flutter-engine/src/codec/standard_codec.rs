@@ -3,7 +3,7 @@ use std::{collections::HashMap, slice};
 
 use log::error;
 
-use super::{MethodCall, MethodCallResult, MethodCodec, Value};
+use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
 
 const VALUE_NULL: u8 = 0;
 const VALUE_TRUE: u8 = 1;
@@ -133,6 +133,7 @@ impl StandardMethodCodec {
             }
             Value::U8List(list) => {
                 writer.write_u8(VALUE_UINT8LIST);
+                writer.write_size(list.len());
                 writer.align_to(1);
                 for n in list {
                     writer.write_u8(*n);
@@ -140,6 +141,7 @@ impl StandardMethodCodec {
             }
             Value::I32List(list) => {
                 writer.write_u8(VALUE_INT32LIST);
+                writer.write_size(list.len());
                 writer.align_to(4);
                 for n in list {
                     writer.write_i32(*n);
@@ -147,6 +149,7 @@ impl StandardMethodCodec {
             }
             Value::I64List(list) => {
                 writer.write_u8(VALUE_INT64LIST);
+                writer.write_size(list.len());
                 writer.align_to(8);
                 for n in list {
                     writer.write_i64(*n);
@@ -154,6 +157,7 @@ impl StandardMethodCodec {
             }
             Value::F64List(list) => {
                 writer.write_u8(VALUE_FLOAT64LIST);
+                writer.write_size(list.len());
                 writer.align_to(8);
                 for n in list {
                     writer.write_f64(*n);
@@ -239,6 +243,19 @@ impl MethodCodec for StandardMethodCodec {
         } else {
             None
         }
+    }
+}
+
+impl MessageCodec for StandardMethodCodec {
+    fn encode_message(&self, v: &Value) -> Vec<u8> {
+        let mut writer = Writer::new(Vec::new());
+        StandardMethodCodec::write_value(&mut writer, v);
+        writer.0
+    }
+
+    fn decode_message(&self, buf: &[u8]) -> Option<Value> {
+        let mut reader = Reader::new(buf);
+        StandardMethodCodec::read_value(&mut reader).ok()
     }
 }
 

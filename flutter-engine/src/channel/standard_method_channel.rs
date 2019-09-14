@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock, Weak};
 use log::error;
 
 use crate::{
-    channel::{Channel, MethodCallHandler},
+    channel::{ChannelImpl, MethodCallHandler, MethodChannel},
     codec::{standard_codec::CODEC, MethodCodec},
     desktop_window_state::InitData,
 };
@@ -36,7 +36,7 @@ impl StandardMethodChannel {
     }
 }
 
-impl Channel for StandardMethodChannel {
+impl ChannelImpl for StandardMethodChannel {
     fn name(&self) -> &'static str {
         &self.name
     }
@@ -53,15 +53,19 @@ impl Channel for StandardMethodChannel {
         self.plugin_name.replace(plugin_name);
     }
 
+    fn plugin_name(&self) -> &'static str {
+        self.plugin_name.unwrap()
+    }
+}
+
+impl MethodChannel for StandardMethodChannel {
     fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>> {
         self.method_handler.upgrade()
     }
 
-    fn plugin_name(&self) -> &'static str {
-        self.plugin_name.unwrap()
-    }
-
-    fn codec(&self) -> &dyn MethodCodec {
+    fn codec(&self) -> &'static dyn MethodCodec {
         &CODEC
     }
 }
+
+method_channel!(StandardMethodChannel);

@@ -58,7 +58,7 @@ impl Default for TextInputPlugin {
 impl TextInputPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&dyn Channel),
+        F: FnOnce(&dyn MethodChannel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);

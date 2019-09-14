@@ -40,12 +40,14 @@ pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (&'static str, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
+pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
     WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
     PlatformMessage(MainThreadPlatformMsg),
     RenderThreadFn(MainThreadRenderThreadFn),
+    WindowStateFn(MainTheadWindowStateFn),
 }
 
 pub struct DesktopWindowState {
@@ -76,7 +78,7 @@ pub struct RuntimeData {
 }
 
 impl RuntimeData {
-    pub fn with_window_result<F, R>(&self, mut f: F) -> Result<R, crate::error::MethodCallError>
+    pub fn with_window_result<F, R>(&self, mut f: F) -> Result<R, crate::error::RuntimeMessageError>
     where
         F: FnMut(&mut glfw::Window) -> R + Send + 'static,
         R: Send + 'static,
@@ -90,7 +92,7 @@ impl RuntimeData {
         Ok(rx.recv()?)
     }
 
-    pub fn with_window<F>(&self, mut f: F) -> Result<(), crate::error::MethodCallError>
+    pub fn with_window<F>(&self, mut f: F) -> Result<(), crate::error::RuntimeMessageError>
     where
         F: FnMut(&mut glfw::Window) + Send + 'static,
     {
@@ -105,7 +107,7 @@ impl RuntimeData {
         &self,
         channel_name: &'static str,
         mut f: F,
-    ) -> Result<(), crate::error::MethodCallError>
+    ) -> Result<(), crate::error::RuntimeMessageError>
     where
         F: FnMut(&dyn Channel) + Send + 'static,
     {
@@ -123,7 +125,7 @@ impl RuntimeData {
         &self,
         channel_name: String,
         data: Vec<u8>,
-    ) -> Result<(), crate::error::MethodCallError> {
+    ) -> Result<(), crate::error::RuntimeMessageError> {
         self.main_thread_sender
             .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
         Ok(())
@@ -139,6 +141,15 @@ impl RuntimeData {
                     f(window);
                 },
             )))?;
+        Ok(())
+    }
+
+    pub fn with_window_state<F>(&self, f: F) -> Result<(), crate::error::RuntimeMessageError>
+    where
+        F: FnMut(&mut DesktopWindowState) + Send + 'static,
+    {
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowStateFn(Box::new(f)))?;
         Ok(())
     }
 }
@@ -157,6 +168,10 @@ impl DesktopWindowState {
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
+        assert!(
+            !window_ref.is_null(),
+            "got a null reference for glfw::Window"
+        );
         let runtime = Runtime::new().unwrap();
         let (main_tx, main_rx) = mpsc::channel();
         let runtime_data = Arc::new(RuntimeData {
@@ -212,11 +227,9 @@ impl DesktopWindowState {
     fn send_pointer_event(
         &mut self,
         phase: FlutterPointerPhase,
-        x: f64,
-        y: f64,
+        (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
-        scroll_delta_x: f64,
-        scroll_delta_y: f64,
+        (scroll_delta_x, scroll_delta_y): (f64, f64),
         buttons: FlutterPointerMouseButtons,
     ) {
         if !self.pointer_currently_added
@@ -225,11 +238,9 @@ impl DesktopWindowState {
         {
             self.send_pointer_event(
                 FlutterPointerPhase::Add,
-                x,
-                y,
+                (x, y),
                 FlutterPointerSignalKind::None,
-                0.0,
-                0.0,
+                (0.0, 0.0),
                 buttons,
             );
         }
@@ -270,11 +281,9 @@ impl DesktopWindowState {
                     } else {
                         FlutterPointerPhase::Remove
                     },
-                    cursor_pos.0,
-                    cursor_pos.1,
+                    (cursor_pos.0, cursor_pos.1),
                     FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
+                    (0.0, 0.0),
                     FlutterPointerMouseButtons::Primary,
                 );
             }
@@ -292,11 +301,9 @@ impl DesktopWindowState {
                 };
                 self.send_pointer_event(
                     phase,
-                    x,
-                    y,
+                    (x, y),
                     FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
+                    (0.0, 0.0),
                     FlutterPointerMouseButtons::Primary,
                 );
             }
@@ -333,11 +340,9 @@ impl DesktopWindowState {
                 };
                 self.send_pointer_event(
                     phase,
-                    x,
-                    y,
+                    (x, y),
                     FlutterPointerSignalKind::None,
-                    0.0,
-                    0.0,
+                    (0.0, 0.0),
                     buttons,
                 );
             }
@@ -352,11 +357,12 @@ impl DesktopWindowState {
                 };
                 self.send_pointer_event(
                     phase,
-                    x,
-                    y,
+                    (x, y),
                     FlutterPointerSignalKind::Scroll,
-                    scroll_delta_x * SCROLL_SPEED,
-                    -scroll_delta_y * SCROLL_SPEED,
+                    (
+                        scroll_delta_x * SCROLL_SPEED,
+                        -scroll_delta_y * SCROLL_SPEED,
+                    ),
                     FlutterPointerMouseButtons::Primary,
                 );
             }
@@ -517,14 +523,14 @@ impl DesktopWindowState {
 
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
-                        keyevent.key_action(true, key, scancode, modifiers);
+                        keyevent.key_action(false, key, scancode, modifiers);
                     },
                 );
             }
             glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
                 self.plugin_registrar.with_plugin_mut(
                     |keyevent: &mut crate::plugins::KeyEventPlugin| {
-                        keyevent.key_action(false, key, scancode, modifiers);
+                        keyevent.key_action(true, key, scancode, modifiers);
                     },
                 );
             }
@@ -534,7 +540,8 @@ impl DesktopWindowState {
 
     pub fn handle_main_thread_callbacks(&mut self) {
         let mut render_thread_fns = Vec::new();
-        for cb in self.main_thread_receiver.try_iter() {
+        let callbacks: Vec<MainThreadCallback> = self.main_thread_receiver.try_iter().collect();
+        for cb in callbacks {
             match cb {
                 MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
                 MainThreadCallback::ChannelFn((name, mut f)) => {
@@ -553,6 +560,7 @@ impl DesktopWindowState {
                     self.init_data.engine.send_platform_message(platform_msg);
                 }
                 MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
+                MainThreadCallback::WindowStateFn(mut f) => f(self),
             }
         }
         if !render_thread_fns.is_empty() {
@@ -615,7 +623,7 @@ unsafe impl Send for FlutterEngineSafe {}
 
 unsafe impl Sync for FlutterEngineSafe {}
 
-// This HashMap is usded to look up FlutterEngine using glfw Window
+// This HashMap is used to look up FlutterEngine using glfw Window
 lazy_static! {
     static ref ENGINES: Mutex<HashMap<WindowSafe, FlutterEngineSafe>> = Mutex::new(HashMap::new());
 }

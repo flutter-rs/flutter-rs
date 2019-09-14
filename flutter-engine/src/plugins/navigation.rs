@@ -1,9 +1,9 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use super::prelude::*;
-
 use log::debug;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/navigation";
@@ -37,7 +37,7 @@ impl Default for NavigationPlugin {
 impl NavigationPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&Channel),
+        F: FnOnce(&dyn Channel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);

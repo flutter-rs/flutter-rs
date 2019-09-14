@@ -1,3 +1,10 @@
+pub use std::{
+    convert::{TryFrom, TryInto},
+    sync::{mpsc::Sender, Arc, RwLock, Weak},
+};
+
+pub use serde::{Deserialize, Serialize};
+
 pub use crate::{
     channel::{
         Channel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
@@ -10,10 +17,3 @@ pub use crate::{
     plugins::{Plugin, PluginRegistrar},
     RuntimeData, Window,
 };
-
-pub use std::{
-    convert::{TryFrom, TryInto},
-    sync::{mpsc::Sender, Arc, RwLock, Weak},
-};
-
-pub use serde::{Deserialize, Serialize};

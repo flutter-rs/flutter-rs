@@ -2,19 +2,6 @@
 //! It contains two implementations StandardMethodChannel using binary encoding
 //! and JsonMethodChannel using json encoding.
 
-pub use self::{
-    event_channel::EventChannel,
-    json_method_channel::JsonMethodChannel,
-    registry::{ChannelRegistrar, ChannelRegistry},
-    standard_method_channel::StandardMethodChannel,
-};
-use crate::{
-    codec::{MethodCall, MethodCallResult, MethodCodec, Value},
-    desktop_window_state::{InitData, RuntimeData},
-    error::MethodCallError,
-    ffi::{PlatformMessage, PlatformMessageResponseHandle},
-};
-
 use std::{
     borrow::Cow,
     sync::{Arc, RwLock, Weak},
@@ -22,6 +9,20 @@ use std::{
 
 use log::{error, trace};
 use tokio::prelude::Future;
+
+use crate::{
+    codec::{MethodCall, MethodCallResult, MethodCodec, Value},
+    desktop_window_state::{InitData, RuntimeData},
+    error::MethodCallError,
+    ffi::{PlatformMessage, PlatformMessageResponseHandle},
+};
+
+pub use self::{
+    event_channel::EventChannel,
+    json_method_channel::JsonMethodChannel,
+    registry::{ChannelRegistrar, ChannelRegistry},
+    standard_method_channel::StandardMethodChannel,
+};
 
 mod event_channel;
 mod json_method_channel;
@@ -32,9 +33,9 @@ pub trait Channel {
     fn name(&self) -> &'static str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
-    fn method_handler(&self) -> Option<Arc<RwLock<MethodCallHandler + Send + Sync>>>;
+    fn method_handler(&self) -> Option<Arc<RwLock<dyn MethodCallHandler + Send + Sync>>>;
     fn plugin_name(&self) -> &'static str;
-    fn codec(&self) -> &MethodCodec;
+    fn codec(&self) -> &dyn MethodCodec;
 
     /// Handle a method call received on this channel
     fn handle_method(&self, mut msg: PlatformMessage) {
@@ -64,13 +65,13 @@ pub trait Channel {
                             Ok(value) => MethodCallResult::Ok(value),
                             Err(error) => {
                                 error!(
-                                target: handler
-                                    .log_target()
-                                    .unwrap_or(plugin_name),
-                                "error in method call {}#{}: {}",
-                                channel,
-                                method,
-                                error);
+                                    target: handler
+                                        .log_target()
+                                        .unwrap_or(plugin_name),
+                                    "error in method call {}#{}: {}",
+                                    channel,
+                                    method,
+                                    error);
                                 error.into()
                             }
                         };

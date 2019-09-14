@@ -7,11 +7,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use flutter_engine_sys::{
-    FlutterPlatformMessage,
-    FlutterPlatformMessageResponseHandle,
-};
 use log::{error, trace};
+
+use flutter_engine_sys::{
+    FlutterPlatformMessage, FlutterPlatformMessageResponseHandle, FlutterTask,
+};
 
 #[derive(Debug)]
 pub struct PlatformMessageResponseHandle {
@@ -19,6 +19,7 @@ pub struct PlatformMessageResponseHandle {
 }
 
 unsafe impl Send for PlatformMessageResponseHandle {}
+
 unsafe impl Sync for PlatformMessageResponseHandle {}
 
 impl Into<PlatformMessageResponseHandle> for *const FlutterPlatformMessageResponseHandle {
@@ -209,7 +210,8 @@ impl FlutterEngine {
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,
-            device_kind: flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            device_kind:
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
             buttons: buttons as i64,
         };
         unsafe {
@@ -243,6 +245,38 @@ impl FlutterEngine {
     pub fn shutdown(&self) {
         unsafe {
             flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr);
+        }
+    }
+
+    pub fn run_task(&self, task: &FlutterTask) {
+        unsafe {
+            flutter_engine_sys::FlutterEngineRunTask(self.engine_ptr, task as *const FlutterTask);
+        }
+    }
+
+    pub fn post_render_thread_task<F>(&self, f: F)
+    where
+        F: FnOnce() -> () + 'static,
+    {
+        unsafe {
+            let cbk = CallbackBox { cbk: Box::new(f) };
+            let b = Box::new(cbk);
+            let ptr = Box::into_raw(b);
+            flutter_engine_sys::FlutterEnginePostRenderThreadTask(
+                self.engine_ptr,
+                Some(render_thread_task),
+                ptr as *mut libc::c_void,
+            );
+        }
+
+        struct CallbackBox {
+            pub cbk: Box<dyn FnOnce()>,
+        }
+
+        unsafe extern "C" fn render_thread_task(user_data: *mut libc::c_void) {
+            let ptr = user_data as *mut CallbackBox;
+            let b = Box::from_raw(ptr);
+            (b.cbk)()
         }
     }
 }

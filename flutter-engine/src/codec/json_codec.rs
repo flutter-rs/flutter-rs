@@ -1,7 +1,7 @@
-use super::{MethodCall, MethodCallResult, MethodCodec, Value};
-
 use log::error;
 use serde_json::json;
+
+use super::{MethodCall, MethodCallResult, MethodCodec, Value};
 
 pub struct JsonMethodCodec;
 

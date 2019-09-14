@@ -1,5 +1,7 @@
-use glfw::Context;
 use std::u8;
+
+use glfw::Context;
+
 // include the OpenGL type aliases
 // use gl::types::*;
 

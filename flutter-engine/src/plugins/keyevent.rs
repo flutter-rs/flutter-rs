@@ -1,7 +1,7 @@
-use super::prelude::*;
-
 use glfw;
 use serde_json::json;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/keyevent";
@@ -37,20 +37,26 @@ impl Default for KeyEventPlugin {
 impl KeyEventPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&Channel),
+        F: FnOnce(&dyn Channel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);
         }
     }
 
-    pub fn key_action(&self, down: bool, key: glfw::Key, scancode: glfw::Scancode, modifiers: glfw::Modifiers) {
+    pub fn key_action(
+        &self,
+        down: bool,
+        key: glfw::Key,
+        scancode: glfw::Scancode,
+        modifiers: glfw::Modifiers,
+    ) {
         self.with_channel(|channel| {
             let json = json!({
                 "toolkit": "glfw",
                 "keyCode": key as i32,
                 "scanCode": scancode as i32,
-                // "codePoint": 
+                // "codePoint":
                 "modifiers": modifiers.bits() as i32,
                 // TODO: raw_keyboard_listener.dart seems to have limited support for keyboard
                 // need to update later
@@ -64,11 +70,7 @@ impl KeyEventPlugin {
 }
 
 impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        _: MethodCall,
-        _: RuntimeData,
-    ) -> Result<Value, MethodCallError> {
+    fn on_method_call(&mut self, _: MethodCall, _: RuntimeData) -> Result<Value, MethodCallError> {
         Ok(Value::Null)
     }
 }

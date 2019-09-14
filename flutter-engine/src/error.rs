@@ -113,7 +113,6 @@ pub enum MethodCallError {
     ArgParseError(MethodArgsError),
     DeserializeError(ValueError),
     ChannelClosed,
-    SendError(String),
     MessageError(RuntimeMessageError),
     RustError(Box<dyn error::Error>),
     CustomError {
@@ -142,18 +141,6 @@ impl From<ValueError> for MethodCallError {
     }
 }
 
-impl<T> From<SendError<T>> for MethodCallError {
-    fn from(error: SendError<T>) -> Self {
-        MethodCallError::SendError(format!("{}", error))
-    }
-}
-
-impl From<RecvError> for MethodCallError {
-    fn from(error: RecvError) -> Self {
-        MethodCallError::RustError(Box::new(error))
-    }
-}
-
 impl From<RuntimeMessageError> for MethodCallError {
     fn from(error: RuntimeMessageError) -> Self {
         MethodCallError::MessageError(error)
@@ -169,7 +156,6 @@ impl fmt::Display for MethodCallError {
                 write!(f, "failed to deserialize value: {}", err)
             }
             MethodCallError::ChannelClosed => write!(f, "channel already closed"),
-            MethodCallError::SendError(msg) => write!(f, "message send error: {}", msg),
             MethodCallError::MessageError(msg) => write!(f, "{}", msg),
             MethodCallError::RustError(error) => write!(f, "rust error: {}", error),
             MethodCallError::CustomError {

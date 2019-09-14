@@ -131,7 +131,10 @@ impl RuntimeData {
         Ok(())
     }
 
-    pub fn post_to_render_thread<F>(&self, mut f: F) -> Result<(), crate::error::MethodCallError>
+    pub fn post_to_render_thread<F>(
+        &self,
+        mut f: F,
+    ) -> Result<(), crate::error::RuntimeMessageError>
     where
         F: FnMut(&mut glfw::Window) + Send + 'static,
     {

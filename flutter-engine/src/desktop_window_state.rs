@@ -17,6 +17,7 @@ use lazy_static::lazy_static;
 
 use crate::{
     channel::Channel,
+    event_loop::wake_platform_thread,
     ffi::{
         FlutterEngine, FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
     },
@@ -89,6 +90,7 @@ impl RuntimeData {
                 let result = f(window);
                 tx.send(result).unwrap();
             })))?;
+        wake_platform_thread();
         Ok(rx.recv()?)
     }
 
@@ -100,6 +102,7 @@ impl RuntimeData {
             .send(MainThreadCallback::WindowFn(Box::new(move |window| {
                 f(window);
             })))?;
+        wake_platform_thread();
         Ok(())
     }
 
@@ -118,6 +121,7 @@ impl RuntimeData {
                     f(channel);
                 }),
             )))?;
+        wake_platform_thread();
         Ok(())
     }
 
@@ -128,6 +132,7 @@ impl RuntimeData {
     ) -> Result<(), crate::error::RuntimeMessageError> {
         self.main_thread_sender
             .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
+        wake_platform_thread();
         Ok(())
     }
 
@@ -144,6 +149,7 @@ impl RuntimeData {
                     f(window);
                 },
             )))?;
+        wake_platform_thread();
         Ok(())
     }
 

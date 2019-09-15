@@ -606,15 +606,15 @@ impl DesktopWindowState {
         }
     }
 
-    pub fn shutdown(self) {
+    pub fn shutdown(self) -> Arc<FlutterEngine> {
         let mut guard = ENGINES.lock().unwrap();
         unsafe {
             let window: &glfw::Window = &*self.window_ref;
             guard.remove(&WindowSafe(window.window_ptr()));
         }
 
-        self.init_data.engine.shutdown();
         self.runtime.shutdown_now().wait().unwrap();
+        Arc::clone(&self.init_data.engine)
     }
 }
 

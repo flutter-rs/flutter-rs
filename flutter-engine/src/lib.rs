@@ -379,7 +379,12 @@ impl FlutterDesktop {
 
     fn shutdown(self) {
         if let DesktopUserData::WindowState(window_state) = self.user_data.into_inner() {
-            window_state.shutdown();
+            // The window state itself must be dropped completely to make sure that all plugins and textures
+            // are cleaned up. Only then may the engine itself be shutdown.
+            let engine = window_state.shutdown();
+            // The window state is consumed by `shutdown`, so by now it has been dropped. We can shut down the
+            // engine itself now.
+            engine.shutdown();
         }
     }
 }

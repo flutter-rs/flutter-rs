@@ -22,6 +22,7 @@ use crate::{
         FlutterEngine, FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
     },
     plugins::PluginRegistrar,
+    texture_registry::{ExternalTexture, TextureRegistry},
     utils::WindowUnwrap,
 };
 
@@ -63,6 +64,7 @@ pub struct DesktopWindowState {
     isolate_created: bool,
     defered_events: VecDeque<glfw::WindowEvent>,
     pub plugin_registrar: PluginRegistrar,
+    pub texture_registry: TextureRegistry,
 }
 
 /// Data accessible during initialization and on the main thread.
@@ -159,7 +161,21 @@ impl RuntimeData {
     {
         self.main_thread_sender
             .send(MainThreadCallback::WindowStateFn(Box::new(f)))?;
+        wake_platform_thread();
         Ok(())
+    }
+
+    pub fn create_external_texture(
+        &self,
+    ) -> Result<Arc<ExternalTexture>, crate::error::RuntimeMessageError> {
+        let (tx, rx) = mpsc::channel();
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowStateFn(Box::new(move |state| {
+                let texture = state.texture_registry.create_texture();
+                tx.send(texture).unwrap();
+            })))?;
+        wake_platform_thread();
+        Ok(rx.recv()?)
     }
 }
 
@@ -192,6 +208,7 @@ impl DesktopWindowState {
             engine: engine.clone(),
             runtime_data,
         });
+        let texture_registry = TextureRegistry::new(engine.clone());
 
         // register window and engine globally
         unsafe {
@@ -209,6 +226,7 @@ impl DesktopWindowState {
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
+            texture_registry,
             isolate_created: false,
             defered_events: VecDeque::new(),
             init_data,

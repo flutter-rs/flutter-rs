@@ -24,6 +24,7 @@ mod event_loop;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
+pub mod texture_registry;
 mod utils;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -265,7 +266,9 @@ impl FlutterDesktop {
                     fbo_reset_after_present: false,
                     surface_transformation: None,
                     gl_proc_resolver: Some(flutter_callbacks::gl_proc_resolver),
-                    gl_external_texture_frame_callback: None,
+                    gl_external_texture_frame_callback: Some(
+                        flutter_callbacks::gl_external_texture_frame,
+                    ),
                 },
             },
         };

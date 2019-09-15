@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 fn gen_bindings() {
     let bindings = bindgen::Builder::default()
         .header("flutter-engine.h")
-        .default_enum_style(EnumVariation::Rust)
+        .default_enum_style(EnumVariation::Rust {
+            non_exhaustive: false,
+        })
         .generate()
         .expect("Unable to generate bindings");
 

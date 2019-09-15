@@ -37,7 +37,7 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
-pub(crate) type MainThreadChannelFn = (&'static str, Box<dyn FnMut(&dyn Channel) + Send>);
+pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
@@ -105,7 +105,7 @@ impl RuntimeData {
 
     pub fn with_channel<F>(
         &self,
-        channel_name: &'static str,
+        channel_name: String,
         mut f: F,
     ) -> Result<(), crate::error::RuntimeMessageError>
     where
@@ -550,7 +550,7 @@ impl DesktopWindowState {
                 MainThreadCallback::ChannelFn((name, mut f)) => {
                     self.plugin_registrar
                         .channel_registry
-                        .with_channel(name, |channel| {
+                        .with_channel(&name, |channel| {
                             f(channel);
                         });
                 }

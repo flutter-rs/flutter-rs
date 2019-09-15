@@ -9,19 +9,19 @@ use crate::{
 };
 
 pub struct StandardMethodChannel {
-    name: &'static str,
+    name: String,
     init_data: Weak<InitData>,
     method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl StandardMethodChannel {
-    pub fn new(
-        name: &'static str,
+    pub fn new<N: AsRef<str>>(
+        name: N,
         method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     ) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_owned(),
             init_data: Weak::new(),
             method_handler,
             plugin_name: None,
@@ -37,8 +37,8 @@ impl StandardMethodChannel {
 }
 
 impl ChannelImpl for StandardMethodChannel {
-    fn name(&self) -> &'static str {
-        &self.name
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 
     fn init_data(&self) -> Option<Arc<InitData>> {

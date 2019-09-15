@@ -1,7 +1,7 @@
 macro_rules! method_channel {
     ($channel:ty) => {
         impl $crate::channel::Channel for $channel {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 ChannelImpl::name(self)
             }
 
@@ -35,7 +35,7 @@ macro_rules! method_channel {
 macro_rules! message_channel {
     ($channel:ty) => {
         impl $crate::channel::Channel for $channel {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 ChannelImpl::name(self)
             }
 

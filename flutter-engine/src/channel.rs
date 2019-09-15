@@ -35,14 +35,14 @@ mod registry;
 mod standard_method_channel;
 
 trait ChannelImpl {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
 }
 
 pub trait Channel {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
@@ -93,7 +93,7 @@ pub trait MethodChannel: Channel {
             if let Some(init_data) = self.init_data() {
                 let runtime_data = (*init_data.runtime_data).clone();
                 let call = self.codec().decode_method_call(msg.message).unwrap();
-                let channel = self.name();
+                let channel = self.name().to_owned();
                 trace!(
                     "on channel {}, got method call {} with args {:?}",
                     channel,
@@ -176,7 +176,7 @@ pub trait MessageChannel: Channel {
             if let Some(init_data) = self.init_data() {
                 let runtime_data = (*init_data.runtime_data).clone();
                 let message = self.codec().decode_message(msg.message).unwrap();
-                let channel = self.name();
+                let channel = self.name().to_owned();
                 trace!("on channel {}, got message {:?}", channel, message);
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();

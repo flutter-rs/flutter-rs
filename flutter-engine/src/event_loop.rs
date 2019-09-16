@@ -119,6 +119,12 @@ impl EventLoop {
     }
 }
 
+pub fn wake_platform_thread() {
+    unsafe {
+        glfw::ffi::glfwPostEmptyEvent();
+    }
+}
+
 impl Ord for TaskPriority {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.time.cmp(&other.time) {

@@ -279,4 +279,47 @@ impl FlutterEngine {
             (b.cbk)()
         }
     }
+
+    pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
+        trace!("registering new external texture with id {}", texture_id);
+        unsafe {
+            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr, texture_id);
+        }
+        ExternalTexture {
+            engine_ptr: self.engine_ptr,
+            texture_id,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ExternalTexture {
+    engine_ptr: flutter_engine_sys::FlutterEngine,
+    pub(crate) texture_id: i64,
+}
+
+unsafe impl Send for ExternalTexture {}
+unsafe impl Sync for ExternalTexture {}
+
+impl Drop for ExternalTexture {
+    fn drop(&mut self) {
+        trace!("dropping external texture id {}", self.texture_id);
+        unsafe {
+            flutter_engine_sys::FlutterEngineUnregisterExternalTexture(
+                self.engine_ptr,
+                self.texture_id,
+            );
+        }
+    }
+}
+
+impl ExternalTexture {
+    pub fn mark_frame_available(&self) {
+        unsafe {
+            flutter_engine_sys::FlutterEngineMarkExternalTextureFrameAvailable(
+                self.engine_ptr,
+                self.texture_id,
+            );
+        }
+    }
 }

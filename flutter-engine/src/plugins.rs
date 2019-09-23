@@ -1,5 +1,24 @@
 //! Register plugin with this registry to listen to flutter MethodChannel calls.
 
+use std::{
+    any::Any,
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::{Arc, RwLock, Weak},
+};
+
+use crate::{
+    channel::{ChannelRegistrar, ChannelRegistry},
+    desktop_window_state::InitData,
+    ffi::PlatformMessage,
+};
+
+pub use self::{
+    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,
+    localization::LocalizationPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
+    settings::SettingsPlugin, system::SystemPlugin, textinput::TextInputPlugin,
+};
+
 pub mod isolate;
 pub mod keyevent;
 pub mod lifecycle;
@@ -10,25 +29,6 @@ pub mod prelude;
 pub mod settings;
 pub mod system;
 pub mod textinput;
-
-pub use self::{
-    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,
-    localization::LocalizationPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
-    settings::SettingsPlugin, system::SystemPlugin, textinput::TextInputPlugin,
-};
-
-use crate::{
-    channel::{ChannelRegistrar, ChannelRegistry},
-    desktop_window_state::InitData,
-    ffi::PlatformMessage,
-};
-
-use std::{
-    any::Any,
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    sync::{Arc, RwLock, Weak},
-};
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,

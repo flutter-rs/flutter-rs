@@ -1,9 +1,9 @@
 //! Plugin to work with locales.
 //! It handles flutter/localization type message.
 
-use super::prelude::*;
-
 use log::debug;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/lifecycle";

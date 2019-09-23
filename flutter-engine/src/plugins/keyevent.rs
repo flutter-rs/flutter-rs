@@ -1,6 +1,6 @@
-use super::prelude::*;
-
 use glfw;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/keyevent";

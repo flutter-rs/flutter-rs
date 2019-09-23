@@ -8,6 +8,7 @@ use std::{
     },
 };
 
+use glfw::Context;
 use log::{debug, info};
 use tokio::prelude::Future;
 use tokio::runtime::{Runtime, TaskExecutor};
@@ -16,14 +17,17 @@ use lazy_static::lazy_static;
 
 use crate::{
     channel::Channel,
+    event_loop::wake_platform_thread,
     ffi::{
         FlutterEngine, FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
     },
     plugins::PluginRegistrar,
+    texture_registry::{ExternalTexture, TextureRegistry},
     utils::WindowUnwrap,
 };
 
-const SCROLL_SPEED: f64 = 50.0; // seems to be about 2.5 lines of text
+// seems to be about 2.5 lines of text
+const SCROLL_SPEED: f64 = 50.0;
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
@@ -35,19 +39,22 @@ const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 const FUNCTION_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Super;
 
 pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
-pub(crate) type MainThreadChannelFn = (&'static str, Box<dyn FnMut(&dyn Channel) + Send>);
+pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
+pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
     WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
     PlatformMessage(MainThreadPlatformMsg),
+    RenderThreadFn(MainThreadRenderThreadFn),
     WindowStateFn(MainTheadWindowStateFn),
 }
 
 pub struct DesktopWindowState {
     window_ref: *mut glfw::Window,
+    res_window_ref: *mut glfw::Window,
     pub window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
     pub runtime: Runtime,
     main_thread_receiver: Receiver<MainThreadCallback>,
@@ -57,6 +64,7 @@ pub struct DesktopWindowState {
     isolate_created: bool,
     defered_events: VecDeque<glfw::WindowEvent>,
     pub plugin_registrar: PluginRegistrar,
+    pub texture_registry: TextureRegistry,
 }
 
 /// Data accessible during initialization and on the main thread.
@@ -84,6 +92,7 @@ impl RuntimeData {
                 let result = f(window);
                 tx.send(result).unwrap();
             })))?;
+        wake_platform_thread();
         Ok(rx.recv()?)
     }
 
@@ -95,12 +104,13 @@ impl RuntimeData {
             .send(MainThreadCallback::WindowFn(Box::new(move |window| {
                 f(window);
             })))?;
+        wake_platform_thread();
         Ok(())
     }
 
     pub fn with_channel<F>(
         &self,
-        channel_name: &'static str,
+        channel_name: String,
         mut f: F,
     ) -> Result<(), crate::error::RuntimeMessageError>
     where
@@ -113,6 +123,7 @@ impl RuntimeData {
                     f(channel);
                 }),
             )))?;
+        wake_platform_thread();
         Ok(())
     }
 
@@ -123,6 +134,24 @@ impl RuntimeData {
     ) -> Result<(), crate::error::RuntimeMessageError> {
         self.main_thread_sender
             .send(MainThreadCallback::PlatformMessage((channel_name, data)))?;
+        wake_platform_thread();
+        Ok(())
+    }
+
+    pub fn post_to_render_thread<F>(
+        &self,
+        mut f: F,
+    ) -> Result<(), crate::error::RuntimeMessageError>
+    where
+        F: FnMut(&mut glfw::Window) + Send + 'static,
+    {
+        self.main_thread_sender
+            .send(MainThreadCallback::RenderThreadFn(Box::new(
+                move |window| {
+                    f(window);
+                },
+            )))?;
+        wake_platform_thread();
         Ok(())
     }
 
@@ -132,7 +161,21 @@ impl RuntimeData {
     {
         self.main_thread_sender
             .send(MainThreadCallback::WindowStateFn(Box::new(f)))?;
+        wake_platform_thread();
         Ok(())
+    }
+
+    pub fn create_external_texture(
+        &self,
+    ) -> Result<Arc<ExternalTexture>, crate::error::RuntimeMessageError> {
+        let (tx, rx) = mpsc::channel();
+        self.main_thread_sender
+            .send(MainThreadCallback::WindowStateFn(Box::new(move |state| {
+                let texture = state.texture_registry.create_texture();
+                tx.send(texture).unwrap();
+            })))?;
+        wake_platform_thread();
+        Ok(rx.recv()?)
     }
 }
 
@@ -140,9 +183,13 @@ impl DesktopWindowState {
     pub fn window(&mut self) -> &mut glfw::Window {
         self.window_ref.window()
     }
+    pub fn resource_window(&mut self) -> &mut glfw::Window {
+        self.res_window_ref.window()
+    }
 
     pub fn new(
         window_ref: *mut glfw::Window,
+        res_window_ref: *mut glfw::Window,
         window_event_receiver: Receiver<(f64, glfw::WindowEvent)>,
         engine: FlutterEngine,
     ) -> Self {
@@ -161,10 +208,10 @@ impl DesktopWindowState {
             engine: engine.clone(),
             runtime_data,
         });
+        let texture_registry = TextureRegistry::new(engine.clone());
 
         // register window and engine globally
         unsafe {
-            use glfw::Context;
             let window: &glfw::Window = &*window_ref;
             let mut guard = ENGINES.lock().unwrap();
             guard.insert(WindowSafe(window.window_ptr()), FlutterEngineSafe(engine));
@@ -172,12 +219,14 @@ impl DesktopWindowState {
 
         Self {
             window_ref,
+            res_window_ref,
             window_event_receiver,
             runtime,
             main_thread_receiver: main_rx,
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             plugin_registrar: PluginRegistrar::new(Arc::downgrade(&init_data)),
+            texture_registry,
             isolate_created: false,
             defered_events: VecDeque::new(),
             init_data,
@@ -517,6 +566,7 @@ impl DesktopWindowState {
     }
 
     pub fn handle_main_thread_callbacks(&mut self) {
+        let mut render_thread_fns = Vec::new();
         let callbacks: Vec<MainThreadCallback> = self.main_thread_receiver.try_iter().collect();
         for cb in callbacks {
             match cb {
@@ -524,7 +574,7 @@ impl DesktopWindowState {
                 MainThreadCallback::ChannelFn((name, mut f)) => {
                     self.plugin_registrar
                         .channel_registry
-                        .with_channel(name, |channel| {
+                        .with_channel(&name, |channel| {
                             f(channel);
                         });
                 }
@@ -536,8 +586,19 @@ impl DesktopWindowState {
                     };
                     self.init_data.engine.send_platform_message(platform_msg);
                 }
+                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
                 MainThreadCallback::WindowStateFn(mut f) => f(self),
             }
+        }
+        if !render_thread_fns.is_empty() {
+            let resource_window = self.res_window_ref;
+            self.init_data.engine.post_render_thread_task(move || {
+                let mut res_window = resource_window;
+                let window = res_window.window();
+                for mut f in render_thread_fns {
+                    f(window);
+                }
+            });
         }
     }
 
@@ -558,22 +619,20 @@ impl DesktopWindowState {
     pub fn set_isolate_created(&mut self) {
         self.isolate_created = true;
 
-        while !self.defered_events.is_empty() {
-            let evt = self.defered_events.pop_front().unwrap();
+        while let Some(evt) = self.defered_events.pop_front() {
             self.handle_glfw_event(evt);
         }
     }
 
-    pub fn shutdown(self) {
+    pub fn shutdown(self) -> Arc<FlutterEngine> {
         let mut guard = ENGINES.lock().unwrap();
         unsafe {
-            use glfw::Context;
             let window: &glfw::Window = &*self.window_ref;
             guard.remove(&WindowSafe(window.window_ptr()));
         }
 
-        self.init_data.engine.shutdown();
         self.runtime.shutdown_now().wait().unwrap();
+        Arc::clone(&self.init_data.engine)
     }
 }
 
@@ -582,11 +641,13 @@ impl DesktopWindowState {
 struct WindowSafe(*mut glfw::ffi::GLFWwindow);
 
 unsafe impl Send for WindowSafe {}
+
 unsafe impl Sync for WindowSafe {}
 
 struct FlutterEngineSafe(Arc<FlutterEngine>);
 
 unsafe impl Send for FlutterEngineSafe {}
+
 unsafe impl Sync for FlutterEngineSafe {}
 
 // This HashMap is used to look up FlutterEngine using glfw Window

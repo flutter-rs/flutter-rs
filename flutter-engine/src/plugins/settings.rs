@@ -1,11 +1,12 @@
 //! Plugin to work with settings.
 //! It handles flutter/settings type message.
 
-use super::prelude::*;
+use std::collections::HashMap;
 
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/settings";

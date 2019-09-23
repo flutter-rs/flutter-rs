@@ -123,8 +123,10 @@ impl WindowUnwrap for *mut glfw::Window {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CStr;
+
+    use super::*;
+
     #[test]
     fn test_cstring_vec() {
         let v = CStringVec::new(&["hello", "world"]);

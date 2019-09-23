@@ -2,20 +2,6 @@
 //! It contains two implementations StandardMethodChannel using binary encoding
 //! and JsonMethodChannel using json encoding.
 
-pub use self::{
-    basic_message_channel::BasicMessageChannel,
-    event_channel::EventChannel,
-    json_method_channel::JsonMethodChannel,
-    registry::{ChannelRegistrar, ChannelRegistry},
-    standard_method_channel::StandardMethodChannel,
-};
-use crate::{
-    codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
-    desktop_window_state::{InitData, RuntimeData},
-    error::{MessageError, MethodCallError},
-    ffi::{PlatformMessage, PlatformMessageResponseHandle},
-};
-
 use std::{
     borrow::Cow,
     sync::{Arc, RwLock, Weak},
@@ -23,6 +9,21 @@ use std::{
 
 use log::{error, trace};
 use tokio::prelude::Future;
+
+use crate::{
+    codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
+    desktop_window_state::{InitData, RuntimeData},
+    error::{MessageError, MethodCallError},
+    ffi::{PlatformMessage, PlatformMessageResponseHandle},
+};
+
+pub use self::{
+    basic_message_channel::BasicMessageChannel,
+    event_channel::EventChannel,
+    json_method_channel::JsonMethodChannel,
+    registry::{ChannelRegistrar, ChannelRegistry},
+    standard_method_channel::StandardMethodChannel,
+};
 
 #[macro_use]
 mod macros;
@@ -34,14 +35,14 @@ mod registry;
 mod standard_method_channel;
 
 trait ChannelImpl {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
 }
 
 pub trait Channel {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn init_data(&self) -> Option<Arc<InitData>>;
     fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
@@ -92,7 +93,7 @@ pub trait MethodChannel: Channel {
             if let Some(init_data) = self.init_data() {
                 let runtime_data = (*init_data.runtime_data).clone();
                 let call = self.codec().decode_method_call(msg.message).unwrap();
-                let channel = self.name();
+                let channel = self.name().to_owned();
                 trace!(
                     "on channel {}, got method call {} with args {:?}",
                     channel,
@@ -114,13 +115,13 @@ pub trait MethodChannel: Channel {
                             Ok(value) => MethodCallResult::Ok(value),
                             Err(error) => {
                                 error!(
-                                target: handler
-                                    .log_target()
-                                    .unwrap_or(plugin_name),
-                                "error in method call {}#{}: {}",
-                                channel,
-                                method,
-                                error);
+                                    target: handler
+                                        .log_target()
+                                        .unwrap_or(plugin_name),
+                                    "error in method call {}#{}: {}",
+                                    channel,
+                                    method,
+                                    error);
                                 error.into()
                             }
                         };
@@ -175,7 +176,7 @@ pub trait MessageChannel: Channel {
             if let Some(init_data) = self.init_data() {
                 let runtime_data = (*init_data.runtime_data).clone();
                 let message = self.codec().decode_message(msg.message).unwrap();
-                let channel = self.name();
+                let channel = self.name().to_owned();
                 trace!("on channel {}, got message {:?}", channel, message);
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();

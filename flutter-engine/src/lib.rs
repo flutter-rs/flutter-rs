@@ -1,9 +1,14 @@
-use std::{cell::RefCell, ffi::CString};
+use std::{
+    cell::RefCell,
+    ffi::CString,
+    sync::{mpsc::Receiver, Arc},
+};
 
 pub use glfw::{Context, Window};
 use log::error;
 
 pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
+use crate::event_loop::EventLoop;
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
@@ -15,9 +20,11 @@ pub mod codec;
 mod desktop_window_state;
 mod draw;
 pub mod error;
+mod event_loop;
 mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
+pub mod texture_registry;
 mod utils;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -60,9 +67,12 @@ pub struct WindowArgs<'a> {
     pub bg_color: (u8, u8, u8),
 }
 
+pub type WindowEventHandler = dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool;
+pub type PerFrameCallback = dyn FnMut(&mut DesktopWindowState);
+
 enum DesktopUserData {
     None,
-    Window(*mut glfw::Window),
+    Window(*mut glfw::Window, *mut glfw::Window),
     // boxing here since `DesktopWindowState` has a big size difference
     // that may be expansive in copy/clone/move, also
     // enum size is bounded by the largest variant. Having a large variant
@@ -74,8 +84,17 @@ impl DesktopUserData {
     pub fn get_window(&mut self) -> Option<&mut glfw::Window> {
         unsafe {
             match self {
-                DesktopUserData::Window(window) => Some(&mut **window),
+                DesktopUserData::Window(window, _) => Some(&mut **window),
                 DesktopUserData::WindowState(window_state) => Some(window_state.window()),
+                DesktopUserData::None => None,
+            }
+        }
+    }
+    pub fn get_resource_window(&mut self) -> Option<&mut glfw::Window> {
+        unsafe {
+            match self {
+                DesktopUserData::Window(_, window) => Some(&mut **window),
+                DesktopUserData::WindowState(window_state) => Some(window_state.resource_window()),
                 DesktopUserData::None => None,
             }
         }
@@ -85,7 +104,10 @@ impl DesktopUserData {
 pub struct FlutterDesktop {
     glfw: glfw::Glfw,
     window: Option<glfw::Window>,
+    resource_window: Option<glfw::Window>,
+    resource_window_receiver: Option<Receiver<(f64, glfw::WindowEvent)>>,
     user_data: Box<RefCell<DesktopUserData>>,
+    event_loop: Box<RefCell<EventLoop>>,
 }
 
 pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
@@ -96,7 +118,10 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
     .map(|glfw| FlutterDesktop {
         glfw,
         window: None,
+        resource_window: None,
+        resource_window_receiver: None,
         user_data: Box::new(RefCell::new(DesktopUserData::None)),
+        event_loop: Box::new(RefCell::new(EventLoop::new(glfw))),
     })
 }
 
@@ -148,15 +173,31 @@ impl FlutterDesktop {
             }
         };
 
+        // create invisible resource window
+        self.glfw.window_hint(glfw::WindowHint::Decorated(false));
+        self.glfw.window_hint(glfw::WindowHint::Visible(false));
+        let (res_window, res_window_recv) = window
+            .create_shared(1, 1, "", glfw::WindowMode::Windowed)
+            .ok_or(Error::WindowCreationFailed)?;
+        self.glfw.default_window_hints();
+
         self.window = Some(window);
+        self.resource_window = Some(res_window);
+        self.resource_window_receiver = Some(res_window_recv);
         let window_ref = if let Some(window) = &mut self.window {
             window as *mut glfw::Window
         } else {
             panic!("The window has vanished");
         };
+        let res_window_ref = if let Some(res_window) = &mut self.resource_window {
+            res_window as *mut glfw::Window
+        } else {
+            panic!("The window has vanished");
+        };
 
         // as FlutterEngineRun already calls the make_current callback, user_data must be set now
-        self.user_data.replace(DesktopUserData::Window(window_ref));
+        self.user_data
+            .replace(DesktopUserData::Window(window_ref, res_window_ref));
 
         // draw initial screen to avoid blinking
         if let Some(window) = self.user_data.borrow_mut().get_window() {
@@ -170,7 +211,7 @@ impl FlutterDesktop {
         // now create the full desktop state
         self.user_data
             .replace(DesktopUserData::WindowState(Box::new(
-                DesktopWindowState::new(window_ref, receiver, engine),
+                DesktopWindowState::new(window_ref, res_window_ref, receiver, engine),
             )));
 
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
@@ -225,9 +266,25 @@ impl FlutterDesktop {
                     fbo_reset_after_present: false,
                     surface_transformation: None,
                     gl_proc_resolver: Some(flutter_callbacks::gl_proc_resolver),
-                    gl_external_texture_frame_callback: None,
+                    gl_external_texture_frame_callback: Some(
+                        flutter_callbacks::gl_external_texture_frame,
+                    ),
                 },
             },
+        };
+        let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
+            user_data: &mut *self.event_loop.borrow_mut() as *mut EventLoop
+                as *mut std::ffi::c_void,
+            runs_task_on_current_thread_callback: Some(
+                flutter_callbacks::runs_task_on_current_thread,
+            ),
+            post_task_callback: Some(flutter_callbacks::post_task),
+        };
+        let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
+            platform_task_runner: &platform_task_runner
+                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
@@ -253,7 +310,8 @@ impl FlutterDesktop {
             is_persistent_cache_read_only: false,
             vsync_callback: None,
             custom_dart_entrypoint: std::ptr::null(),
-            custom_task_runners: std::ptr::null(),
+            custom_task_runners: &custom_task_runners
+                as *const flutter_engine_sys::FlutterCustomTaskRunners,
         };
 
         unsafe {
@@ -285,11 +343,9 @@ impl FlutterDesktop {
     }
 
     pub fn run_window_loop(
-        mut self,
-        mut custom_handler: Option<
-            &mut dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool,
-        >,
-        mut frame_callback: Option<&mut dyn FnMut(&mut DesktopWindowState)>,
+        self,
+        mut custom_handler: Option<&mut WindowEventHandler>,
+        mut frame_callback: Option<&mut PerFrameCallback>,
     ) {
         if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
             window_state.plugin_registrar.with_plugin(
@@ -297,9 +353,9 @@ impl FlutterDesktop {
                     localization.send_locale(locale_config::Locale::current());
                 },
             );
+            let engine = Arc::clone(&window_state.init_data.engine);
             while !window_state.window().should_close() {
-                self.glfw.poll_events();
-                self.glfw.wait_events_timeout(1.0 / 60.0);
+                self.event_loop.borrow_mut().wait_for_events(&engine);
 
                 let events: Vec<(f64, glfw::WindowEvent)> =
                     glfw::flush_messages(&window_state.window_event_receiver).collect();
@@ -319,10 +375,6 @@ impl FlutterDesktop {
                 if let Some(callback) = &mut frame_callback {
                     callback(window_state);
                 }
-
-                unsafe {
-                    flutter_engine_sys::__FlutterEngineFlushPendingTasksNow();
-                }
             }
         }
         self.shutdown();
@@ -330,14 +382,19 @@ impl FlutterDesktop {
 
     fn shutdown(self) {
         if let DesktopUserData::WindowState(window_state) = self.user_data.into_inner() {
-            window_state.shutdown();
+            // The window state itself must be dropped completely to make sure that all plugins and textures
+            // are cleaned up. Only then may the engine itself be shutdown.
+            let engine = window_state.shutdown();
+            // The window state is consumed by `shutdown`, so by now it has been dropped. We can shut down the
+            // engine itself now.
+            engine.shutdown();
         }
     }
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn glfw_error_callback(_error: glfw::Error, description: String, _: &()) {
-    error!("GLFW error: {}", description);
+fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
+    error!("GLFW error ({}): {}", error, description);
 }
 
 extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {

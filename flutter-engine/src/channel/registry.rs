@@ -29,6 +29,10 @@ impl ChannelRegistry {
         }
     }
 
+    pub fn remove_channel(&mut self, channel_name: &str) -> Option<Arc<dyn Channel>> {
+        self.channels.remove(channel_name)
+    }
+
     pub fn with_channel_registrar<F>(&mut self, plugin_name: &'static str, f: F)
     where
         F: FnOnce(&mut ChannelRegistrar),
@@ -41,7 +45,7 @@ impl ChannelRegistry {
         f(&mut registrar);
     }
 
-    pub fn with_channel<F>(&self, channel_name: &'static str, mut f: F)
+    pub fn with_channel<F>(&self, channel_name: &str, mut f: F)
     where
         F: FnMut(&dyn Channel),
     {

@@ -1,8 +1,9 @@
-use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
-
+use std::convert::AsMut;
 use std::{collections::HashMap, slice};
 
 use log::error;
+
+use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
 
 const VALUE_NULL: u8 = 0;
 const VALUE_TRUE: u8 = 1;
@@ -418,8 +419,6 @@ impl Writer {
         }
     }
 }
-
-use std::convert::AsMut;
 
 fn clone_into_array<A, T>(slice: &[T]) -> A
 where

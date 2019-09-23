@@ -9,7 +9,7 @@ use crate::{
 use log::error;
 
 pub struct BasicMessageChannel {
-    name: &'static str,
+    name: String,
     init_data: Weak<InitData>,
     message_handler: Weak<RwLock<dyn MessageHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
@@ -17,13 +17,13 @@ pub struct BasicMessageChannel {
 }
 
 impl BasicMessageChannel {
-    pub fn new(
-        name: &'static str,
+    pub fn new<N: AsRef<str>>(
+        name: N,
         message_handler: Weak<RwLock<dyn MessageHandler + Send + Sync>>,
         codec: &'static dyn MessageCodec,
     ) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_owned(),
             init_data: Weak::new(),
             message_handler,
             plugin_name: None,
@@ -37,8 +37,8 @@ impl BasicMessageChannel {
 }
 
 impl ChannelImpl for BasicMessageChannel {
-    fn name(&self) -> &'static str {
-        &self.name
+    fn name(&self) -> &str {
+        self.name.as_ref()
     }
 
     fn init_data(&self) -> Option<Arc<InitData>> {

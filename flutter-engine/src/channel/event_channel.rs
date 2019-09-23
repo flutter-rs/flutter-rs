@@ -1,5 +1,7 @@
 use std::sync::{Arc, RwLock, Weak};
 
+use log::error;
+
 use crate::{
     channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel},
     codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
@@ -7,10 +9,8 @@ use crate::{
     error::MethodCallError,
 };
 
-use log::error;
-
 pub struct EventChannel {
-    name: &'static str,
+    name: String,
     init_data: Weak<InitData>,
     method_handler: Arc<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
@@ -21,9 +21,12 @@ struct EventChannelMethodCallHandler {
 }
 
 impl EventChannel {
-    pub fn new(name: &'static str, handler: Weak<RwLock<dyn EventHandler + Send + Sync>>) -> Self {
+    pub fn new<N: AsRef<str>>(
+        name: N,
+        handler: Weak<RwLock<dyn EventHandler + Send + Sync>>,
+    ) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_owned(),
             init_data: Weak::new(),
             method_handler: Arc::new(RwLock::new(EventChannelMethodCallHandler::new(handler))),
             plugin_name: None,
@@ -32,8 +35,8 @@ impl EventChannel {
 }
 
 impl ChannelImpl for EventChannel {
-    fn name(&self) -> &'static str {
-        &self.name
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 
     fn init_data(&self) -> Option<Arc<InitData>> {

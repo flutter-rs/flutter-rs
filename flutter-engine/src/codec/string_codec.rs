@@ -1,6 +1,6 @@
-use super::{MessageCodec, Value};
-
 use log::error;
+
+use super::{MessageCodec, Value};
 
 pub struct StringCodec;
 

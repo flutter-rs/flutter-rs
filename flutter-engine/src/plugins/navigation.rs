@@ -1,9 +1,9 @@
 //! This plugin is used for navigation in an app.
 //! It handles flutter/navigation type messages.
 
-use super::prelude::*;
-
 use log::debug;
+
+use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/navigation";

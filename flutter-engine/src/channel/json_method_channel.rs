@@ -1,27 +1,27 @@
 use std::sync::{Arc, RwLock, Weak};
 
+use log::error;
+
 use crate::{
     channel::{ChannelImpl, MethodCallHandler, MethodChannel},
     codec::{json_codec::CODEC, MethodCodec},
     desktop_window_state::InitData,
 };
 
-use log::error;
-
 pub struct JsonMethodChannel {
-    name: &'static str,
+    name: String,
     init_data: Weak<InitData>,
     method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
 
 impl JsonMethodChannel {
-    pub fn new(
-        name: &'static str,
+    pub fn new<N: AsRef<str>>(
+        name: N,
         method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     ) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_owned(),
             init_data: Weak::new(),
             method_handler,
             plugin_name: None,
@@ -37,8 +37,8 @@ impl JsonMethodChannel {
 }
 
 impl ChannelImpl for JsonMethodChannel {
-    fn name(&self) -> &'static str {
-        &self.name
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 
     fn init_data(&self) -> Option<Arc<InitData>> {

@@ -63,6 +63,7 @@ pub struct DesktopWindowState {
     window_pixels_per_screen_coordinate: f64,
     isolate_created: bool,
     defered_events: VecDeque<glfw::WindowEvent>,
+    mouse_tracker: HashMap<glfw::MouseButton, glfw::Action>,
     pub plugin_registrar: PluginRegistrar,
     pub texture_registry: TextureRegistry,
 }
@@ -229,6 +230,7 @@ impl DesktopWindowState {
             texture_registry,
             isolate_created: false,
             defered_events: VecDeque::new(),
+            mouse_tracker: HashMap::new(),
             init_data,
         }
     }
@@ -319,8 +321,8 @@ impl DesktopWindowState {
                 if !self.pointer_currently_added {
                     return;
                 }
-                let phase = if self.window().get_mouse_button(glfw::MouseButtonLeft)
-                    == glfw::Action::Press
+                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft).unwrap_or(&glfw::Action::Release)
+                    == &glfw::Action::Press
                 {
                     FlutterPointerPhase::Move
                 } else {
@@ -339,6 +341,7 @@ impl DesktopWindowState {
                 glfw::Action::Press,
                 _modifiers,
             ) => {
+                self.mouse_tracker.insert(glfw::MouseButton::Button4, glfw::Action::Press);
                 self.plugin_registrar.with_plugin(
                     |navigation: &crate::plugins::NavigationPlugin| {
                         navigation.pop_route();
@@ -346,11 +349,17 @@ impl DesktopWindowState {
                 );
             }
             glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
+                // Since Events are delayed by wait_events_timeout,
+                // it's not accurate to use get_mouse_button API to fetch current mouse state
+                // Here we save mouse states, and query it in this HashMap
+                self.mouse_tracker.insert(buttons, action);
+
                 // fix error when keeping primary button down
                 // and alt+tab away from the window and release
                 if !self.pointer_currently_added {
                     return;
                 }
+
                 let (x, y) = self.window().get_cursor_pos();
                 let phase = if action == glfw::Action::Press {
                     FlutterPointerPhase::Down
@@ -375,8 +384,9 @@ impl DesktopWindowState {
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.window().get_cursor_pos();
-                let phase = if self.window().get_mouse_button(glfw::MouseButtonLeft)
-                    == glfw::Action::Press
+                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft)
+                    .unwrap_or(&glfw::Action::Release)
+                    == &glfw::Action::Press
                 {
                     FlutterPointerPhase::Move
                 } else {

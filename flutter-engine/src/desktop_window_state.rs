@@ -111,7 +111,7 @@ impl RuntimeData {
 
     pub fn with_channel<F>(
         &self,
-        channel_name: String,
+        channel_name: &str,
         mut f: F,
     ) -> Result<(), crate::error::RuntimeMessageError>
     where
@@ -119,7 +119,7 @@ impl RuntimeData {
     {
         self.main_thread_sender
             .send(MainThreadCallback::ChannelFn((
-                channel_name,
+                channel_name.to_string(),
                 Box::new(move |channel| {
                     f(channel);
                 }),

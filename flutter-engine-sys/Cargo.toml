@@ -1,7 +1,7 @@
 [package]
 name = "flutter-engine-sys"
 description = "flutter engine sys crate"
-version = "0.3.4"
+version = "0.3.5"
 authors = ["juju <gliheng@gmail.com>"]
 keywords = ["flutter", "GUI"]
 license = "MIT"
@@ -10,4 +10,4 @@ build = "build.rs"
 [build-dependencies]
 dirs = "2.0.2"
 bindgen = "^0.50"
-flutter-download = { version = "0.3.0", path = "../flutter-download" }
+flutter-download = { version = "0.3.5", path = "../flutter-download" }

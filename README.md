@@ -51,7 +51,7 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [CHANGELOG](CHANGELOG.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
-[flutter-badge]: https://img.shields.io/badge/flutter-v1.7.8-blueviolet.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v1.9.1-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [appveyor-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
 [appveyor-url]: https://ci.appveyor.com/project/gliheng/flutter-rs

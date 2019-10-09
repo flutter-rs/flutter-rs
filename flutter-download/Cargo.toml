@@ -1,7 +1,7 @@
 [package]
 name = "flutter-download"
 description = "Download flutter engine for building"
-version = "0.3.0"
+version = "0.3.5"
 authors = ["juju <gliheng@gmail.com>"]
 keywords = ["flutter"]
 license = "MIT"

@@ -16,9 +16,10 @@ Build flutter desktop app in dart & rust.
 - Install [Rust@^1.35.0](https://www.rust-lang.org)
 - Python3
 - LLVM: required by rust-bindgen
-- Install libglfw:
+- Install additional requirements:
     - Mac: `brew install glfw`
     - linux: `apt install libglfw3`
+    - ubuntu: `apt install libglfw3 libglfw3-dev libxinerama-dev libxcursor-dev libxi-dev ; ln -s /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/libGL.so`
     - Windows: cmake is required to build glfw on windows
 - Install [flutter sdk](https://flutter.io)
 - Set flutter engine version. You can set this using any of the following methods.

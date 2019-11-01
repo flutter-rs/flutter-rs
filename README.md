@@ -33,6 +33,8 @@ Build flutter desktop app in dart & rust.
 
 - Run `scripts/run.py` to get a running example with flutter cli debugger attached.
 
+- Run `scripts/run.py --vscode` then run `Flutter-rs Attach` in vscode debug panel to connect vscode dart debugger.
+
 - Run `scripts/build.py --release nsis|mac|dmg|snap` to build distribution format
 
 # Features:

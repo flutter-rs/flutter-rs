@@ -10,7 +10,7 @@
 
 Build flutter desktop app in dart & rust.
 
-![demo ui](https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png "Flutter app demo screenshot")
+![demo ui](https://raw.githubusercontent.com/flutter-rs/flutter-rs/master/www/images/demo_ui.png "Flutter app demo screenshot")
 
 # Install
 - Install [Rust@^1.35.0](https://www.rust-lang.org)
@@ -52,7 +52,7 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 # ChangeLog
 [CHANGELOG](CHANGELOG.md).
 
-[flutter-rs logo]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/logo.svg
+[flutter-rs logo]: https://raw.githubusercontent.com/flutter-rs/flutter-rs/master/www/images/logo.svg
 [flutter-badge]: https://img.shields.io/badge/flutter-v1.9.1-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [appveyor-badge]: https://ci.appveyor.com/api/projects/status/254owoouxk7t4w02?svg=true
@@ -65,5 +65,5 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [crates-url]: https://crates.io/crates/flutter-engine
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: LICENSE-MIT
-[demo-ui]: https://raw.githubusercontent.com/gliheng/flutter-rs/master/www/images/demo_ui.png
+[demo-ui]: https://raw.githubusercontent.com/flutter-rs/flutter-rs/master/www/images/demo_ui.png
 

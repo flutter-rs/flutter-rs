@@ -29,13 +29,13 @@ Build flutter desktop app in dart & rust.
 
 # Run flutter-app-demo example
 
-- Run `scripts/init.py` to download flutter engine library and required python build dependencies.
+- Install [flutter-rs devtools](https://github.com/flutter-rs/psi-cli) with `pip install psi-cli`
 
-- Run `scripts/run.py` to get a running example with flutter cli debugger attached.
+- Run `psi run` to get a running example with flutter cli debugger attached.
 
-- Run `scripts/run.py --vscode` then run `Flutter-rs Attach` in vscode debug panel to connect vscode dart debugger.
+- Run `psi run --vscode` then run `Flutter-rs` job in vscode debug panel to connect vscode.
 
-- Run `scripts/build.py --release nsis|mac|dmg|snap` to build distribution format
+- Run `psi build --release nsis|mac|dmg|snap` to build distribution format
 
 # Features:
 - Support Hot reload

@@ -396,7 +396,6 @@ dependencies = [
 name = "flutter-engine-codec"
 version = "0.3.5"
 dependencies = [
- "flutter-engine-sys 0.3.5",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.100 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",

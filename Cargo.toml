@@ -2,6 +2,7 @@
 members = [
     "flutter-engine",
     "flutter-engine-sys",
+    "flutter-engine-codec",
     "flutter-download",
     "flutter-plugins",
 ]

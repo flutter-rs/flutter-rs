@@ -2,9 +2,10 @@ use std::sync::{Arc, RwLock, Weak};
 
 use log::error;
 
+use flutter_engine_codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value};
+
 use crate::{
     channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel},
-    codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
     desktop_window_state::{InitData, RuntimeData},
     error::MethodCallError,
 };

@@ -10,8 +10,9 @@ use std::{
 use log::{error, trace};
 use tokio::prelude::Future;
 
+use flutter_engine_codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
+
 use crate::{
-    codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
     desktop_window_state::{InitData, RuntimeData},
     error::{MessageError, MethodCallError},
     ffi::{PlatformMessage, PlatformMessageResponseHandle},

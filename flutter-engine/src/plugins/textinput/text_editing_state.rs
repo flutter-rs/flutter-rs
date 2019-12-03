@@ -2,10 +2,9 @@ use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    codec::{value::from_value, Value},
-    utils::{OwnedStringUtils, StringUtils},
-};
+use flutter_engine_codec::{value::from_value, Value};
+
+use crate::utils::{OwnedStringUtils, StringUtils};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]

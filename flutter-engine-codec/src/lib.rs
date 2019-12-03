@@ -2,11 +2,15 @@ use serde::{Deserialize, Serialize};
 
 pub use self::value::Value;
 
+#[macro_use]
+pub mod macros;
+
 pub mod json_codec;
 pub mod standard_codec;
 pub mod string_codec;
 #[macro_use]
 pub mod value;
+pub mod error;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MethodCall {

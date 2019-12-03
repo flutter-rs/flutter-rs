@@ -1,8 +1,9 @@
 use std::sync::{Arc, RwLock, Weak};
 
+use flutter_engine_codec::MessageCodec;
+
 use crate::{
     channel::{ChannelImpl, MessageChannel, MessageHandler},
-    codec::MessageCodec,
     desktop_window_state::InitData,
 };
 

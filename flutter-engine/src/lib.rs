@@ -12,11 +12,7 @@ use crate::event_loop::EventLoop;
 use crate::ffi::FlutterEngine;
 pub use crate::ffi::PlatformMessage;
 
-#[macro_use]
-mod macros;
-
 pub mod channel;
-pub mod codec;
 mod desktop_window_state;
 mod draw;
 pub mod error;

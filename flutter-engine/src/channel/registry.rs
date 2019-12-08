@@ -6,27 +6,31 @@ use std::{
 
 use log::{trace, warn};
 
-use crate::{desktop_window_state::InitData, ffi::PlatformMessage};
+use crate::{PlatformMessage, FlutterEngineWeakRef};
 
 use super::Channel;
 
 pub struct ChannelRegistry {
     channels: HashMap<String, Arc<dyn Channel>>,
-    init_data: Weak<InitData>,
+    engine: FlutterEngineWeakRef,
 }
 
 pub struct ChannelRegistrar<'a> {
     plugin_name: &'static str,
-    init_data: &'a Weak<InitData>,
+    engine: &'a FlutterEngineWeakRef,
     channels: &'a mut HashMap<String, Arc<dyn Channel>>,
 }
 
 impl ChannelRegistry {
-    pub fn new(init_data: Weak<InitData>) -> Self {
+    pub fn new() -> Self {
         Self {
             channels: HashMap::new(),
-            init_data,
+            engine: Default::default()
         }
+    }
+
+    pub fn init(&mut self, engine: FlutterEngineWeakRef) {
+        self.engine = engine;
     }
 
     pub fn remove_channel(&mut self, channel_name: &str) -> Option<Arc<dyn Channel>> {
@@ -39,7 +43,7 @@ impl ChannelRegistry {
     {
         let mut registrar = ChannelRegistrar {
             plugin_name,
-            init_data: &self.init_data,
+            engine: &self.engine,
             channels: &mut self.channels,
         };
         f(&mut registrar);
@@ -64,10 +68,9 @@ impl ChannelRegistry {
                 &message.channel
             );
             if let Some(handle) = message.response_handle.take() {
-                self.init_data
+                self.engine
                     .upgrade()
                     .unwrap()
-                    .engine
                     .send_platform_message_response(handle, &[]);
             }
         }
@@ -79,7 +82,7 @@ impl<'a> ChannelRegistrar<'a> {
     where
         C: Channel + 'static,
     {
-        channel.init(Weak::clone(&self.init_data), self.plugin_name);
+        channel.init(self.engine.clone(), self.plugin_name);
         let name = channel.name().to_owned();
         let arc = Arc::new(channel);
         let weak = Arc::downgrade(&arc);

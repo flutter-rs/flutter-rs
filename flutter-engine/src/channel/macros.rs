@@ -5,19 +5,19 @@ macro_rules! method_channel {
                 ChannelImpl::name(self)
             }
 
-            fn init_data(&self) -> Option<Arc<InitData>> {
-                ChannelImpl::init_data(self)
+            fn engine(&self) -> Option<FlutterEngine> {
+                ChannelImpl::engine(self)
             }
 
-            fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str) {
-                ChannelImpl::init(self, runtime_data, plugin_name)
+            fn init(&mut self, engine: FlutterEngineWeakRef, plugin_name: &'static str) {
+                ChannelImpl::init(self, engine, plugin_name)
             }
 
             fn plugin_name(&self) -> &'static str {
                 ChannelImpl::plugin_name(self)
             }
 
-            fn handle_platform_message(&self, msg: $crate::ffi::PlatformMessage) {
+            fn handle_platform_message(&self, msg: $crate::PlatformMessage) {
                 $crate::channel::MethodChannel::handle_platform_message(self, msg)
             }
 
@@ -39,19 +39,19 @@ macro_rules! message_channel {
                 ChannelImpl::name(self)
             }
 
-            fn init_data(&self) -> Option<Arc<InitData>> {
-                ChannelImpl::init_data(self)
+            fn engine(&self) -> Option<FlutterEngine> {
+                ChannelImpl::engine(self)
             }
 
-            fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str) {
-                ChannelImpl::init(self, runtime_data, plugin_name)
+            fn init(&mut self, engine: FlutterEngineWeakRef, plugin_name: &'static str) {
+                ChannelImpl::init(self, engine, plugin_name)
             }
 
             fn plugin_name(&self) -> &'static str {
                 ChannelImpl::plugin_name(self)
             }
 
-            fn handle_platform_message(&self, msg: $crate::ffi::PlatformMessage) {
+            fn handle_platform_message(&self, msg: $crate::PlatformMessage) {
                 $crate::channel::MessageChannel::handle_platform_message(self, msg)
             }
 

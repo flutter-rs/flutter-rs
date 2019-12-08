@@ -4,31 +4,27 @@ use std::{
     any::Any,
     collections::HashMap,
     ops::{Deref, DerefMut},
-    sync::{Arc, RwLock, Weak},
+    sync::{Arc, RwLock},
 };
 
-use crate::{
-    channel::{ChannelRegistrar, ChannelRegistry},
-    desktop_window_state::InitData,
-    ffi::PlatformMessage,
-};
+use crate::{channel::{ChannelRegistrar, ChannelRegistry}, PlatformMessage, FlutterEngineWeakRef};
 
-pub use self::{
-    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,
-    localization::LocalizationPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
-    settings::SettingsPlugin, system::SystemPlugin, textinput::TextInputPlugin,
-};
+//pub use self::{
+//    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,
+//    localization::LocalizationPlugin, navigation::NavigationPlugin, platform::PlatformPlugin,
+//    settings::SettingsPlugin, system::SystemPlugin, textinput::TextInputPlugin,
+//};
 
-pub mod isolate;
-pub mod keyevent;
-pub mod lifecycle;
-pub mod localization;
-pub mod navigation;
-pub mod platform;
-pub mod prelude;
-pub mod settings;
-pub mod system;
-pub mod textinput;
+//pub mod isolate;
+//pub mod keyevent;
+//pub mod lifecycle;
+//pub mod localization;
+//pub mod navigation;
+//pub mod platform;
+//pub mod prelude;
+//pub mod settings;
+//pub mod system;
+//pub mod textinput;
 
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
@@ -36,24 +32,28 @@ pub struct PluginRegistrar {
 }
 
 impl PluginRegistrar {
-    pub fn new(init_data: Weak<InitData>) -> Self {
+    pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),
-            channel_registry: ChannelRegistry::new(init_data),
+            channel_registry: ChannelRegistry::new(),
         }
     }
 
-    pub fn add_system_plugins(&mut self) {
-        self.add_plugin(platform::PlatformPlugin::default())
-            .add_plugin(textinput::TextInputPlugin::default())
-            .add_plugin(navigation::NavigationPlugin::default())
-            .add_plugin(keyevent::KeyEventPlugin::default())
-            .add_plugin(localization::LocalizationPlugin::default())
-            .add_plugin(system::SystemPlugin::default())
-            .add_plugin(lifecycle::LifecyclePlugin::default())
-            .add_plugin(settings::SettingsPlugin::default())
-            .add_plugin(isolate::IsolatePlugin::default());
+    pub fn init(&mut self, engine: FlutterEngineWeakRef) {
+        self.channel_registry.init(engine);
     }
+
+//    pub fn add_system_plugins(&mut self) {
+//        self.add_plugin(platform::PlatformPlugin::default())
+//            .add_plugin(textinput::TextInputPlugin::default())
+//            .add_plugin(navigation::NavigationPlugin::default())
+//            .add_plugin(keyevent::KeyEventPlugin::default())
+//            .add_plugin(localization::LocalizationPlugin::default())
+//            .add_plugin(system::SystemPlugin::default())
+//            .add_plugin(lifecycle::LifecyclePlugin::default())
+//            .add_plugin(settings::SettingsPlugin::default())
+//            .add_plugin(isolate::IsolatePlugin::default());
+//    }
 
     pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self
     where

@@ -39,7 +39,7 @@ pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 //pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 //pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
-pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&FlutterEngine) + Send>;
+pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 //pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
@@ -300,6 +300,14 @@ impl FlutterEngine {
         }
     }
 
+    pub fn run_on_render_thread<F>(&self, f: F) where F: FnOnce(&FlutterEngine) -> () + 'static + Send {
+        if self.is_platform_thread() {
+            f(self);
+        } else {
+            self.post_platform_callback(MainThreadCallback::RenderThreadFn(Box::new(f)));
+        }
+    }
+
     pub(crate) fn run_in_background<F>(&self, func: F) where F : FnOnce() + 'static {
         if let Some(handler) = self.inner.handler.upgrade() {
             handler.run_in_background(Box::new(func));
@@ -433,7 +441,7 @@ impl FlutterEngine {
         if !render_thread_fns.is_empty() {
             let engine_copy = self.clone();
             self.post_render_thread_task(move || {
-                for mut f in render_thread_fns {
+                for f in render_thread_fns {
                     f(&engine_copy);
                 }
             });
@@ -448,7 +456,7 @@ impl FlutterEngine {
         }
     }
 
-    pub fn post_render_thread_task<F>(&self, f: F)
+    fn post_render_thread_task<F>(&self, f: F)
         where
             F: FnOnce() -> () + 'static,
     {

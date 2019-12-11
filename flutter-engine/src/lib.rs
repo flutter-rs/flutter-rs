@@ -26,7 +26,7 @@ use flutter_engine_sys::FlutterTask;
 use std::sync::{Weak, mpsc};
 use std::os::raw::{c_char, c_void};
 use parking_lot::RwLock;
-use crate::plugins::PluginRegistrar;
+use crate::plugins::{PluginRegistrar, Plugin};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
 use std::time::Instant;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -59,128 +59,6 @@ struct FlutterEngineInner {
     platform_runner_handler: Arc<PlatformRunnerHandler>,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
-}
-
-impl FlutterEngineInner {
-    #[inline]
-    fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
-        self.engine_ptr.load(Ordering::Relaxed)
-    }
-
-    pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
-        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
-            width: width as usize,
-            height: height as usize,
-            pixel_ratio,
-        };
-        unsafe {
-            flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event);
-        }
-    }
-
-    pub fn send_pointer_event(
-        &self,
-        phase: FlutterPointerPhase,
-        x: f64,
-        y: f64,
-        signal_kind: FlutterPointerSignalKind,
-        scroll_delta_x: f64,
-        scroll_delta_y: f64,
-        buttons: FlutterPointerMouseButtons,
-    ) {
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
-        let event = flutter_engine_sys::FlutterPointerEvent {
-            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
-            timestamp: timestamp.as_micros() as usize,
-            phase: phase.into(),
-            x,
-            y,
-            device: 0,
-            signal_kind: signal_kind.into(),
-            scroll_delta_x,
-            scroll_delta_y,
-            device_kind:
-            flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
-            buttons: buttons as i64,
-        };
-        unsafe {
-            flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr(), &event, 1);
-        }
-    }
-
-    pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
-        trace!("Sending message on channel {}", message.channel);
-        unsafe {
-            flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr(), &message.into());
-        }
-    }
-
-    pub(crate) fn send_platform_message_response(
-        &self,
-        response_handle: PlatformMessageResponseHandle,
-        bytes: &[u8],
-    ) {
-        trace!("Sending message response");
-        unsafe {
-            flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
-                self.engine_ptr(),
-                response_handle.into(),
-                bytes.as_ptr(),
-                bytes.len(),
-            );
-        }
-    }
-
-    pub fn shutdown(&self) {
-        unsafe {
-            flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr());
-        }
-    }
-
-    pub(crate) fn run_task(&self, task: &FlutterTask) {
-        unsafe {
-            flutter_engine_sys::FlutterEngineRunTask(self.engine_ptr(), task as *const FlutterTask);
-        }
-    }
-
-    pub fn post_render_thread_task<F>(&self, f: F)
-        where
-            F: FnOnce() -> () + 'static,
-    {
-        unsafe {
-            let cbk = CallbackBox { cbk: Box::new(f) };
-            let b = Box::new(cbk);
-            let ptr = Box::into_raw(b);
-            flutter_engine_sys::FlutterEnginePostRenderThreadTask(
-                self.engine_ptr(),
-                Some(render_thread_task),
-                ptr as *mut libc::c_void,
-            );
-        }
-
-        struct CallbackBox {
-            pub cbk: Box<dyn FnOnce()>,
-        }
-
-        unsafe extern "C" fn render_thread_task(user_data: *mut libc::c_void) {
-            let ptr = user_data as *mut CallbackBox;
-            let b = Box::from_raw(ptr);
-            (b.cbk)()
-        }
-    }
-
-    pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
-        trace!("registering new external texture with id {}", texture_id);
-        unsafe {
-            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr(), texture_id);
-        }
-        ExternalTexture {
-            engine_ptr: self.engine_ptr(),
-            texture_id,
-        }
-    }
 }
 
 pub struct FlutterEngineWeakRef {
@@ -282,7 +160,20 @@ impl FlutterEngine {
 
         engine
     }
-    
+
+    #[inline]
+    fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
+        self.inner.engine_ptr.load(Ordering::Relaxed)
+    }
+
+    pub fn add_plugin<P>(&self, plugin: P) -> &Self
+        where
+            P: Plugin + 'static,
+    {
+        self.inner.plugins.write().add_plugin(plugin);
+        self
+    }
+
     pub fn downgrade(&self) -> FlutterEngineWeakRef {
         FlutterEngineWeakRef {
             inner: Arc::downgrade(&self.inner)
@@ -294,6 +185,10 @@ impl FlutterEngine {
         icu_data_path: String,
         mut arguments: Vec<String>,
     ) -> Result<(), ()> {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
         arguments.insert(0, "flutter-rs".into());
         let arguments = utils::CStringVec::new(&arguments);
 
@@ -392,6 +287,19 @@ impl FlutterEngine {
         self.inner.platform_sender.send(callback).unwrap();
     }
 
+    #[inline]
+    fn is_platform_thread(&self) -> bool {
+        self.inner.platform_runner.inner.lock().runs_task_on_current_thread()
+    }
+
+    pub fn run_on_platform_thread<F>(&self, f: F) where F: FnOnce(&FlutterEngine) -> () + 'static + Send {
+        if self.is_platform_thread() {
+            f(self);
+        } else {
+            self.post_platform_callback(MainThreadCallback::EngineFn(Box::new(f)));
+        }
+    }
+
     pub(crate) fn run_in_background<F>(&self, func: F) where F : FnOnce() + 'static {
         if let Some(handler) = self.inner.handler.upgrade() {
             handler.run_in_background(Box::new(func));
@@ -399,7 +307,19 @@ impl FlutterEngine {
     }
 
     pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
-        self.inner.send_window_metrics_event(width, height, pixel_ratio)
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
+            width: width as usize,
+            height: height as usize,
+            pixel_ratio,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event);
+        }
     }
 
     pub fn send_pointer_event(
@@ -412,11 +332,40 @@ impl FlutterEngine {
         scroll_delta_y: f64,
         buttons: FlutterPointerMouseButtons,
     ) {
-       self.inner.send_pointer_event(phase, x, y, signal_kind, scroll_delta_x, scroll_delta_y, buttons)
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
+        let event = flutter_engine_sys::FlutterPointerEvent {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
+            timestamp: timestamp.as_micros() as usize,
+            phase: phase.into(),
+            x,
+            y,
+            device: 0,
+            signal_kind: signal_kind.into(),
+            scroll_delta_x,
+            scroll_delta_y,
+            device_kind:
+            flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            buttons: buttons as i64,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr(), &event, 1);
+        }
     }
 
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
-        self.inner.send_platform_message(message)
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        trace!("Sending message on channel {}", message.channel);
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr(), &message.into());
+        }
     }
 
     pub(crate) fn send_platform_message_response(
@@ -424,14 +373,36 @@ impl FlutterEngine {
         response_handle: PlatformMessageResponseHandle,
         bytes: &[u8],
     ) {
-        self.inner.send_platform_message_response(response_handle, bytes)
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        trace!("Sending message response");
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
+                self.engine_ptr(),
+                response_handle.into(),
+                bytes.as_ptr(),
+                bytes.len(),
+            );
+        }
     }
 
     pub fn shutdown(&self) {
-        self.inner.shutdown()
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        unsafe {
+            flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr());
+        }
     }
 
     pub fn execute_platform_tasks(&self) -> Option<Instant> {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
         let next_task = self.inner.platform_runner.execute_tasks();
 
 //        let mut render_thread_fns = Vec::new();
@@ -473,17 +444,45 @@ impl FlutterEngine {
     }
 
     pub(crate) fn run_task(&self, task: &FlutterTask) {
-        self.inner.run_task(task)
+        unsafe {
+            flutter_engine_sys::FlutterEngineRunTask(self.engine_ptr(), task as *const FlutterTask);
+        }
     }
 
     pub fn post_render_thread_task<F>(&self, f: F)
         where
             F: FnOnce() -> () + 'static,
     {
-        self.inner.post_render_thread_task(f)
+        unsafe {
+            let cbk = CallbackBox { cbk: Box::new(f) };
+            let b = Box::new(cbk);
+            let ptr = Box::into_raw(b);
+            flutter_engine_sys::FlutterEnginePostRenderThreadTask(
+                self.engine_ptr(),
+                Some(render_thread_task),
+                ptr as *mut libc::c_void,
+            );
+        }
+
+        struct CallbackBox {
+            pub cbk: Box<dyn FnOnce()>,
+        }
+
+        unsafe extern "C" fn render_thread_task(user_data: *mut libc::c_void) {
+            let ptr = user_data as *mut CallbackBox;
+            let b = Box::from_raw(ptr);
+            (b.cbk)()
+        }
     }
 
     pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
-        self.inner.register_external_texture(texture_id)
+        trace!("registering new external texture with id {}", texture_id);
+        unsafe {
+            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr(), texture_id);
+        }
+        ExternalTexture {
+            engine_ptr: self.engine_ptr(),
+            texture_id,
+        }
     }
 }

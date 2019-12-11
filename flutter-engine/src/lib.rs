@@ -35,19 +35,19 @@ use crate::channel::Channel;
 use crate::ffi::{FlutterPointerPhase, FlutterPointerMouseButtons, PlatformMessage, PlatformMessageResponseHandle, ExternalTexture, FlutterPointerSignalKind};
 
 
-//pub(crate) type MainThreadEngineFn = Box<dyn Fn(&FlutterEngineInner) + Send>;
+pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 //pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 //pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
-//pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
+pub(crate) type MainThreadRenderThreadFn = Box<dyn FnMut(&FlutterEngine) + Send>;
 //pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
-//    EngineFn(MainThreadEngineFn),
+    EngineFn(MainThreadEngineFn),
 //    WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
 //    PlatformMessage(MainThreadPlatformMsg),
-//    RenderThreadFn(MainThreadRenderThreadFn),
+    RenderThreadFn(MainThreadRenderThreadFn),
 //    WindowStateFn(MainTheadWindowStateFn),
 }
 
@@ -405,10 +405,11 @@ impl FlutterEngine {
 
         let next_task = self.inner.platform_runner.execute_tasks();
 
-//        let mut render_thread_fns = Vec::new();
+        let mut render_thread_fns = Vec::new();
         let callbacks: Vec<MainThreadCallback> = self.inner.platform_receiver.try_iter().collect();
         for cb in callbacks {
             match cb {
+                MainThreadCallback::EngineFn(func) => func(self),
 //                MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
                 MainThreadCallback::ChannelFn((name, mut f)) => {
                     self.inner.plugins.write()
@@ -425,20 +426,18 @@ impl FlutterEngine {
 //                    };
 //                    self.init_data.engine.send_platform_message(platform_msg);
 //                }
-//                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
+                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
 //                MainThreadCallback::WindowStateFn(mut f) => f(self),
             }
         }
-//        if !render_thread_fns.is_empty() {
-//            let resource_window = self.res_window_ref;
-//            self.init_data.engine.post_render_thread_task(move || {
-//                let mut res_window = resource_window;
-//                let window = res_window.window();
-//                for mut f in render_thread_fns {
-//                    f(window);
-//                }
-//            });
-//        }
+        if !render_thread_fns.is_empty() {
+            let engine_copy = self.clone();
+            self.post_render_thread_task(move || {
+                for mut f in render_thread_fns {
+                    f(&engine_copy);
+                }
+            });
+        }
 
         next_task
     }

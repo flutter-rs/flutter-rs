@@ -22,7 +22,7 @@ pub(crate) struct TaskRunnerInner {
     tasks: PriorityQueue<Task, TaskPriority>,
 }
 
-pub struct TaskRunner{
+pub struct TaskRunner {
     pub(crate) inner: Arc<Mutex<TaskRunnerInner>>,
 }
 
@@ -119,6 +119,19 @@ impl TaskRunner {
         MutexGuard::unlocked(guard, move || {
             handler.wake();
         });
+    }
+
+    pub(crate) fn runs_task_on_current_thread(&self) -> bool {
+        self.inner.lock().runs_task_on_current_thread()
+    }
+
+    pub(crate) fn wake(&self) {
+        let handler = {
+            self.inner.lock().handler.upgrade()
+        };
+        if let Some(handler) = handler {
+            handler.wake();
+        }
     }
 }
 

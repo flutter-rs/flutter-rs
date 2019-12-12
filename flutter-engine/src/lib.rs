@@ -285,11 +285,12 @@ impl FlutterEngine {
 
     pub(crate) fn post_platform_callback(&self, callback: MainThreadCallback) {
         self.inner.platform_sender.send(callback).unwrap();
+        self.inner.platform_runner.wake();
     }
 
     #[inline]
     fn is_platform_thread(&self) -> bool {
-        self.inner.platform_runner.inner.lock().runs_task_on_current_thread()
+        self.inner.platform_runner.runs_task_on_current_thread()
     }
 
     pub fn run_on_platform_thread<F>(&self, f: F) where F: FnOnce(&FlutterEngine) -> () + 'static + Send {

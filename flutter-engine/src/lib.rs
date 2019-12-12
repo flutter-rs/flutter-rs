@@ -56,7 +56,7 @@ struct FlutterEngineInner {
     engine_ptr: AtomicPtr<flutter_engine_sys::_FlutterEngine>,
     plugins: RwLock<PluginRegistrar>,
     platform_runner: TaskRunner,
-    platform_runner_handler: Arc<PlatformRunnerHandler>,
+    _platform_runner_handler: Arc<PlatformRunnerHandler>,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
 }
@@ -148,7 +148,7 @@ impl FlutterEngine {
                 engine_ptr: AtomicPtr::new(ptr::null_mut()),
                 plugins: RwLock::new(PluginRegistrar::new()),
                 platform_runner: TaskRunner::new(Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>),
-                platform_runner_handler: platform_handler,
+                _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
             })

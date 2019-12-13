@@ -1,6 +1,10 @@
 use std::sync::{Arc, RwLock, Weak};
 
-use crate::{channel::{ChannelImpl, MessageChannel, MessageHandler}, codec::MessageCodec, FlutterEngineWeakRef, FlutterEngine};
+use crate::{
+    channel::{ChannelImpl, MessageChannel, MessageHandler},
+    codec::MessageCodec,
+    FlutterEngine, FlutterEngineWeakRef,
+};
 
 use log::error;
 

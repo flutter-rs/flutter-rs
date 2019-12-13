@@ -9,10 +9,9 @@ pub mod error;
 mod flutter_callbacks;
 pub mod plugins;
 //pub mod texture_registry;
-mod utils;
-pub mod tasks;
 pub mod ffi;
-
+pub mod tasks;
+mod utils;
 
 use std::{
     ffi::CString,
@@ -22,33 +21,31 @@ use std::{
 
 use log::trace;
 
-use flutter_engine_sys::FlutterTask;
-use std::sync::{Weak, mpsc};
-use std::os::raw::{c_char, c_void};
-use parking_lot::RwLock;
-use crate::plugins::{PluginRegistrar, Plugin};
+use crate::channel::Channel;
+use crate::ffi::{
+    ExternalTexture, ExternalTextureFrame, FlutterPointerMouseButtons, FlutterPointerPhase,
+    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+};
+use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
-use std::time::Instant;
+use flutter_engine_sys::FlutterTask;
+use parking_lot::RwLock;
+use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::Sender;
-use crate::channel::Channel;
-use crate::ffi::{FlutterPointerPhase, FlutterPointerMouseButtons, PlatformMessage, PlatformMessageResponseHandle, ExternalTexture, FlutterPointerSignalKind, ExternalTextureFrame};
-
+use std::sync::{mpsc, Weak};
+use std::time::Instant;
 
 pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
-//pub(crate) type MainThreadWindowFn = Box<dyn FnMut(&mut glfw::Window) + Send>;
 pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 //pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
-//pub(crate) type MainTheadWindowStateFn = Box<dyn FnMut(&mut DesktopWindowState) + Send>;
 
 pub(crate) enum MainThreadCallback {
     EngineFn(MainThreadEngineFn),
-//    WindowFn(MainThreadWindowFn),
     ChannelFn(MainThreadChannelFn),
-//    PlatformMessage(MainThreadPlatformMsg),
+    //    PlatformMessage(MainThreadPlatformMsg),
     RenderThreadFn(MainThreadRenderThreadFn),
-//    WindowStateFn(MainTheadWindowStateFn),
 }
 
 struct FlutterEngineInner {
@@ -69,25 +66,21 @@ impl FlutterEngineWeakRef {
     fn upgrade(&self) -> Option<FlutterEngine> {
         match self.inner.upgrade() {
             None => None,
-            Some(arc) => Some(FlutterEngine {
-                inner: arc
-            }),
+            Some(arc) => Some(FlutterEngine { inner: arc }),
         }
     }
 }
 
 impl Default for FlutterEngineWeakRef {
     fn default() -> Self {
-        Self {
-            inner: Weak::new()
-        }
+        Self { inner: Weak::new() }
     }
 }
 
 impl Clone for FlutterEngineWeakRef {
     fn clone(&self) -> Self {
         Self {
-            inner: Weak::clone(&self.inner)
+            inner: Weak::clone(&self.inner),
         }
     }
 }
@@ -121,7 +114,11 @@ pub trait FlutterEngineHandler {
 
     fn run_in_background(&self, func: Box<dyn FnOnce()>);
 
-    fn get_texture_frame(&self, texture_id: i64, size: (usize, usize)) -> Option<ExternalTextureFrame>;
+    fn get_texture_frame(
+        &self,
+        texture_id: i64,
+        size: (usize, usize),
+    ) -> Option<ExternalTextureFrame>;
 }
 
 struct PlatformRunnerHandler {
@@ -139,7 +136,7 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
 impl FlutterEngine {
     pub fn new(handler: Weak<dyn FlutterEngineHandler>) -> Self {
         let platform_handler = Arc::new(PlatformRunnerHandler {
-            handler: handler.clone()
+            handler: handler.clone(),
         });
 
         let (main_tx, main_rx) = mpsc::channel();
@@ -149,11 +146,13 @@ impl FlutterEngine {
                 handler,
                 engine_ptr: AtomicPtr::new(ptr::null_mut()),
                 plugins: RwLock::new(PluginRegistrar::new()),
-                platform_runner: TaskRunner::new(Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>),
+                platform_runner: TaskRunner::new(
+                    Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>
+                ),
                 _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
-            })
+            }),
         };
 
         let inner = &engine.inner;
@@ -169,8 +168,8 @@ impl FlutterEngine {
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self
-        where
-            P: Plugin + 'static,
+    where
+        P: Plugin + 'static,
     {
         self.inner.plugins.write().add_plugin(plugin);
         self
@@ -178,11 +177,12 @@ impl FlutterEngine {
 
     pub fn downgrade(&self) -> FlutterEngineWeakRef {
         FlutterEngineWeakRef {
-            inner: Arc::downgrade(&self.inner)
+            inner: Arc::downgrade(&self.inner),
         }
     }
-    
-    pub fn run(&self,
+
+    pub fn run(
+        &self,
         assets_path: String,
         icu_data_path: String,
         mut arguments: Vec<String>,
@@ -295,7 +295,10 @@ impl FlutterEngine {
         self.inner.platform_runner.runs_task_on_current_thread()
     }
 
-    pub fn run_on_platform_thread<F>(&self, f: F) where F: FnOnce(&FlutterEngine) -> () + 'static + Send {
+    pub fn run_on_platform_thread<F>(&self, f: F)
+    where
+        F: FnOnce(&FlutterEngine) -> () + 'static + Send,
+    {
         if self.is_platform_thread() {
             f(self);
         } else {
@@ -303,7 +306,10 @@ impl FlutterEngine {
         }
     }
 
-    pub fn run_on_render_thread<F>(&self, f: F) where F: FnOnce(&FlutterEngine) -> () + 'static + Send {
+    pub fn run_on_render_thread<F>(&self, f: F)
+    where
+        F: FnOnce(&FlutterEngine) -> () + 'static + Send,
+    {
         if self.is_platform_thread() {
             f(self);
         } else {
@@ -311,7 +317,10 @@ impl FlutterEngine {
         }
     }
 
-    pub(crate) fn run_in_background<F>(&self, func: F) where F : FnOnce() + 'static {
+    pub(crate) fn run_in_background<F>(&self, func: F)
+    where
+        F: FnOnce() + 'static,
+    {
         if let Some(handler) = self.inner.handler.upgrade() {
             handler.run_in_background(Box::new(func));
         }
@@ -360,7 +369,7 @@ impl FlutterEngine {
             scroll_delta_x,
             scroll_delta_y,
             device_kind:
-            flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
             buttons: buttons as i64,
         };
         unsafe {
@@ -375,7 +384,10 @@ impl FlutterEngine {
 
         trace!("Sending message on channel {}", message.channel);
         unsafe {
-            flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr(), &message.into());
+            flutter_engine_sys::FlutterEngineSendPlatformMessage(
+                self.engine_ptr(),
+                &message.into(),
+            );
         }
     }
 
@@ -421,24 +433,16 @@ impl FlutterEngine {
         for cb in callbacks {
             match cb {
                 MainThreadCallback::EngineFn(func) => func(self),
-//                MainThreadCallback::WindowFn(mut f) => f(self.window_ref.window()),
                 MainThreadCallback::ChannelFn((name, mut f)) => {
-                    self.inner.plugins.write()
+                    self.inner
+                        .plugins
+                        .write()
                         .channel_registry
                         .with_channel(&name, |channel| {
                             f(channel);
                         });
                 }
-//                MainThreadCallback::PlatformMessage(msg) => {
-//                    let platform_msg = crate::ffi::PlatformMessage {
-//                        channel: msg.0.into(),
-//                        message: &msg.1,
-//                        response_handle: None,
-//                    };
-//                    self.init_data.engine.send_platform_message(platform_msg);
-//                }
                 MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
-//                MainThreadCallback::WindowStateFn(mut f) => f(self),
             }
         }
         if !render_thread_fns.is_empty() {
@@ -460,8 +464,8 @@ impl FlutterEngine {
     }
 
     fn post_render_thread_task<F>(&self, f: F)
-        where
-            F: FnOnce() -> () + 'static,
+    where
+        F: FnOnce() -> () + 'static,
     {
         unsafe {
             let cbk = CallbackBox { cbk: Box::new(f) };

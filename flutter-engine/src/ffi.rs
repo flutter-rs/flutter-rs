@@ -1,9 +1,11 @@
-use flutter_engine_sys::{FlutterPlatformMessageResponseHandle, FlutterPlatformMessage, FlutterOpenGLTexture};
-use std::{mem, ptr};
-use std::ffi::{CStr, CString};
-use std::borrow::Cow;
-use log::{error, trace};
+use flutter_engine_sys::{
+    FlutterOpenGLTexture, FlutterPlatformMessage, FlutterPlatformMessageResponseHandle,
+};
 use libc::c_void;
+use log::{error, trace};
+use std::borrow::Cow;
+use std::ffi::{CStr, CString};
+use std::{mem, ptr};
 
 #[derive(Debug)]
 pub struct PlatformMessageResponseHandle {
@@ -196,12 +198,20 @@ pub struct ExternalTextureFrame {
 }
 
 impl ExternalTextureFrame {
-    pub fn new<F>(target: u32, name: u32, format: u32, destruction_callback: F) -> ExternalTextureFrame where F: FnOnce() -> () + 'static + Send {
+    pub fn new<F>(
+        target: u32,
+        name: u32,
+        format: u32,
+        destruction_callback: F,
+    ) -> ExternalTextureFrame
+    where
+        F: FnOnce() -> () + 'static + Send,
+    {
         ExternalTextureFrame {
             target,
             name,
             format,
-            destruction_callback: Box::new(Box::new(destruction_callback))
+            destruction_callback: Box::new(Box::new(destruction_callback)),
         }
     }
 

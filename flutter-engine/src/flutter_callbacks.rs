@@ -1,9 +1,9 @@
+use crate::tasks::{TaskRunner, TaskRunnerInner};
+use crate::{FlutterEngineHandler, FlutterEngineInner};
 use libc::{c_char, c_uint, c_void};
 use log::trace;
-use crate::{FlutterEngineHandler, FlutterEngineInner};
-use std::sync::Arc;
 use parking_lot::Mutex;
-use crate::tasks::{TaskRunnerInner, TaskRunner};
+use std::sync::Arc;
 
 #[inline]
 unsafe fn get_handler(user_data: *mut c_void) -> Option<Arc<dyn FlutterEngineHandler>> {

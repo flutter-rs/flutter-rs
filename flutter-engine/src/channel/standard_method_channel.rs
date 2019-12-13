@@ -2,7 +2,11 @@ use std::sync::{Arc, RwLock, Weak};
 
 use log::error;
 
-use crate::{channel::{ChannelImpl, MethodCallHandler, MethodChannel}, codec::{standard_codec::CODEC, MethodCodec}, FlutterEngineWeakRef, FlutterEngine};
+use crate::{
+    channel::{ChannelImpl, MethodCallHandler, MethodChannel},
+    codec::{standard_codec::CODEC, MethodCodec},
+    FlutterEngine, FlutterEngineWeakRef,
+};
 
 pub struct StandardMethodChannel {
     name: String,

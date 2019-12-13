@@ -9,7 +9,11 @@ use std::{
 
 use log::{error, trace};
 
-use crate::{codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value}, error::{MessageError, MethodCallError}, PlatformMessage, PlatformMessageResponseHandle, FlutterEngine, FlutterEngineWeakRef,};
+use crate::{
+    codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
+    error::{MessageError, MethodCallError},
+    FlutterEngine, FlutterEngineWeakRef, PlatformMessage, PlatformMessageResponseHandle,
+};
 
 pub use self::{
     basic_message_channel::BasicMessageChannel,
@@ -113,17 +117,15 @@ pub trait MethodChannel: Channel {
                             error.into()
                         }
                     };
-                    engine.post_platform_callback(crate::MainThreadCallback::ChannelFn(
-                        (
-                            channel,
-                            Box::new(move |channel| {
-                                let buf = codec.encode_method_call_response(&response);
-                                if let Some(handle) = response_handle.take() {
-                                    channel.send_response(handle, &buf);
-                                }
-                            }),
-                        ),
-                    ));
+                    engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                        channel,
+                        Box::new(move |channel| {
+                            let buf = codec.encode_method_call_response(&response);
+                            if let Some(handle) = response_handle.take() {
+                                channel.send_response(handle, &buf);
+                            }
+                        }),
+                    )));
                 });
             }
         }
@@ -184,17 +186,15 @@ pub trait MessageChannel: Channel {
                         }
                     };
                     if response_handle.is_some() {
-                        engine.post_platform_callback(crate::MainThreadCallback::ChannelFn(
-                            (
-                                channel,
-                                Box::new(move |channel| {
-                                    let buf = codec.encode_message(&response);
-                                    if let Some(handle) = response_handle.take() {
-                                        channel.send_response(handle, &buf);
-                                    }
-                                }),
-                            ),
-                        ));
+                        engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                            channel,
+                            Box::new(move |channel| {
+                                let buf = codec.encode_message(&response);
+                                if let Some(handle) = response_handle.take() {
+                                    channel.send_response(handle, &buf);
+                                }
+                            }),
+                        )));
                     }
                 });
             }
@@ -229,10 +229,6 @@ pub trait MethodCallHandler {
 }
 
 pub trait EventHandler {
-    fn on_listen(
-        &mut self,
-        args: Value,
-        engine: FlutterEngine,
-    ) -> Result<Value, MethodCallError>;
+    fn on_listen(&mut self, args: Value, engine: FlutterEngine) -> Result<Value, MethodCallError>;
     fn on_cancel(&mut self, engine: FlutterEngine) -> Result<Value, MethodCallError>;
 }

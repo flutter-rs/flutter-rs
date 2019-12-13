@@ -6,7 +6,7 @@ use std::{
 
 use log::{trace, warn};
 
-use crate::{PlatformMessage, FlutterEngineWeakRef};
+use crate::{FlutterEngineWeakRef, PlatformMessage};
 
 use super::Channel;
 
@@ -25,7 +25,7 @@ impl ChannelRegistry {
     pub fn new() -> Self {
         Self {
             channels: HashMap::new(),
-            engine: Default::default()
+            engine: Default::default(),
         }
     }
 

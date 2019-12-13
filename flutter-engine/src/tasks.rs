@@ -1,15 +1,15 @@
-use std::thread::ThreadId;
+use crate::FlutterEngineWeakRef;
+use flutter_engine_sys::{FlutterEngineGetCurrentTime, FlutterTask};
+use log::debug;
 use parking_lot::{Mutex, MutexGuard};
 use priority_queue::PriorityQueue;
-use std::time::{Instant, Duration};
-use flutter_engine_sys::{FlutterTask, FlutterEngineGetCurrentTime};
-use std::thread;
-use crate::FlutterEngineWeakRef;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::AtomicU64;
-use log::debug;
 use std::sync::{Arc, Weak};
+use std::thread;
+use std::thread::ThreadId;
+use std::time::{Duration, Instant};
 
 pub trait TaskRunnerHandler {
     fn wake(&self);
@@ -29,7 +29,7 @@ pub struct TaskRunner {
 impl Clone for TaskRunner {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone()
+            inner: self.inner.clone(),
         }
     }
 }
@@ -49,8 +49,8 @@ impl TaskRunner {
                 engine: Default::default(),
                 handler,
                 thread_id,
-                tasks:PriorityQueue::new(),
-            }))
+                tasks: PriorityQueue::new(),
+            })),
         }
     }
 
@@ -103,7 +103,11 @@ impl TaskRunner {
             .unwrap()
     }
 
-    pub(crate) fn post_task(guard: &mut MutexGuard<TaskRunnerInner>, task: FlutterTask, target_time_nanos: u64) {
+    pub(crate) fn post_task(
+        guard: &mut MutexGuard<TaskRunnerInner>,
+        task: FlutterTask,
+        target_time_nanos: u64,
+    ) {
         static GLOBAL_ORDER: AtomicU64 = AtomicU64::new(0);
         let task_priority = TaskPriority {
             time: Self::flutter_time_to_instant(target_time_nanos),
@@ -126,9 +130,7 @@ impl TaskRunner {
     }
 
     pub(crate) fn wake(&self) {
-        let handler = {
-            self.inner.lock().handler.upgrade()
-        };
+        let handler = { self.inner.lock().handler.upgrade() };
         if let Some(handler) = handler {
             handler.wake();
         }

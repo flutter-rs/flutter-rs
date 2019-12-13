@@ -2,7 +2,12 @@ use std::sync::{Arc, RwLock, Weak};
 
 use log::error;
 
-use crate::{channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel}, codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value}, error::MethodCallError, FlutterEngineWeakRef, FlutterEngine};
+use crate::{
+    channel::{ChannelImpl, EventHandler, MethodCallHandler, MethodChannel},
+    codec::{standard_codec::CODEC, MethodCall, MethodCodec, Value},
+    error::MethodCallError,
+    FlutterEngine, FlutterEngineWeakRef,
+};
 
 pub struct EventChannel {
     name: String,

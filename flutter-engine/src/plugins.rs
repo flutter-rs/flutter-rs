@@ -7,7 +7,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{channel::{ChannelRegistrar, ChannelRegistry}, PlatformMessage, FlutterEngineWeakRef};
+use crate::{
+    channel::{ChannelRegistrar, ChannelRegistry},
+    FlutterEngineWeakRef, PlatformMessage,
+};
 
 //pub use self::{
 //    isolate::IsolatePlugin, keyevent::KeyEventPlugin, lifecycle::LifecyclePlugin,

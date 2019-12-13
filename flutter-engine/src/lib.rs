@@ -32,7 +32,7 @@ use std::time::Instant;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::Sender;
 use crate::channel::Channel;
-use crate::ffi::{FlutterPointerPhase, FlutterPointerMouseButtons, PlatformMessage, PlatformMessageResponseHandle, ExternalTexture, FlutterPointerSignalKind};
+use crate::ffi::{FlutterPointerPhase, FlutterPointerMouseButtons, PlatformMessage, PlatformMessageResponseHandle, ExternalTexture, FlutterPointerSignalKind, ExternalTextureFrame};
 
 
 pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
@@ -120,6 +120,8 @@ pub trait FlutterEngineHandler {
     fn wake_platform_thread(&self);
 
     fn run_in_background(&self, func: Box<dyn FnOnce()>);
+
+    fn get_texture_frame(&self, texture_id: i64, size: (usize, usize)) -> Option<ExternalTextureFrame>;
 }
 
 struct PlatformRunnerHandler {

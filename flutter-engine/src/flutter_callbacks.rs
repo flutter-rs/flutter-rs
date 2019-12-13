@@ -128,19 +128,13 @@ pub extern "C" fn gl_external_texture_frame(
     texture: *mut flutter_engine_sys::FlutterOpenGLTexture,
 ) -> bool {
     trace!("gl_external_texture_frame");
-//    unsafe {
-//        let user_data = &mut *(user_data as *mut DesktopUserData);
-//        let texture = &mut *texture;
-//        if let DesktopUserData::WindowState(state) = user_data {
-//            state.texture_registry.texture_callback(
-//                texture_id,
-//                (width as u32, height as u32),
-//                texture,
-//            )
-//        } else {
-//            warn!("tried to create texture before initializing");
-//            false
-//        }
-//    }
-    false
+    unsafe {
+        if let Some(handler) = get_handler(user_data) {
+            if let Some(frame) = handler.get_texture_frame(texture_id, (width, height)) {
+                frame.to_ffi(&mut *texture);
+                return true;
+            }
+        }
+        false
+    }
 }

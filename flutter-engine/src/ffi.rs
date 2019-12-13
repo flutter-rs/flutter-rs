@@ -1,8 +1,9 @@
-use flutter_engine_sys::{FlutterPlatformMessageResponseHandle, FlutterPlatformMessage};
+use flutter_engine_sys::{FlutterPlatformMessageResponseHandle, FlutterPlatformMessage, FlutterOpenGLTexture};
 use std::{mem, ptr};
 use std::ffi::{CStr, CString};
 use std::borrow::Cow;
 use log::{error, trace};
+use libc::c_void;
 
 #[derive(Debug)]
 pub struct PlatformMessageResponseHandle {
@@ -183,4 +184,39 @@ impl ExternalTexture {
             );
         }
     }
+}
+
+type DestructorType = Box<dyn FnOnce()>;
+
+pub struct ExternalTextureFrame {
+    target: u32,
+    name: u32,
+    format: u32,
+    destruction_callback: Box<DestructorType>,
+}
+
+impl ExternalTextureFrame {
+    pub fn new<F>(target: u32, name: u32, format: u32, destruction_callback: F) -> ExternalTextureFrame where F: FnOnce() -> () + 'static + Send {
+        ExternalTextureFrame {
+            target,
+            name,
+            format,
+            destruction_callback: Box::new(Box::new(destruction_callback))
+        }
+    }
+
+    pub(crate) fn to_ffi(self, target: &mut FlutterOpenGLTexture) {
+        target.target = self.target;
+        target.name = self.name;
+        target.format = self.format;
+        target.destruction_callback = Some(texture_destruction_callback);
+        target.user_data = Box::into_raw(self.destruction_callback) as _;
+    }
+}
+
+unsafe extern "C" fn texture_destruction_callback(user_data: *mut c_void) {
+    trace!("texture_destruction_callback");
+    let user_data = user_data as *mut DestructorType;
+    let user_data = Box::from_raw(user_data);
+    user_data();
 }

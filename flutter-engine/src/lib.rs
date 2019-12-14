@@ -38,13 +38,11 @@ use std::time::Instant;
 
 pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
-//pub(crate) type MainThreadPlatformMsg = (String, Vec<u8>);
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 
 pub(crate) enum MainThreadCallback {
     EngineFn(MainThreadEngineFn),
     ChannelFn(MainThreadChannelFn),
-    //    PlatformMessage(MainThreadPlatformMsg),
     RenderThreadFn(MainThreadRenderThreadFn),
 }
 
@@ -61,6 +59,10 @@ struct FlutterEngineInner {
 pub struct FlutterEngineWeakRef {
     inner: Weak<FlutterEngineInner>,
 }
+
+unsafe impl Send for FlutterEngineWeakRef {}
+
+unsafe impl Sync for FlutterEngineWeakRef {}
 
 impl FlutterEngineWeakRef {
     fn upgrade(&self) -> Option<FlutterEngine> {
@@ -89,6 +91,10 @@ pub struct FlutterEngine {
     inner: Arc<FlutterEngineInner>,
 }
 
+unsafe impl Send for FlutterEngine {}
+
+unsafe impl Sync for FlutterEngine {}
+
 impl Clone for FlutterEngine {
     fn clone(&self) -> Self {
         Self {
@@ -112,7 +118,7 @@ pub trait FlutterEngineHandler {
 
     fn wake_platform_thread(&self);
 
-    fn run_in_background(&self, func: Box<dyn FnOnce()>);
+    fn run_in_background(&self, func: Box<dyn FnOnce() + Send>);
 
     fn get_texture_frame(
         &self,
@@ -319,7 +325,7 @@ impl FlutterEngine {
 
     pub(crate) fn run_in_background<F>(&self, func: F)
     where
-        F: FnOnce() + 'static,
+        F: FnOnce() + 'static + Send,
     {
         if let Some(handler) = self.inner.handler.upgrade() {
             handler.run_in_background(Box::new(func));

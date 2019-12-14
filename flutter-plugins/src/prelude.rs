@@ -18,4 +18,5 @@ pub use flutter_engine::{
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},
+    FlutterEngine,
 };

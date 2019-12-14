@@ -8,6 +8,11 @@ use flutter_engine::ffi::{
 use flutter_engine::plugins::Plugin;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::isolate::IsolatePlugin;
+use flutter_plugins::lifecycle::LifecyclePlugin;
+use flutter_plugins::localization::LocalizationPlugin;
+use flutter_plugins::navigation::NavigationPlugin;
+use flutter_plugins::settings::SettingsPlugin;
+use flutter_plugins::system::SystemPlugin;
 use glfw::Context;
 use lazy_static::lazy_static;
 use log::debug;
@@ -206,6 +211,12 @@ impl FlutterWindow {
                 .unwrap();
         }));
 
+        engine.add_plugin(LifecyclePlugin::default());
+        engine.add_plugin(LocalizationPlugin::default());
+        engine.add_plugin(NavigationPlugin::default());
+        engine.add_plugin(SettingsPlugin::default());
+        engine.add_plugin(SystemPlugin::default());
+
         Ok(Self {
             glfw: glfw.clone(),
             window,
@@ -308,12 +319,11 @@ impl FlutterWindow {
             }
         }
 
-//        window_state.plugin_registrar.with_plugin(
-//            |localization: &plugins::LocalizationPlugin| {
-//                localization.send_locale(locale_config::Locale::current());
-//            },
-//        );
-//
+        self.with_plugin(
+            |localization: &flutter_plugins::localization::LocalizationPlugin| {
+                localization.send_locale(locale_config::Locale::current());
+            },
+        );
 
         let mut glfw = self.glfw.clone();
         while !self.window.lock().should_close() {

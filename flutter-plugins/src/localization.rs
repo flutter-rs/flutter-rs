@@ -72,7 +72,7 @@ impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        _runtime_data: RuntimeData,
+        _: FlutterEngine,
     ) -> Result<Value, MethodCallError> {
         debug!("got method call {} with args {:?}", call.method, call.args);
         Err(MethodCallError::NotImplemented)

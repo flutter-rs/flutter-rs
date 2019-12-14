@@ -51,7 +51,7 @@ impl SystemPlugin {
 struct Handler;
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, _: RuntimeData) -> Result<Value, MessageError> {
+    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
         Ok(Value::Null)
     }
 }

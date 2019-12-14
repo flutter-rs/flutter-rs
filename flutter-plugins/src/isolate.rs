@@ -2,7 +2,6 @@
 //! It handles flutter/localization type message.
 
 use super::prelude::*;
-use flutter_engine::FlutterEngine;
 use parking_lot::Mutex;
 
 pub const PLUGIN_NAME: &str = module_path!();

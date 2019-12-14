@@ -1,9 +1,7 @@
-use crate::window::{WindowArgs, FlutterWindow, CreateError};
+use crate::window::{CreateError, FlutterWindow, WindowArgs};
 use log::error;
 
-//mod desktop_window_state;
 mod draw;
-//mod utils;
 mod handler;
 pub mod window;
 
@@ -12,9 +10,7 @@ pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
         f: glfw_error_callback,
         data: (),
     }))
-        .map(|glfw| FlutterDesktop {
-            glfw,
-        })
+    .map(|glfw| FlutterDesktop { glfw })
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -27,7 +23,10 @@ pub struct FlutterDesktop {
 }
 
 impl FlutterDesktop {
-    pub fn create_window(&mut self, window_args: &WindowArgs) -> Result<FlutterWindow, CreateError> {
+    pub fn create_window(
+        &mut self,
+        window_args: &WindowArgs,
+    ) -> Result<FlutterWindow, CreateError> {
         FlutterWindow::create(&mut self.glfw, window_args)
     }
 }

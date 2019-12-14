@@ -1,18 +1,20 @@
-use std::sync::mpsc::{Receiver, Sender, SendError};
-use crate::handler::GlfwFlutterEngineHandler;
-use std::sync::{Arc, mpsc};
-use parking_lot::{Mutex, MutexGuard};
-use glfw::Context;
 use crate::draw;
+use crate::handler::GlfwFlutterEngineHandler;
+use flutter_engine::ffi::{
+    FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
+};
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
-use std::time::Instant;
-use flutter_engine::ffi::{FlutterPointerPhase, FlutterPointerSignalKind, FlutterPointerMouseButtons};
-use std::collections::{VecDeque, HashMap};
+use glfw::Context;
 use lazy_static::lazy_static;
-use std::ops::DerefMut;
-use tokio::runtime::Runtime;
 use log::debug;
+use parking_lot::{Mutex, MutexGuard};
+use std::collections::{HashMap, VecDeque};
+use std::ops::DerefMut;
+use std::sync::mpsc::{Receiver, SendError, Sender};
+use std::sync::{mpsc, Arc};
+use std::time::Instant;
 use tokio::prelude::Future;
+use tokio::runtime::Runtime;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
@@ -49,7 +51,6 @@ impl std::error::Error for CreateError {
         }
     }
 }
-
 
 pub enum WindowMode {
     Fullscreen(usize),
@@ -103,11 +104,13 @@ pub struct FlutterWindow {
     defered_events: VecDeque<glfw::WindowEvent>,
     mouse_tracker: HashMap<glfw::MouseButton, glfw::Action>,
 //    pub texture_registry: TextureRegistry,
-
 }
 
 impl FlutterWindow {
-    pub(crate) fn create(glfw: &mut glfw::Glfw, window_args: &WindowArgs) -> Result<Self, CreateError> {
+    pub(crate) fn create(
+        glfw: &mut glfw::Glfw,
+        window_args: &WindowArgs,
+    ) -> Result<Self, CreateError> {
         // Create window
         let (window, receiver) = match window_args.mode {
             WindowMode::Windowed => glfw
@@ -120,27 +123,25 @@ impl FlutterWindow {
                 .ok_or(CreateError::WindowCreationFailed)?,
             WindowMode::Borderless => {
                 glfw.window_hint(glfw::WindowHint::Decorated(false));
-                glfw
-                    .create_window(
+                glfw.create_window(
+                    window_args.width as u32,
+                    window_args.height as u32,
+                    window_args.title,
+                    glfw::WindowMode::Windowed,
+                )
+                .ok_or(CreateError::WindowCreationFailed)?
+            }
+            WindowMode::Fullscreen(index) => {
+                glfw.with_connected_monitors(|glfw, monitors| -> Result<_, CreateError> {
+                    let monitor = monitors.get(index).ok_or(CreateError::MonitorNotFound)?;
+                    glfw.create_window(
                         window_args.width as u32,
                         window_args.height as u32,
                         window_args.title,
-                        glfw::WindowMode::Windowed,
+                        glfw::WindowMode::FullScreen(monitor),
                     )
-                    .ok_or(CreateError::WindowCreationFailed)?
-            }
-            WindowMode::Fullscreen(index) => {
-                glfw
-                    .with_connected_monitors(|glfw, monitors| -> Result<_, CreateError> {
-                        let monitor = monitors.get(index).ok_or(CreateError::MonitorNotFound)?;
-                        glfw.create_window(
-                            window_args.width as u32,
-                            window_args.height as u32,
-                            window_args.title,
-                            glfw::WindowMode::FullScreen(monitor),
-                        )
-                            .ok_or(CreateError::WindowCreationFailed)
-                    })?
+                    .ok_or(CreateError::WindowCreationFailed)
+                })?
             }
         };
 
@@ -178,7 +179,9 @@ impl FlutterWindow {
 
         // register window and engine globally
         {
-            ENGINES.lock().insert(WindowSafe(window.lock().window_ptr()), engine.clone());
+            ENGINES
+                .lock()
+                .insert(WindowSafe(window.lock().window_ptr()), engine.clone());
         }
 
         // Register plugins
@@ -202,14 +205,18 @@ impl FlutterWindow {
             main_thread_sender: main_tx,
             isolate_created: false,
             defered_events: Default::default(),
-            mouse_tracker: Default::default()
+            mouse_tracker: Default::default(),
         })
     }
 
-    pub fn run(mut self,  assets_path: String,
-               icu_data_path: String,
-               arguments: Vec<String>, mut custom_handler: Option<&mut WindowEventHandler>,
-               mut frame_callback: Option<&mut PerFrameCallback>,) -> Result<(), ()>{
+    pub fn run(
+        mut self,
+        assets_path: String,
+        icu_data_path: String,
+        arguments: Vec<String>,
+        mut custom_handler: Option<&mut WindowEventHandler>,
+        mut frame_callback: Option<&mut PerFrameCallback>,
+    ) -> Result<(), ()> {
         // Start engine
         let _ = self.engine.run(assets_path, icu_data_path, arguments)?;
 
@@ -291,8 +298,8 @@ impl FlutterWindow {
     }
 
     pub fn post_main_thread_callback<F>(&self, f: F) -> Result<(), SendError<MainTheadFn>>
-        where
-            F: FnMut(&mut FlutterWindow) + Send + 'static,
+    where
+        F: FnMut(&mut FlutterWindow) + Send + 'static,
     {
         self.main_thread_sender.send(Box::new(f))?;
         self.engine_handler.wake_platform_thread();
@@ -309,7 +316,9 @@ impl FlutterWindow {
 
     fn shutdown(self) {
         unsafe {
-            ENGINES.lock().remove(&WindowSafe(self.window.lock().window_ptr()));
+            ENGINES
+                .lock()
+                .remove(&WindowSafe(self.window.lock().window_ptr()));
         }
 
         self.runtime.shutdown_now().wait().unwrap();

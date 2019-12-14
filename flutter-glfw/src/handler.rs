@@ -1,10 +1,10 @@
+use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::FlutterEngineHandler;
 use glfw::Context;
-use std::ffi::c_void;
-use tokio::prelude::Future;
-use flutter_engine::ffi::ExternalTextureFrame;
 use parking_lot::Mutex;
+use std::ffi::c_void;
 use std::sync::Arc;
+use tokio::prelude::Future;
 use tokio::runtime::TaskExecutor;
 
 pub struct GlfwFlutterEngineHandler {
@@ -41,7 +41,8 @@ impl FlutterEngineHandler for GlfwFlutterEngineHandler {
 
     fn gl_proc_resolver(&self, proc: *const i8) -> *mut c_void {
         unsafe {
-            self.glfw.get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
+            self.glfw
+                .get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
         }
     }
 
@@ -58,7 +59,11 @@ impl FlutterEngineHandler for GlfwFlutterEngineHandler {
             }));
     }
 
-    fn get_texture_frame(&self, texture_id: i64, size: (usize, usize)) -> Option<ExternalTextureFrame> {
+    fn get_texture_frame(
+        &self,
+        texture_id: i64,
+        size: (usize, usize),
+    ) -> Option<ExternalTextureFrame> {
         unimplemented!()
     }
 }

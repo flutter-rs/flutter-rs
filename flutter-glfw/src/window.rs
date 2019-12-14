@@ -11,6 +11,7 @@ use log::debug;
 use parking_lot::{Mutex, MutexGuard};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
@@ -84,9 +85,9 @@ pub fn get_engine(window: *mut glfw::ffi::GLFWwindow) -> Option<FlutterEngine> {
     ENGINES.lock().get(&WindowSafe(window)).map(|v| v.clone())
 }
 
-pub(crate) type MainTheadFn = Box<dyn FnMut(&mut FlutterWindow) + Send>;
-pub type WindowEventHandler = dyn FnMut(&mut FlutterWindow, glfw::WindowEvent) -> bool;
-pub type PerFrameCallback = dyn FnMut(&mut FlutterWindow);
+pub(crate) type MainTheadFn = Box<dyn FnMut(&FlutterWindow) + Send>;
+pub type WindowEventHandler = dyn FnMut(&FlutterWindow, glfw::WindowEvent) -> bool;
+pub type PerFrameCallback = dyn FnMut(&FlutterWindow);
 
 pub struct FlutterWindow {
     glfw: glfw::Glfw,
@@ -97,13 +98,13 @@ pub struct FlutterWindow {
     engine_handler: Arc<GlfwFlutterEngineHandler>,
     runtime: Runtime,
     engine: FlutterEngine,
-    pointer_currently_added: bool,
-    window_pixels_per_screen_coordinate: f64,
+    pointer_currently_added: AtomicBool,
+    window_pixels_per_screen_coordinate: AtomicU64,
     main_thread_receiver: Receiver<MainTheadFn>,
     main_thread_sender: Sender<MainTheadFn>,
     isolate_created: bool,
-    defered_events: VecDeque<glfw::WindowEvent>,
-    mouse_tracker: HashMap<glfw::MouseButton, glfw::Action>,
+    defered_events: Mutex<VecDeque<glfw::WindowEvent>>,
+    mouse_tracker: Mutex<HashMap<glfw::MouseButton, glfw::Action>>,
     texture_registry: Arc<Mutex<TextureRegistry>>,
 }
 
@@ -203,14 +204,14 @@ impl FlutterWindow {
             resource_window_receiver: res_window_recv,
             engine_handler: handler,
             runtime,
-            engine: engine,
-            pointer_currently_added: false,
-            window_pixels_per_screen_coordinate: 0.0,
+            engine,
+            pointer_currently_added: AtomicBool::new(false),
+            window_pixels_per_screen_coordinate: AtomicU64::new(0.0_f64.to_bits()),
             main_thread_receiver: main_rx,
             main_thread_sender: main_tx,
             isolate_created: false,
-            defered_events: Default::default(),
-            mouse_tracker: Default::default(),
+            defered_events: Mutex::new(Default::default()),
+            mouse_tracker: Mutex::new(Default::default()),
             texture_registry,
         })
     }
@@ -220,7 +221,7 @@ impl FlutterWindow {
     }
 
     pub fn run(
-        &mut self,
+        &self,
         assets_path: String,
         icu_data_path: String,
         arguments: Vec<String>,
@@ -260,13 +261,15 @@ impl FlutterWindow {
 //            },
 //        );
 //
+
+        let mut glfw = self.glfw.clone();
         while !self.window.lock().should_close() {
             // Execute tasks and callbacks
             let next_task_time = self.engine.execute_platform_tasks();
 
             let callbacks: Vec<MainTheadFn> = self.main_thread_receiver.try_iter().collect();
             for mut cb in callbacks {
-                cb(&mut self);
+                cb(&self);
             }
 
             // Sleep for events/till next task
@@ -275,12 +278,12 @@ impl FlutterWindow {
                 if now < next_task_time {
                     let duration = next_task_time.duration_since(now);
                     let secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-                    self.glfw.wait_events_timeout(secs);
+                    glfw.wait_events_timeout(secs);
                 } else {
-                    self.glfw.poll_events();
+                    glfw.poll_events();
                 }
             } else {
-                self.glfw.wait_events();
+                glfw.wait_events();
             }
 
             // Fetch events
@@ -288,7 +291,7 @@ impl FlutterWindow {
                 glfw::flush_messages(&self.window_receiver).collect();
             for (_, event) in events {
                 let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
-                    custom_handler(&mut self, event.clone())
+                    custom_handler(&self, event.clone())
                 } else {
                     true
                 };
@@ -298,18 +301,16 @@ impl FlutterWindow {
             }
 
             if let Some(callback) = &mut frame_callback {
-                callback(&mut self);
+                callback(&self);
             }
         }
-
-        self.shutdown();
 
         Ok(())
     }
 
     pub fn post_main_thread_callback<F>(&self, f: F) -> Result<(), SendError<MainTheadFn>>
     where
-        F: FnMut(&mut FlutterWindow) + Send + 'static,
+        F: FnMut(&FlutterWindow) + Send + 'static,
     {
         self.main_thread_sender.send(Box::new(f))?;
         self.engine_handler.wake_platform_thread();
@@ -319,12 +320,12 @@ impl FlutterWindow {
     pub fn set_isolate_created(&mut self) {
         self.isolate_created = true;
 
-        while let Some(evt) = self.defered_events.pop_front() {
+        while let Some(evt) = self.defered_events.lock().pop_front() {
             self.handle_glfw_event(evt);
         }
     }
 
-    fn shutdown(self) {
+    pub fn shutdown(self) {
         ENGINES
             .lock()
             .remove(&WindowSafe(self.window.lock().window_ptr()));
@@ -333,13 +334,15 @@ impl FlutterWindow {
         self.engine.shutdown();
     }
 
-    fn send_scale_or_size_change(&mut self) {
+    fn send_scale_or_size_change(&self) {
         let window = self.window.lock();
         let window_size = window.get_size();
         let framebuffer_size = window.get_framebuffer_size();
         let scale = window.get_content_scale();
-        self.window_pixels_per_screen_coordinate =
-            f64::from(framebuffer_size.0) / f64::from(window_size.0);
+        self.window_pixels_per_screen_coordinate.store(
+            (f64::from(framebuffer_size.0) / f64::from(window_size.0)).to_bits(),
+            Ordering::Relaxed,
+        );
         debug!(
             "Setting framebuffer size to {:?}, scale to {}",
             framebuffer_size, scale.0
@@ -352,14 +355,14 @@ impl FlutterWindow {
     }
 
     fn send_pointer_event(
-        &mut self,
+        &self,
         phase: FlutterPointerPhase,
         (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
         (scroll_delta_x, scroll_delta_y): (f64, f64),
         buttons: FlutterPointerMouseButtons,
     ) {
-        if !self.pointer_currently_added
+        if !self.pointer_currently_added.load(Ordering::Relaxed)
             && phase != FlutterPointerPhase::Add
             && phase != FlutterPointerPhase::Remove
         {
@@ -371,31 +374,39 @@ impl FlutterWindow {
                 buttons,
             );
         }
-        if self.pointer_currently_added && phase == FlutterPointerPhase::Add
-            || !self.pointer_currently_added && phase == FlutterPointerPhase::Remove
+        if self.pointer_currently_added.load(Ordering::Relaxed) && phase == FlutterPointerPhase::Add
+            || !self.pointer_currently_added.load(Ordering::Relaxed)
+                && phase == FlutterPointerPhase::Remove
         {
             return;
         }
+
+        let window_pixels_per_screen_coordinate = f64::from_bits(
+            self.window_pixels_per_screen_coordinate
+                .load(Ordering::Relaxed),
+        );
         self.engine.send_pointer_event(
             phase,
-            x * self.window_pixels_per_screen_coordinate,
-            y * self.window_pixels_per_screen_coordinate,
+            x * window_pixels_per_screen_coordinate,
+            y * window_pixels_per_screen_coordinate,
             signal_kind,
-            scroll_delta_x * self.window_pixels_per_screen_coordinate,
-            scroll_delta_y * self.window_pixels_per_screen_coordinate,
+            scroll_delta_x * window_pixels_per_screen_coordinate,
+            scroll_delta_y * window_pixels_per_screen_coordinate,
             buttons,
         );
 
         match phase {
-            FlutterPointerPhase::Add => self.pointer_currently_added = true,
-            FlutterPointerPhase::Remove => self.pointer_currently_added = false,
+            FlutterPointerPhase::Add => self.pointer_currently_added.store(true, Ordering::Relaxed),
+            FlutterPointerPhase::Remove => {
+                self.pointer_currently_added.store(false, Ordering::Relaxed)
+            }
             _ => {}
         }
     }
 
-    pub fn handle_glfw_event(&mut self, event: glfw::WindowEvent) {
+    pub fn handle_glfw_event(&self, event: glfw::WindowEvent) {
         if !self.isolate_created {
-            self.defered_events.push_back(event);
+            self.defered_events.lock().push_back(event);
             return;
         }
 
@@ -416,11 +427,12 @@ impl FlutterWindow {
             }
             glfw::WindowEvent::CursorPos(x, y) => {
                 // fix error when dragging cursor out of a window
-                if !self.pointer_currently_added {
+                if !self.pointer_currently_added.load(Ordering::Relaxed) {
                     return;
                 }
                 let phase = if self
                     .mouse_tracker
+                    .lock()
                     .get(&glfw::MouseButtonLeft)
                     .unwrap_or(&glfw::Action::Release)
                     == &glfw::Action::Press
@@ -453,11 +465,11 @@ impl FlutterWindow {
                 // Since Events are delayed by wait_events_timeout,
                 // it's not accurate to use get_mouse_button API to fetch current mouse state
                 // Here we save mouse states, and query it in this HashMap
-                self.mouse_tracker.insert(buttons, action);
+                self.mouse_tracker.lock().insert(buttons, action);
 
                 // fix error when keeping primary button down
                 // and alt+tab away from the window and release
-                if !self.pointer_currently_added {
+                if !self.pointer_currently_added.load(Ordering::Relaxed) {
                     return;
                 }
 
@@ -487,6 +499,7 @@ impl FlutterWindow {
                 let (x, y) = self.window.lock().get_cursor_pos();
                 let phase = if self
                     .mouse_tracker
+                    .lock()
                     .get(&glfw::MouseButtonLeft)
                     .unwrap_or(&glfw::Action::Release)
                     == &glfw::Action::Press

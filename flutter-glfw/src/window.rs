@@ -220,7 +220,7 @@ impl FlutterWindow {
     }
 
     pub fn run(
-        mut self,
+        &mut self,
         assets_path: String,
         icu_data_path: String,
         arguments: Vec<String>,
@@ -325,11 +325,9 @@ impl FlutterWindow {
     }
 
     fn shutdown(self) {
-        unsafe {
-            ENGINES
-                .lock()
-                .remove(&WindowSafe(self.window.lock().window_ptr()));
-        }
+        ENGINES
+            .lock()
+            .remove(&WindowSafe(self.window.lock().window_ptr()));
 
         self.runtime.shutdown_now().wait().unwrap();
         self.engine.shutdown();
@@ -421,7 +419,10 @@ impl FlutterWindow {
                 if !self.pointer_currently_added {
                     return;
                 }
-                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft).unwrap_or(&glfw::Action::Release)
+                let phase = if self
+                    .mouse_tracker
+                    .get(&glfw::MouseButtonLeft)
+                    .unwrap_or(&glfw::Action::Release)
                     == &glfw::Action::Press
                 {
                     FlutterPointerPhase::Move
@@ -484,7 +485,9 @@ impl FlutterWindow {
             }
             glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
                 let (x, y) = self.window.lock().get_cursor_pos();
-                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft)
+                let phase = if self
+                    .mouse_tracker
+                    .get(&glfw::MouseButtonLeft)
                     .unwrap_or(&glfw::Action::Release)
                     == &glfw::Action::Press
                 {

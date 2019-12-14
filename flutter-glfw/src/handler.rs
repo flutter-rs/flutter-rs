@@ -1,3 +1,4 @@
+use crate::texture_registry::TextureRegistry;
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::FlutterEngineHandler;
 use glfw::Context;
@@ -7,11 +8,12 @@ use std::sync::Arc;
 use tokio::prelude::Future;
 use tokio::runtime::TaskExecutor;
 
-pub struct GlfwFlutterEngineHandler {
-    pub glfw: glfw::Glfw,
-    pub window: Arc<Mutex<glfw::Window>>,
-    pub resource_window: Arc<Mutex<glfw::Window>>,
-    pub task_executor: TaskExecutor,
+pub(crate) struct GlfwFlutterEngineHandler {
+    pub(crate) glfw: glfw::Glfw,
+    pub(crate) window: Arc<Mutex<glfw::Window>>,
+    pub(crate) resource_window: Arc<Mutex<glfw::Window>>,
+    pub(crate) task_executor: TaskExecutor,
+    pub(crate) texture_registry: Arc<Mutex<TextureRegistry>>,
 }
 
 impl FlutterEngineHandler for GlfwFlutterEngineHandler {
@@ -64,6 +66,9 @@ impl FlutterEngineHandler for GlfwFlutterEngineHandler {
         texture_id: i64,
         size: (usize, usize),
     ) -> Option<ExternalTextureFrame> {
-        unimplemented!()
+        let (width, height) = size;
+        self.texture_registry
+            .lock()
+            .get_texture_frame(texture_id, (width as u32, height as u32))
     }
 }

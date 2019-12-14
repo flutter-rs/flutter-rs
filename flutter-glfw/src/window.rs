@@ -1,5 +1,6 @@
 use crate::draw;
 use crate::handler::GlfwFlutterEngineHandler;
+use crate::texture_registry::{ExternalTexture, TextureRegistry};
 use flutter_engine::ffi::{
     FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
 };
@@ -103,7 +104,7 @@ pub struct FlutterWindow {
     isolate_created: bool,
     defered_events: VecDeque<glfw::WindowEvent>,
     mouse_tracker: HashMap<glfw::MouseButton, glfw::Action>,
-//    pub texture_registry: TextureRegistry,
+    texture_registry: Arc<Mutex<TextureRegistry>>,
 }
 
 impl FlutterWindow {
@@ -167,6 +168,9 @@ impl FlutterWindow {
             glfw::make_context_current(None);
         }
 
+        // Texture registry
+        let texture_registry = Arc::new(Mutex::new(TextureRegistry::new()));
+
         // Create engine
         let runtime = Runtime::new().unwrap();
         let handler = Arc::new(GlfwFlutterEngineHandler {
@@ -174,6 +178,7 @@ impl FlutterWindow {
             window: window.clone(),
             resource_window: res_window.clone(),
             task_executor: runtime.executor(),
+            texture_registry: texture_registry.clone(),
         });
         let engine = FlutterEngine::new(Arc::downgrade(&handler) as _);
 
@@ -198,7 +203,7 @@ impl FlutterWindow {
             resource_window_receiver: res_window_recv,
             engine_handler: handler,
             runtime,
-            engine,
+            engine: engine,
             pointer_currently_added: false,
             window_pixels_per_screen_coordinate: 0.0,
             main_thread_receiver: main_rx,
@@ -206,7 +211,12 @@ impl FlutterWindow {
             isolate_created: false,
             defered_events: Default::default(),
             mouse_tracker: Default::default(),
+            texture_registry,
         })
+    }
+
+    pub fn create_texture(&self) -> Arc<ExternalTexture> {
+        self.texture_registry.lock().create_texture(&self.engine)
     }
 
     pub fn run(

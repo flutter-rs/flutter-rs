@@ -8,7 +8,6 @@ pub mod codec;
 pub mod error;
 mod flutter_callbacks;
 pub mod plugins;
-//pub mod texture_registry;
 pub mod ffi;
 pub mod tasks;
 mod utils;

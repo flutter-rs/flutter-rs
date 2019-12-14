@@ -159,7 +159,7 @@ impl From<FlutterPointerMouseButtons> for flutter_engine_sys::FlutterPointerMous
 #[derive(Debug)]
 pub struct ExternalTexture {
     pub(crate) engine_ptr: flutter_engine_sys::FlutterEngine,
-    pub(crate) texture_id: i64,
+    pub texture_id: i64,
 }
 
 unsafe impl Send for ExternalTexture {}
@@ -191,10 +191,10 @@ impl ExternalTexture {
 type DestructorType = Box<dyn FnOnce()>;
 
 pub struct ExternalTextureFrame {
-    target: u32,
-    name: u32,
-    format: u32,
-    destruction_callback: Box<DestructorType>,
+    pub target: u32,
+    pub name: u32,
+    pub format: u32,
+    pub destruction_callback: Box<DestructorType>,
 }
 
 impl ExternalTextureFrame {

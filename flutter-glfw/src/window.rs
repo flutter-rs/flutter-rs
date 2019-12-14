@@ -392,40 +392,40 @@ impl FlutterWindow {
         }
 
         match event {
-//            glfw::WindowEvent::CursorEnter(entered) => {
-//                let cursor_pos = self.window().get_cursor_pos();
-//                self.send_pointer_event(
-//                    if entered {
-//                        FlutterPointerPhase::Add
-//                    } else {
-//                        FlutterPointerPhase::Remove
-//                    },
-//                    (cursor_pos.0, cursor_pos.1),
-//                    FlutterPointerSignalKind::None,
-//                    (0.0, 0.0),
-//                    FlutterPointerMouseButtons::Primary,
-//                );
-//            }
-//            glfw::WindowEvent::CursorPos(x, y) => {
-//                // fix error when dragging cursor out of a window
-//                if !self.pointer_currently_added {
-//                    return;
-//                }
-//                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft).unwrap_or(&glfw::Action::Release)
-//                    == &glfw::Action::Press
-//                {
-//                    FlutterPointerPhase::Move
-//                } else {
-//                    FlutterPointerPhase::Hover
-//                };
-//                self.send_pointer_event(
-//                    phase,
-//                    (x, y),
-//                    FlutterPointerSignalKind::None,
-//                    (0.0, 0.0),
-//                    FlutterPointerMouseButtons::Primary,
-//                );
-//            }
+            glfw::WindowEvent::CursorEnter(entered) => {
+                let cursor_pos = self.window.lock().get_cursor_pos();
+                self.send_pointer_event(
+                    if entered {
+                        FlutterPointerPhase::Add
+                    } else {
+                        FlutterPointerPhase::Remove
+                    },
+                    (cursor_pos.0, cursor_pos.1),
+                    FlutterPointerSignalKind::None,
+                    (0.0, 0.0),
+                    FlutterPointerMouseButtons::Primary,
+                );
+            }
+            glfw::WindowEvent::CursorPos(x, y) => {
+                // fix error when dragging cursor out of a window
+                if !self.pointer_currently_added {
+                    return;
+                }
+                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft).unwrap_or(&glfw::Action::Release)
+                    == &glfw::Action::Press
+                {
+                    FlutterPointerPhase::Move
+                } else {
+                    FlutterPointerPhase::Hover
+                };
+                self.send_pointer_event(
+                    phase,
+                    (x, y),
+                    FlutterPointerSignalKind::None,
+                    (0.0, 0.0),
+                    FlutterPointerMouseButtons::Primary,
+                );
+            }
 //            glfw::WindowEvent::MouseButton(
 //                glfw::MouseButton::Button4,
 //                glfw::Action::Press,
@@ -438,67 +438,67 @@ impl FlutterWindow {
 //                    },
 //                );
 //            }
-//            glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
-//                // Since Events are delayed by wait_events_timeout,
-//                // it's not accurate to use get_mouse_button API to fetch current mouse state
-//                // Here we save mouse states, and query it in this HashMap
-//                self.mouse_tracker.insert(buttons, action);
-//
-//                // fix error when keeping primary button down
-//                // and alt+tab away from the window and release
-//                if !self.pointer_currently_added {
-//                    return;
-//                }
-//
-//                let (x, y) = self.window().get_cursor_pos();
-//                let phase = if action == glfw::Action::Press {
-//                    FlutterPointerPhase::Down
-//                } else {
-//                    FlutterPointerPhase::Up
-//                };
-//                let buttons = match buttons {
-//                    glfw::MouseButtonLeft => FlutterPointerMouseButtons::Primary,
-//                    glfw::MouseButtonRight => FlutterPointerMouseButtons::Secondary,
-//                    glfw::MouseButtonMiddle => FlutterPointerMouseButtons::Middle,
-//                    glfw::MouseButton::Button4 => FlutterPointerMouseButtons::Back,
-//                    glfw::MouseButton::Button5 => FlutterPointerMouseButtons::Forward,
-//                    _ => FlutterPointerMouseButtons::Primary,
-//                };
-//                self.send_pointer_event(
-//                    phase,
-//                    (x, y),
-//                    FlutterPointerSignalKind::None,
-//                    (0.0, 0.0),
-//                    buttons,
-//                );
-//            }
-//            glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
-//                let (x, y) = self.window().get_cursor_pos();
-//                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft)
-//                    .unwrap_or(&glfw::Action::Release)
-//                    == &glfw::Action::Press
-//                {
-//                    FlutterPointerPhase::Move
-//                } else {
-//                    FlutterPointerPhase::Hover
-//                };
-//                self.send_pointer_event(
-//                    phase,
-//                    (x, y),
-//                    FlutterPointerSignalKind::Scroll,
-//                    (
-//                        scroll_delta_x * SCROLL_SPEED,
-//                        -scroll_delta_y * SCROLL_SPEED,
-//                    ),
-//                    FlutterPointerMouseButtons::Primary,
-//                );
-//            }
-//            glfw::WindowEvent::FramebufferSize(_, _) => {
-//                self.send_scale_or_size_change();
-//            }
-//            glfw::WindowEvent::ContentScale(_, _) => {
-//                self.send_scale_or_size_change();
-//            }
+            glfw::WindowEvent::MouseButton(buttons, action, _modifiers) => {
+                // Since Events are delayed by wait_events_timeout,
+                // it's not accurate to use get_mouse_button API to fetch current mouse state
+                // Here we save mouse states, and query it in this HashMap
+                self.mouse_tracker.insert(buttons, action);
+
+                // fix error when keeping primary button down
+                // and alt+tab away from the window and release
+                if !self.pointer_currently_added {
+                    return;
+                }
+
+                let (x, y) = self.window.lock().get_cursor_pos();
+                let phase = if action == glfw::Action::Press {
+                    FlutterPointerPhase::Down
+                } else {
+                    FlutterPointerPhase::Up
+                };
+                let buttons = match buttons {
+                    glfw::MouseButtonLeft => FlutterPointerMouseButtons::Primary,
+                    glfw::MouseButtonRight => FlutterPointerMouseButtons::Secondary,
+                    glfw::MouseButtonMiddle => FlutterPointerMouseButtons::Middle,
+                    glfw::MouseButton::Button4 => FlutterPointerMouseButtons::Back,
+                    glfw::MouseButton::Button5 => FlutterPointerMouseButtons::Forward,
+                    _ => FlutterPointerMouseButtons::Primary,
+                };
+                self.send_pointer_event(
+                    phase,
+                    (x, y),
+                    FlutterPointerSignalKind::None,
+                    (0.0, 0.0),
+                    buttons,
+                );
+            }
+            glfw::WindowEvent::Scroll(scroll_delta_x, scroll_delta_y) => {
+                let (x, y) = self.window.lock().get_cursor_pos();
+                let phase = if self.mouse_tracker.get(&glfw::MouseButtonLeft)
+                    .unwrap_or(&glfw::Action::Release)
+                    == &glfw::Action::Press
+                {
+                    FlutterPointerPhase::Move
+                } else {
+                    FlutterPointerPhase::Hover
+                };
+                self.send_pointer_event(
+                    phase,
+                    (x, y),
+                    FlutterPointerSignalKind::Scroll,
+                    (
+                        scroll_delta_x * SCROLL_SPEED,
+                        -scroll_delta_y * SCROLL_SPEED,
+                    ),
+                    FlutterPointerMouseButtons::Primary,
+                );
+            }
+            glfw::WindowEvent::FramebufferSize(_, _) => {
+                self.send_scale_or_size_change();
+            }
+            glfw::WindowEvent::ContentScale(_, _) => {
+                self.send_scale_or_size_change();
+            }
 //            glfw::WindowEvent::Char(char) => self.plugin_registrar.with_plugin_mut(
 //                |text_input: &mut crate::plugins::TextInputPlugin| {
 //                    text_input.with_state(|state| {

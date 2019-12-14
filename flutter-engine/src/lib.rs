@@ -6,9 +6,9 @@ mod macros;
 pub mod channel;
 pub mod codec;
 pub mod error;
+pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
-pub mod ffi;
 pub mod tasks;
 mod utils;
 
@@ -180,6 +180,41 @@ impl FlutterEngine {
         self
     }
 
+    pub fn with_plugin<F, P>(&self, f: F)
+    where
+        F: FnOnce(&P),
+        P: Plugin + 'static,
+    {
+        self.inner.plugins.read().with_plugin(f)
+    }
+
+    pub fn with_plugin_mut<F, P>(&self, f: F)
+    where
+        F: FnOnce(&mut P),
+        P: Plugin + 'static,
+    {
+        self.inner.plugins.write().with_plugin_mut(f)
+    }
+
+    pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
+        self.inner
+            .plugins
+            .write()
+            .channel_registry
+            .remove_channel(channel_name)
+    }
+
+    pub fn with_channel<F>(&self, channel_name: &str, f: F)
+    where
+        F: FnMut(&dyn Channel),
+    {
+        self.inner
+            .plugins
+            .read()
+            .channel_registry
+            .with_channel(channel_name, f)
+    }
+
     pub fn downgrade(&self) -> FlutterEngineWeakRef {
         FlutterEngineWeakRef {
             inner: Arc::downgrade(&self.inner),
@@ -322,7 +357,7 @@ impl FlutterEngine {
         }
     }
 
-    pub(crate) fn run_in_background<F>(&self, func: F)
+    pub fn run_in_background<F>(&self, func: F)
     where
         F: FnOnce() + 'static + Send,
     {

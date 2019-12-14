@@ -2,20 +2,29 @@
 //! It handles flutter/localization type message.
 
 use super::prelude::*;
+use flutter_engine::FlutterEngine;
+use parking_lot::Mutex;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/isolate";
+
+pub type IsolateCallbackFn = Mutex<Option<Box<dyn FnOnce() + Send>>>;
 
 pub struct IsolatePlugin {
     channel: Weak<BasicMessageChannel>,
     handler: Arc<RwLock<Handler>>,
 }
 
-impl Default for IsolatePlugin {
-    fn default() -> Self {
+impl IsolatePlugin {
+    pub fn new<F>(callback: F) -> Self
+    where
+        F: FnOnce() -> () + 'static + Send,
+    {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler)),
+            handler: Arc::new(RwLock::new(Handler {
+                callback: Mutex::new(Some(Box::new(callback))),
+            })),
         }
     }
 }
@@ -35,13 +44,15 @@ impl Plugin for IsolatePlugin {
     }
 }
 
-struct Handler;
+struct Handler {
+    callback: IsolateCallbackFn,
+}
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, runtime_data: RuntimeData) -> Result<Value, MessageError> {
-        runtime_data.with_window_state(|window_state| {
-            window_state.set_isolate_created();
-        })?;
+    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
+        if let Some(callback) = self.callback.lock().take() {
+            (callback)();
+        }
         Ok(Value::Null)
     }
 }

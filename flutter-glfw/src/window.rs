@@ -1,10 +1,13 @@
 use crate::draw;
 use crate::handler::GlfwFlutterEngineHandler;
 use crate::texture_registry::{ExternalTexture, TextureRegistry};
+use flutter_engine::channel::Channel;
 use flutter_engine::ffi::{
     FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
 };
+use flutter_engine::plugins::Plugin;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_plugins::isolate::IsolatePlugin;
 use glfw::Context;
 use lazy_static::lazy_static;
 use log::debug;
@@ -102,7 +105,7 @@ pub struct FlutterWindow {
     window_pixels_per_screen_coordinate: AtomicU64,
     main_thread_receiver: Receiver<MainTheadFn>,
     main_thread_sender: Sender<MainTheadFn>,
-    isolate_created: bool,
+    isolate_created: AtomicBool,
     defered_events: Mutex<VecDeque<glfw::WindowEvent>>,
     mouse_tracker: Mutex<HashMap<glfw::MouseButton, glfw::Action>>,
     texture_registry: Arc<Mutex<TextureRegistry>>,
@@ -190,11 +193,18 @@ impl FlutterWindow {
                 .insert(WindowSafe(window.lock().window_ptr()), engine.clone());
         }
 
-        // Register plugins
-//        window_state.plugin_registrar.add_system_plugins();
-
         // Main thread callbacks
         let (main_tx, main_rx) = mpsc::channel();
+
+        // Register plugins
+        let isolate_tx: Sender<MainTheadFn> = main_tx.clone();
+        engine.add_plugin(IsolatePlugin::new(move || {
+            isolate_tx
+                .send(Box::new(move |window| {
+                    window.set_isolate_created();
+                }))
+                .unwrap();
+        }));
 
         Ok(Self {
             glfw: glfw.clone(),
@@ -209,15 +219,58 @@ impl FlutterWindow {
             window_pixels_per_screen_coordinate: AtomicU64::new(0.0_f64.to_bits()),
             main_thread_receiver: main_rx,
             main_thread_sender: main_tx,
-            isolate_created: false,
+            isolate_created: AtomicBool::new(false),
             defered_events: Mutex::new(Default::default()),
             mouse_tracker: Mutex::new(Default::default()),
             texture_registry,
         })
     }
 
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
+    }
+
+    pub fn engine(&self) -> FlutterEngine {
+        self.engine.clone()
+    }
+
     pub fn create_texture(&self) -> Arc<ExternalTexture> {
         self.texture_registry.lock().create_texture(&self.engine)
+    }
+
+    pub fn add_plugin<P>(&self, plugin: P) -> &Self
+    where
+        P: Plugin + 'static,
+    {
+        self.engine.add_plugin(plugin);
+        self
+    }
+
+    pub fn with_plugin<F, P>(&self, f: F)
+    where
+        F: FnOnce(&P),
+        P: Plugin + 'static,
+    {
+        self.engine.with_plugin(f)
+    }
+
+    pub fn with_plugin_mut<F, P>(&self, f: F)
+    where
+        F: FnOnce(&mut P),
+        P: Plugin + 'static,
+    {
+        self.engine.with_plugin_mut(f)
+    }
+
+    pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
+        self.engine.remove_channel(channel_name)
+    }
+
+    pub fn with_channel<F>(&self, channel_name: &str, f: F)
+    where
+        F: FnMut(&dyn Channel),
+    {
+        self.engine.with_channel(channel_name, f)
     }
 
     pub fn run(
@@ -317,8 +370,8 @@ impl FlutterWindow {
         Ok(())
     }
 
-    pub fn set_isolate_created(&mut self) {
-        self.isolate_created = true;
+    pub fn set_isolate_created(&self) {
+        self.isolate_created.store(true, Ordering::Relaxed);
 
         while let Some(evt) = self.defered_events.lock().pop_front() {
             self.handle_glfw_event(evt);
@@ -405,7 +458,7 @@ impl FlutterWindow {
     }
 
     pub fn handle_glfw_event(&self, event: glfw::WindowEvent) {
-        if !self.isolate_created {
+        if !self.isolate_created.load(Ordering::Relaxed) {
             self.defered_events.lock().push_back(event);
             return;
         }

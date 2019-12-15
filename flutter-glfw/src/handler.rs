@@ -7,6 +7,7 @@ use std::ffi::c_void;
 use std::sync::Arc;
 use tokio::prelude::Future;
 use tokio::runtime::TaskExecutor;
+use flutter_plugins::platform::{PlatformHandler, AppSwitcherDescription};
 
 pub(crate) struct GlfwFlutterEngineHandler {
     pub(crate) glfw: glfw::Glfw,
@@ -70,5 +71,33 @@ impl FlutterEngineHandler for GlfwFlutterEngineHandler {
         self.texture_registry
             .lock()
             .get_texture_frame(texture_id, (width as u32, height as u32))
+    }
+}
+
+pub struct GlfwPlatformHandler {
+    pub window: Arc<Mutex<glfw::Window>>,
+}
+
+unsafe impl Send for GlfwPlatformHandler {}
+
+impl PlatformHandler for GlfwPlatformHandler {
+    fn set_application_switcher_description(&mut self, description: AppSwitcherDescription) {
+        self.window.lock().set_title(&description.label);
+    }
+
+    fn set_clipboard_data(&mut self, text: String) {
+        self.window.lock().set_clipboard_string(&text);
+    }
+
+    fn get_clipboard_data(&mut self, mime: String) -> Result<String, ()> {
+        match mime.as_str() {
+            "text/plain" => {
+                Ok(match self.window.lock().get_clipboard_string() {
+                    None => "".to_string(),
+                    Some(val) => val,
+                })
+            },
+            _ => Err(())
+        }
     }
 }

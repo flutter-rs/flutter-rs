@@ -10,7 +10,7 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
-mod utils;
+pub mod utils;
 
 use std::{
     ffi::CString,
@@ -367,10 +367,6 @@ impl FlutterEngine {
     }
 
     pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
-        if !self.is_platform_thread() {
-            panic!("Not on platform thread")
-        }
-
         let event = flutter_engine_sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
             width: width as usize,
@@ -392,10 +388,6 @@ impl FlutterEngine {
         scroll_delta_y: f64,
         buttons: FlutterPointerMouseButtons,
     ) {
-        if !self.is_platform_thread() {
-            panic!("Not on platform thread")
-        }
-
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
         let event = flutter_engine_sys::FlutterPointerEvent {
@@ -418,10 +410,6 @@ impl FlutterEngine {
     }
 
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
-        if !self.is_platform_thread() {
-            panic!("Not on platform thread")
-        }
-
         trace!("Sending message on channel {}", message.channel);
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(
@@ -436,10 +424,6 @@ impl FlutterEngine {
         response_handle: PlatformMessageResponseHandle,
         bytes: &[u8],
     ) {
-        if !self.is_platform_thread() {
-            panic!("Not on platform thread")
-        }
-
         trace!("Sending message response");
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(

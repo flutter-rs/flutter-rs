@@ -100,7 +100,7 @@ impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        _: RuntimeData,
+        _: FlutterEngine,
     ) -> Result<Value, MethodCallError> {
         debug!("got method call {} with args {:?}", call.method, call.args);
         match call.method.as_str() {

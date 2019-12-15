@@ -1,7 +1,7 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
 
-use flutter_engine::plugins::prelude::*;
+use super::prelude::*;
 
 const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "flutter-rs/dialog";
@@ -35,7 +35,7 @@ impl MethodCallHandler for Handler {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        _: RuntimeData,
+        _: FlutterEngine,
     ) -> Result<Value, MethodCallError> {
         match call.method.as_str() {
             "open_file_dialog" => {

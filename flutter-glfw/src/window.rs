@@ -28,8 +28,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
-use tokio::prelude::Future;
-use tokio::runtime::Runtime;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
@@ -109,7 +107,6 @@ pub struct FlutterWindow {
     resource_window: Arc<Mutex<glfw::Window>>,
     resource_window_receiver: Receiver<(f64, glfw::WindowEvent)>,
     engine_handler: Arc<GlfwFlutterEngineHandler>,
-    runtime: Runtime,
     engine: FlutterEngine,
     pointer_currently_added: AtomicBool,
     window_pixels_per_screen_coordinate: AtomicU64,
@@ -187,12 +184,10 @@ impl FlutterWindow {
         let texture_registry = Arc::new(Mutex::new(TextureRegistry::new()));
 
         // Create engine
-        let runtime = Runtime::new().unwrap();
         let handler = Arc::new(GlfwFlutterEngineHandler {
             glfw: glfw.clone(),
             window: window.clone(),
             resource_window: res_window.clone(),
-            task_executor: runtime.executor(),
             texture_registry: texture_registry.clone(),
         });
         let engine = FlutterEngine::new(Arc::downgrade(&handler) as _);
@@ -242,7 +237,6 @@ impl FlutterWindow {
             resource_window: res_window,
             resource_window_receiver: res_window_recv,
             engine_handler: handler,
-            runtime,
             engine,
             pointer_currently_added: AtomicBool::new(false),
             window_pixels_per_screen_coordinate: AtomicU64::new(0.0_f64.to_bits()),
@@ -254,10 +248,6 @@ impl FlutterWindow {
             texture_registry,
             window_handler,
         })
-    }
-
-    pub fn runtime(&self) -> &Runtime {
-        &self.runtime
     }
 
     pub fn engine(&self) -> FlutterEngine {
@@ -414,7 +404,6 @@ impl FlutterWindow {
             .lock()
             .remove(&WindowSafe(self.window.lock().window_ptr()));
 
-        self.runtime.shutdown_now().wait().unwrap();
         self.engine.shutdown();
     }
 

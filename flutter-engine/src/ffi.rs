@@ -1,7 +1,7 @@
+use cty::c_void;
 use flutter_engine_sys::{
     FlutterOpenGLTexture, FlutterPlatformMessage, FlutterPlatformMessageResponseHandle,
 };
-use libc::c_void;
 use log::{error, trace};
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};

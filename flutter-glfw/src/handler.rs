@@ -1,20 +1,20 @@
 use crate::texture_registry::TextureRegistry;
+use async_std::task;
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::FlutterEngineHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
+use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
+use futures_task::FutureObj;
 use glfw::Context;
 use parking_lot::Mutex;
 use std::ffi::c_void;
+use std::future::Future;
 use std::sync::Arc;
-use tokio::prelude::Future;
-use tokio::runtime::TaskExecutor;
 
 pub(crate) struct GlfwFlutterEngineHandler {
     pub(crate) glfw: glfw::Glfw,
     pub(crate) window: Arc<Mutex<glfw::Window>>,
     pub(crate) resource_window: Arc<Mutex<glfw::Window>>,
-    pub(crate) task_executor: TaskExecutor,
     pub(crate) texture_registry: Arc<Mutex<TextureRegistry>>,
 }
 
@@ -56,11 +56,8 @@ impl FlutterEngineHandler for GlfwFlutterEngineHandler {
         }
     }
 
-    fn run_in_background(&self, func: Box<dyn FnOnce() + Send>) {
-        self.task_executor
-            .spawn(tokio::prelude::future::ok(()).map(move |_| {
-                func();
-            }));
+    fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>) {
+        task::spawn(FutureObj::new(func));
     }
 
     fn get_texture_frame(

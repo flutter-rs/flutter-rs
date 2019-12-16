@@ -498,7 +498,7 @@ impl FlutterEngine {
             flutter_engine_sys::FlutterEnginePostRenderThreadTask(
                 self.engine_ptr(),
                 Some(render_thread_task),
-                ptr as *mut libc::c_void,
+                ptr as *mut cty::c_void,
             );
         }
 
@@ -506,7 +506,7 @@ impl FlutterEngine {
             pub cbk: Box<dyn FnOnce()>,
         }
 
-        unsafe extern "C" fn render_thread_task(user_data: *mut libc::c_void) {
+        unsafe extern "C" fn render_thread_task(user_data: *mut cty::c_void) {
             let ptr = user_data as *mut CallbackBox;
             let b = Box::from_raw(ptr);
             (b.cbk)()

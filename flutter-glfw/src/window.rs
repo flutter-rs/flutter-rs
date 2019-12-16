@@ -1,5 +1,5 @@
 use crate::draw;
-use crate::handler::{GlfwFlutterEngineHandler, GlfwPlatformHandler};
+use crate::handler::{GlfwFlutterEngineHandler, GlfwPlatformHandler, GlfwWindowHandler};
 use crate::texture_registry::{ExternalTexture, TextureRegistry};
 use flutter_engine::channel::Channel;
 use flutter_engine::ffi::{
@@ -7,14 +7,17 @@ use flutter_engine::ffi::{
 };
 use flutter_engine::plugins::Plugin;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
+use flutter_plugins::platform::PlatformPlugin;
 use flutter_plugins::settings::SettingsPlugin;
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
+use flutter_plugins::window::WindowPlugin;
 use glfw::Context;
 use lazy_static::lazy_static;
 use log::{debug, info};
@@ -27,8 +30,6 @@ use std::sync::{mpsc, Arc};
 use std::time::Instant;
 use tokio::prelude::Future;
 use tokio::runtime::Runtime;
-use flutter_plugins::dialog::DialogPlugin;
-use flutter_plugins::platform::PlatformPlugin;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
@@ -118,6 +119,7 @@ pub struct FlutterWindow {
     defered_events: Mutex<VecDeque<glfw::WindowEvent>>,
     mouse_tracker: Mutex<HashMap<glfw::MouseButton, glfw::Action>>,
     texture_registry: Arc<Mutex<TextureRegistry>>,
+    window_handler: Arc<Mutex<GlfwWindowHandler>>,
 }
 
 impl FlutterWindow {
@@ -214,17 +216,24 @@ impl FlutterWindow {
                 }))
                 .unwrap();
         }));
+
         engine.add_plugin(KeyEventPlugin::default());
         engine.add_plugin(LifecyclePlugin::default());
         engine.add_plugin(LocalizationPlugin::default());
         engine.add_plugin(NavigationPlugin::default());
-        engine.add_plugin(PlatformPlugin::new(Arc::new(Mutex::new(Box::new(GlfwPlatformHandler {
-            window: window.clone(),
-        })))));
+        engine.add_plugin(PlatformPlugin::new(Arc::new(Mutex::new(Box::new(
+            GlfwPlatformHandler {
+                window: window.clone(),
+            },
+        )))));
         engine.add_plugin(SettingsPlugin::default());
         engine.add_plugin(SystemPlugin::default());
         engine.add_plugin(TextInputPlugin::default());
         engine.add_plugin(DialogPlugin::default());
+
+        let window_handler: Arc<Mutex<GlfwWindowHandler>> =
+            Arc::new(Mutex::new(GlfwWindowHandler::new(window.clone())));
+        engine.add_plugin(WindowPlugin::new(window_handler.clone() as _));
 
         Ok(Self {
             glfw: glfw.clone(),
@@ -243,6 +252,7 @@ impl FlutterWindow {
             defered_events: Mutex::new(Default::default()),
             mouse_tracker: Mutex::new(Default::default()),
             texture_registry,
+            window_handler,
         })
     }
 
@@ -364,6 +374,8 @@ impl FlutterWindow {
             for (_, event) in events {
                 let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
                     custom_handler(&self, event.clone())
+                } else if let glfw::WindowEvent::CursorPos(x, y) = event {
+                    self.window_handler.lock().drag_window(x, y)
                 } else {
                     true
                 };

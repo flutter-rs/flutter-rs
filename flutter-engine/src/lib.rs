@@ -1,5 +1,3 @@
-use std::sync::{mpsc::Receiver, Arc};
-
 #[macro_use]
 mod macros;
 
@@ -12,14 +10,6 @@ pub mod plugins;
 pub mod tasks;
 pub mod utils;
 
-use std::{
-    ffi::CString,
-    mem, ptr,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-use log::trace;
-
 use crate::channel::Channel;
 use crate::ffi::{
     ExternalTexture, ExternalTextureFrame, FlutterPointerMouseButtons, FlutterPointerPhase,
@@ -28,12 +18,16 @@ use crate::ffi::{
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
 use flutter_engine_sys::FlutterTask;
+use log::trace;
 use parking_lot::RwLock;
+use std::ffi::CString;
+use std::future::Future;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::mpsc::Sender;
-use std::sync::{mpsc, Weak};
-use std::time::Instant;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Weak};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::{mem, ptr};
 
 pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
@@ -117,7 +111,7 @@ pub trait FlutterEngineHandler {
 
     fn wake_platform_thread(&self);
 
-    fn run_in_background(&self, func: Box<dyn FnOnce() + Send>);
+    fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
 
     fn get_texture_frame(
         &self,
@@ -357,12 +351,9 @@ impl FlutterEngine {
         }
     }
 
-    pub fn run_in_background<F>(&self, func: F)
-    where
-        F: FnOnce() + 'static + Send,
-    {
+    pub fn run_in_background(&self, future: impl Future<Output = ()> + Send + 'static) {
         if let Some(handler) = self.inner.handler.upgrade() {
-            handler.run_in_background(Box::new(func));
+            handler.run_in_background(Box::new(future));
         }
     }
 

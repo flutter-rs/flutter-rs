@@ -99,7 +99,7 @@ pub trait MethodChannel: Channel {
                 let mut response_handle = msg.response_handle.take();
                 let codec = self.codec();
 
-                engine.clone().run_in_background(move || {
+                engine.clone().run_in_background(async move {
                     let mut handler = handler.write().unwrap();
                     let method = call.method.clone();
                     let result = handler.on_method_call(call, engine.clone());
@@ -169,7 +169,7 @@ pub trait MessageChannel: Channel {
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
                 let codec = self.codec();
-                engine.clone().run_in_background(move || {
+                engine.clone().run_in_background(async move {
                     let mut handler = handler.write().unwrap();
                     let result = handler.on_message(message, engine.clone());
                     let response = match result {

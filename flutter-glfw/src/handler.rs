@@ -1,13 +1,13 @@
 use crate::texture_registry::TextureRegistry;
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::FlutterEngineHandler;
+use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
 use glfw::Context;
 use parking_lot::Mutex;
 use std::ffi::c_void;
 use std::sync::Arc;
 use tokio::prelude::Future;
 use tokio::runtime::TaskExecutor;
-use flutter_plugins::platform::{PlatformHandler, AppSwitcherDescription};
 
 pub(crate) struct GlfwFlutterEngineHandler {
     pub(crate) glfw: glfw::Glfw,
@@ -91,13 +91,11 @@ impl PlatformHandler for GlfwPlatformHandler {
 
     fn get_clipboard_data(&mut self, mime: String) -> Result<String, ()> {
         match mime.as_str() {
-            "text/plain" => {
-                Ok(match self.window.lock().get_clipboard_string() {
-                    None => "".to_string(),
-                    Some(val) => val,
-                })
-            },
-            _ => Err(())
+            "text/plain" => Ok(match self.window.lock().get_clipboard_string() {
+                None => "".to_string(),
+                Some(val) => val,
+            }),
+            _ => Err(()),
         }
     }
 }

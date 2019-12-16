@@ -7,11 +7,13 @@ use flutter_engine::ffi::{
 };
 use flutter_engine::plugins::Plugin;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
+use flutter_plugins::platform::PlatformPlugin;
 use flutter_plugins::settings::SettingsPlugin;
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
@@ -27,8 +29,6 @@ use std::sync::{mpsc, Arc};
 use std::time::Instant;
 use tokio::prelude::Future;
 use tokio::runtime::Runtime;
-use flutter_plugins::dialog::DialogPlugin;
-use flutter_plugins::platform::PlatformPlugin;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
@@ -218,9 +218,11 @@ impl FlutterWindow {
         engine.add_plugin(LifecyclePlugin::default());
         engine.add_plugin(LocalizationPlugin::default());
         engine.add_plugin(NavigationPlugin::default());
-        engine.add_plugin(PlatformPlugin::new(Arc::new(Mutex::new(Box::new(GlfwPlatformHandler {
-            window: window.clone(),
-        })))));
+        engine.add_plugin(PlatformPlugin::new(Arc::new(Mutex::new(Box::new(
+            GlfwPlatformHandler {
+                window: window.clone(),
+            },
+        )))));
         engine.add_plugin(SettingsPlugin::default());
         engine.add_plugin(SystemPlugin::default());
         engine.add_plugin(TextInputPlugin::default());

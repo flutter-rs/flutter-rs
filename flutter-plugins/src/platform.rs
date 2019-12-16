@@ -26,9 +26,7 @@ impl PlatformPlugin {
     pub fn new(handler: Arc<Mutex<Box<dyn PlatformHandler + Send>>>) -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler {
-                handler
-            })),
+            handler: Arc::new(RwLock::new(Handler { handler })),
         }
     }
 }
@@ -59,7 +57,9 @@ impl MethodCallHandler for Handler {
         match call.method.as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
                 let args: AppSwitcherDescription = from_value(&call.args)?;
-                self.handler.lock().set_application_switcher_description(args);
+                self.handler
+                    .lock()
+                    .set_application_switcher_description(args);
                 Ok(Value::Null)
             }
             "Clipboard.setData" => {

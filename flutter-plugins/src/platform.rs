@@ -90,7 +90,8 @@ impl MethodCallHandler for Handler {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSwitcherDescription {
-    pub primaryColor: i64,
+    pub primary_color: i64,
     pub label: String,
 }

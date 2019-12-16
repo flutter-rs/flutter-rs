@@ -48,10 +48,9 @@ pub struct KeyAction {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum KeyActionType {
-    #[serde(rename = "keydown")]
     Keydown,
-    #[serde(rename = "keyup")]
     Keyup,
 }
 

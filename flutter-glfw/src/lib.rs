@@ -30,4 +30,8 @@ impl FlutterDesktop {
     ) -> Result<FlutterWindow, CreateError> {
         FlutterWindow::create(&mut self.glfw, window_args)
     }
+
+    pub fn glfw(&self) -> glfw::Glfw {
+        self.glfw.clone()
+    }
 }

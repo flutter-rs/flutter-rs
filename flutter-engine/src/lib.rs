@@ -162,7 +162,7 @@ impl FlutterEngine {
     }
 
     #[inline]
-    fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
+    pub fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
         self.inner.engine_ptr.load(Ordering::Relaxed)
     }
 
@@ -325,7 +325,7 @@ impl FlutterEngine {
     }
 
     #[inline]
-    fn is_platform_thread(&self) -> bool {
+    pub fn is_platform_thread(&self) -> bool {
         self.inner.platform_runner.runs_task_on_current_thread()
     }
 

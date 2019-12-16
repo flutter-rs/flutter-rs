@@ -105,7 +105,7 @@ pub struct FlutterWindow {
     window: Arc<Mutex<glfw::Window>>,
     window_receiver: Receiver<(f64, glfw::WindowEvent)>,
     resource_window: Arc<Mutex<glfw::Window>>,
-    resource_window_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    _resource_window_receiver: Receiver<(f64, glfw::WindowEvent)>,
     engine_handler: Arc<GlfwFlutterEngineHandler>,
     engine: FlutterEngine,
     pointer_currently_added: AtomicBool,
@@ -235,7 +235,7 @@ impl FlutterWindow {
             window,
             window_receiver: receiver,
             resource_window: res_window,
-            resource_window_receiver: res_window_recv,
+            _resource_window_receiver: res_window_recv,
             engine_handler: handler,
             engine,
             pointer_currently_added: AtomicBool::new(false),
@@ -252,6 +252,14 @@ impl FlutterWindow {
 
     pub fn engine(&self) -> FlutterEngine {
         self.engine.clone()
+    }
+
+    pub fn window(&self) -> Arc<Mutex<glfw::Window>> {
+        self.window.clone()
+    }
+
+    pub fn resource_window(&self) -> Arc<Mutex<glfw::Window>> {
+        self.resource_window.clone()
     }
 
     pub fn create_texture(&self) -> Arc<ExternalTexture> {

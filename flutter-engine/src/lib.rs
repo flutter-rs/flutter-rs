@@ -262,10 +262,13 @@ impl FlutterEngine {
                 flutter_callbacks::runs_task_on_current_thread,
             ),
             post_task_callback: Some(flutter_callbacks::post_task),
+            identifier: 0,
         };
         let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
             platform_task_runner: &platform_task_runner
+                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
+            render_task_runner: &platform_task_runner
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
         let project_args = flutter_engine_sys::FlutterProjectArgs {
@@ -294,6 +297,8 @@ impl FlutterEngine {
             custom_dart_entrypoint: std::ptr::null(),
             custom_task_runners: &custom_task_runners
                 as *const flutter_engine_sys::FlutterCustomTaskRunners,
+            shutdown_dart_vm_when_done: true,
+            compositor: std::ptr::null(),
         };
 
         unsafe {

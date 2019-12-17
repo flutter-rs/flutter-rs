@@ -1,5 +1,3 @@
-use glfw;
-
 use super::prelude::*;
 
 pub const PLUGIN_NAME: &str = module_path!();
@@ -36,6 +34,26 @@ impl Default for KeyEventPlugin {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct KeyAction {
+    pub toolkit: String,
+    #[serde(rename = "keyCode")]
+    pub key_code: i32,
+    #[serde(rename = "scanCode")]
+    pub scan_code: i32,
+    pub modifiers: i32,
+    pub keymap: String,
+    #[serde(rename = "type")]
+    pub _type: KeyActionType,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyActionType {
+    Keydown,
+    Keyup,
+}
+
 impl KeyEventPlugin {
     fn with_channel<F>(&self, f: F)
     where
@@ -46,32 +64,16 @@ impl KeyEventPlugin {
         }
     }
 
-    pub fn key_action(
-        &self,
-        up: bool,
-        key: glfw::Key,
-        scancode: glfw::Scancode,
-        modifiers: glfw::Modifiers,
-    ) {
+    pub fn key_action(&self, action: KeyAction) {
         self.with_channel(|channel| {
-            let json = json_value!({
-                "toolkit": "glfw",
-                "keyCode": key as i32,
-                "scanCode": scancode as i32,
-                // "codePoint":
-                "modifiers": modifiers.bits() as i32,
-                // TODO: raw_keyboard_listener.dart seems to have limited support for keyboard
-                // need to update later
-                "keymap": "linux",
-                "type": if up { "keyup" } else { "keydown" }
-            });
+            let json = json_value!(action);
             channel.send(&json);
         });
     }
 }
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, _: RuntimeData) -> Result<Value, MessageError> {
+    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
         Ok(Value::Null)
     }
 }

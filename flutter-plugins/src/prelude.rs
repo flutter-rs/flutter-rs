@@ -5,7 +5,7 @@ pub use std::{
 
 pub use serde::{Deserialize, Serialize};
 
-pub use crate::{
+pub use flutter_engine::{
     channel::{
         BasicMessageChannel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
         MessageChannel, MessageHandler, MethodCallHandler, MethodChannel, StandardMethodChannel,
@@ -18,5 +18,5 @@ pub use crate::{
     ffi::PlatformMessageResponseHandle,
     json_value,
     plugins::{Plugin, PluginRegistrar},
-    RuntimeData, Window,
+    FlutterEngine,
 };

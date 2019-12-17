@@ -4,8 +4,7 @@ extern crate flutter_download;
 use bindgen::EnumVariation;
 use flutter_download::get_flutter_version;
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -125,13 +124,14 @@ fn write_cargo_config(project_dir: &Path, libs_dir: &Path) {
             .args(&[
                 "-R",
                 &src.to_string_lossy().to_owned(),
-                &tar.to_string_lossy().to_owned()])
+                &tar.to_string_lossy().to_owned(),
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn();
         Some(
             r#"[target.x86_64-apple-darwin]
-rustflags = ["-C", "link-args=-Wl,-rpath,@executable_path,-rpath,@executable_path/../Frameworks"]"#
+rustflags = ["-C", "link-args=-Wl,-rpath,@executable_path,-rpath,@executable_path/../Frameworks"]"#,
         )
     } else if cfg!(target_os = "windows") {
         let src = libs_dir.join("flutter_engine.dll");

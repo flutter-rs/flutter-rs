@@ -4,17 +4,15 @@
 
 use std::{
     borrow::Cow,
-    sync::{Arc, RwLock, Weak},
+    sync::{Arc, RwLock},
 };
 
 use log::{error, trace};
-use tokio::prelude::Future;
 
 use crate::{
     codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
-    desktop_window_state::{InitData, RuntimeData},
     error::{MessageError, MethodCallError},
-    ffi::{PlatformMessage, PlatformMessageResponseHandle},
+    FlutterEngine, FlutterEngineWeakRef, PlatformMessage, PlatformMessageResponseHandle,
 };
 
 pub use self::{
@@ -36,15 +34,15 @@ mod standard_method_channel;
 
 trait ChannelImpl {
     fn name(&self) -> &str;
-    fn init_data(&self) -> Option<Arc<InitData>>;
-    fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
+    fn engine(&self) -> Option<FlutterEngine>;
+    fn init(&mut self, engine: FlutterEngineWeakRef, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
 }
 
 pub trait Channel {
     fn name(&self) -> &str;
-    fn init_data(&self) -> Option<Arc<InitData>>;
-    fn init(&mut self, runtime_data: Weak<InitData>, plugin_name: &'static str);
+    fn engine(&self) -> Option<FlutterEngine>;
+    fn init(&mut self, engine: FlutterEngineWeakRef, plugin_name: &'static str);
     fn plugin_name(&self) -> &'static str;
     fn handle_platform_message(&self, msg: PlatformMessage);
     fn try_as_method_channel(&self) -> Option<&dyn MethodChannel>;
@@ -54,10 +52,8 @@ pub trait Channel {
     /// it can wait for rust response using await syntax.
     /// This method send a response to flutter. This is a low level method.
     fn send_response(&self, response_handle: PlatformMessageResponseHandle, buf: &[u8]) {
-        if let Some(init_data) = self.init_data() {
-            init_data
-                .engine
-                .send_platform_message_response(response_handle, buf);
+        if let Some(engine) = self.engine() {
+            engine.send_platform_message_response(response_handle, buf);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -65,8 +61,8 @@ pub trait Channel {
 
     /// Send a platform message over this channel. This is a low level method.
     fn send_platform_message(&self, message: PlatformMessage) {
-        if let Some(init_data) = self.init_data() {
-            init_data.engine.send_platform_message(message);
+        if let Some(engine) = self.engine() {
+            engine.send_platform_message(message);
         } else {
             error!("Channel {} was not initialized", self.name());
         }
@@ -90,8 +86,7 @@ pub trait MethodChannel: Channel {
     fn handle_platform_message(&self, mut msg: PlatformMessage) {
         debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.method_handler() {
-            if let Some(init_data) = self.init_data() {
-                let runtime_data = (*init_data.runtime_data).clone();
+            if let Some(engine) = self.engine() {
                 let call = self.codec().decode_method_call(msg.message).unwrap();
                 let channel = self.name().to_owned();
                 trace!(
@@ -103,41 +98,35 @@ pub trait MethodChannel: Channel {
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
                 let codec = self.codec();
-                init_data
-                    .runtime_data
-                    .task_executor
-                    .spawn(tokio::prelude::future::ok(()).map(move |_| {
-                        let mut handler = handler.write().unwrap();
-                        let method = call.method.clone();
-                        let tx = runtime_data.main_thread_sender.clone();
-                        let result = handler.on_method_call(call, runtime_data);
-                        let response = match result {
-                            Ok(value) => MethodCallResult::Ok(value),
-                            Err(error) => {
-                                error!(
-                                    target: handler
-                                        .log_target()
-                                        .unwrap_or(plugin_name),
-                                    "error in method call {}#{}: {}",
-                                    channel,
-                                    method,
-                                    error);
-                                error.into()
-                            }
-                        };
-                        tx.send(crate::desktop_window_state::MainThreadCallback::ChannelFn(
-                            (
+
+                engine.clone().run_in_background(async move {
+                    let mut handler = handler.write().unwrap();
+                    let method = call.method.clone();
+                    let result = handler.on_method_call(call, engine.clone());
+                    let response = match result {
+                        Ok(value) => MethodCallResult::Ok(value),
+                        Err(error) => {
+                            error!(
+                                target: handler
+                                    .log_target()
+                                    .unwrap_or(plugin_name),
+                                "error in method call {}#{}: {}",
                                 channel,
-                                Box::new(move |channel| {
-                                    let buf = codec.encode_method_call_response(&response);
-                                    if let Some(handle) = response_handle.take() {
-                                        channel.send_response(handle, &buf);
-                                    }
-                                }),
-                            ),
-                        ))
-                        .unwrap();
-                    }));
+                                method,
+                                error);
+                            error.into()
+                        }
+                    };
+                    engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                        channel,
+                        Box::new(move |channel| {
+                            let buf = codec.encode_method_call_response(&response);
+                            if let Some(handle) = response_handle.take() {
+                                channel.send_response(handle, &buf);
+                            }
+                        }),
+                    )));
+                });
             }
         }
     }
@@ -173,49 +162,41 @@ pub trait MessageChannel: Channel {
     fn handle_platform_message(&self, mut msg: PlatformMessage) {
         debug_assert_eq!(msg.channel, self.name());
         if let Some(handler) = self.message_handler() {
-            if let Some(init_data) = self.init_data() {
-                let runtime_data = (*init_data.runtime_data).clone();
+            if let Some(engine) = self.engine() {
                 let message = self.codec().decode_message(msg.message).unwrap();
                 let channel = self.name().to_owned();
                 trace!("on channel {}, got message {:?}", channel, message);
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
                 let codec = self.codec();
-                init_data
-                    .runtime_data
-                    .task_executor
-                    .spawn(tokio::prelude::future::ok(()).map(move |_| {
-                        let mut handler = handler.write().unwrap();
-                        let tx = runtime_data.main_thread_sender.clone();
-                        let result = handler.on_message(message, runtime_data);
-                        let response = match result {
-                            Ok(value) => value,
-                            Err(error) => {
-                                error!(
-                                    target: handler
-                                        .log_target()
-                                        .unwrap_or(plugin_name),
-                                    "error in message handler on channel {}: {}",
-                                    channel,
-                                    error);
-                                Value::Null
-                            }
-                        };
-                        if response_handle.is_some() {
-                            tx.send(crate::desktop_window_state::MainThreadCallback::ChannelFn(
-                                (
-                                    channel,
-                                    Box::new(move |channel| {
-                                        let buf = codec.encode_message(&response);
-                                        if let Some(handle) = response_handle.take() {
-                                            channel.send_response(handle, &buf);
-                                        }
-                                    }),
-                                ),
-                            ))
-                            .unwrap();
+                engine.clone().run_in_background(async move {
+                    let mut handler = handler.write().unwrap();
+                    let result = handler.on_message(message, engine.clone());
+                    let response = match result {
+                        Ok(value) => value,
+                        Err(error) => {
+                            error!(
+                                target: handler
+                                    .log_target()
+                                    .unwrap_or(plugin_name),
+                                "error in message handler on channel {}: {}",
+                                channel,
+                                error);
+                            Value::Null
                         }
-                    }));
+                    };
+                    if response_handle.is_some() {
+                        engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                            channel,
+                            Box::new(move |channel| {
+                                let buf = codec.encode_message(&response);
+                                if let Some(handle) = response_handle.take() {
+                                    channel.send_response(handle, &buf);
+                                }
+                            }),
+                        )));
+                    }
+                });
             }
         }
     }
@@ -232,7 +213,7 @@ pub trait MessageHandler {
         None
     }
 
-    fn on_message(&mut self, msg: Value, runtime_data: RuntimeData) -> Result<Value, MessageError>;
+    fn on_message(&mut self, msg: Value, engine: FlutterEngine) -> Result<Value, MessageError>;
 }
 
 pub trait MethodCallHandler {
@@ -243,15 +224,11 @@ pub trait MethodCallHandler {
     fn on_method_call(
         &mut self,
         call: MethodCall,
-        runtime_data: RuntimeData,
+        engine: FlutterEngine,
     ) -> Result<Value, MethodCallError>;
 }
 
 pub trait EventHandler {
-    fn on_listen(
-        &mut self,
-        args: Value,
-        runtime_data: RuntimeData,
-    ) -> Result<Value, MethodCallError>;
-    fn on_cancel(&mut self, runtime_data: RuntimeData) -> Result<Value, MethodCallError>;
+    fn on_listen(&mut self, args: Value, engine: FlutterEngine) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, engine: FlutterEngine) -> Result<Value, MethodCallError>;
 }

@@ -1,255 +1,231 @@
-use std::{
-    cell::RefCell,
-    ffi::CString,
-    sync::{mpsc::Receiver, Arc},
-};
-
-pub use glfw::{Context, Window};
-use log::error;
-
-pub use crate::desktop_window_state::{DesktopWindowState, InitData, RuntimeData};
-use crate::event_loop::EventLoop;
-use crate::ffi::FlutterEngine;
-pub use crate::ffi::PlatformMessage;
-
 #[macro_use]
 mod macros;
 
 pub mod channel;
 pub mod codec;
-mod desktop_window_state;
-mod draw;
 pub mod error;
-mod event_loop;
-mod ffi;
+pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
-pub mod texture_registry;
-mod utils;
+pub mod tasks;
+pub mod utils;
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub enum Error {
-    WindowAlreadyCreated,
-    WindowCreationFailed,
-    EngineFailed,
-    MonitorNotFound,
+use crate::channel::Channel;
+use crate::ffi::{
+    ExternalTexture, ExternalTextureFrame, FlutterPointerMouseButtons, FlutterPointerPhase,
+    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+};
+use crate::plugins::{Plugin, PluginRegistrar};
+use crate::tasks::{TaskRunner, TaskRunnerHandler};
+use flutter_engine_sys::FlutterTask;
+use log::trace;
+use parking_lot::RwLock;
+use std::ffi::CString;
+use std::future::Future;
+use std::os::raw::{c_char, c_void};
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Weak};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::{mem, ptr};
+
+pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
+pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
+pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
+
+pub(crate) enum MainThreadCallback {
+    EngineFn(MainThreadEngineFn),
+    ChannelFn(MainThreadChannelFn),
+    RenderThreadFn(MainThreadRenderThreadFn),
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use std::error::Error;
-        f.write_str(self.description())
-    }
+struct FlutterEngineInner {
+    handler: Weak<dyn FlutterEngineHandler>,
+    engine_ptr: AtomicPtr<flutter_engine_sys::_FlutterEngine>,
+    plugins: RwLock<PluginRegistrar>,
+    platform_runner: TaskRunner,
+    _platform_runner_handler: Arc<PlatformRunnerHandler>,
+    platform_receiver: Receiver<MainThreadCallback>,
+    platform_sender: Sender<MainThreadCallback>,
 }
 
-impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::EngineFailed => "Engine call failed",
-            Error::WindowCreationFailed => "Failed to create a window",
-            Error::WindowAlreadyCreated => "Window was already created",
-            Error::MonitorNotFound => "No monitor with the specified index found",
+pub struct FlutterEngineWeakRef {
+    inner: Weak<FlutterEngineInner>,
+}
+
+unsafe impl Send for FlutterEngineWeakRef {}
+
+unsafe impl Sync for FlutterEngineWeakRef {}
+
+impl FlutterEngineWeakRef {
+    fn upgrade(&self) -> Option<FlutterEngine> {
+        match self.inner.upgrade() {
+            None => None,
+            Some(arc) => Some(FlutterEngine { inner: arc }),
         }
     }
 }
 
-pub enum WindowMode {
-    Fullscreen(usize),
-    Windowed,
-    Borderless,
-}
-
-pub struct WindowArgs<'a> {
-    pub width: i32,
-    pub height: i32,
-    pub title: &'a str,
-    pub mode: WindowMode,
-    pub bg_color: (u8, u8, u8),
-}
-
-pub type WindowEventHandler = dyn FnMut(&mut DesktopWindowState, glfw::WindowEvent) -> bool;
-pub type PerFrameCallback = dyn FnMut(&mut DesktopWindowState);
-
-enum DesktopUserData {
-    None,
-    Window(*mut glfw::Window, *mut glfw::Window),
-    // boxing here since `DesktopWindowState` has a big size difference
-    // that may be expansive in copy/clone/move, also
-    // enum size is bounded by the largest variant. Having a large variant
-    // can penalize the memory layout of that enum.
-    WindowState(Box<DesktopWindowState>),
-}
-
-impl DesktopUserData {
-    pub fn get_window(&mut self) -> Option<&mut glfw::Window> {
-        unsafe {
-            match self {
-                DesktopUserData::Window(window, _) => Some(&mut **window),
-                DesktopUserData::WindowState(window_state) => Some(window_state.window()),
-                DesktopUserData::None => None,
-            }
-        }
+impl Default for FlutterEngineWeakRef {
+    fn default() -> Self {
+        Self { inner: Weak::new() }
     }
-    pub fn get_resource_window(&mut self) -> Option<&mut glfw::Window> {
-        unsafe {
-            match self {
-                DesktopUserData::Window(_, window) => Some(&mut **window),
-                DesktopUserData::WindowState(window_state) => Some(window_state.resource_window()),
-                DesktopUserData::None => None,
-            }
+}
+
+impl Clone for FlutterEngineWeakRef {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Weak::clone(&self.inner),
         }
     }
 }
 
-pub struct FlutterDesktop {
-    glfw: glfw::Glfw,
-    window: Option<glfw::Window>,
-    resource_window: Option<glfw::Window>,
-    resource_window_receiver: Option<Receiver<(f64, glfw::WindowEvent)>>,
-    user_data: Box<RefCell<DesktopUserData>>,
-    event_loop: Box<RefCell<EventLoop>>,
+pub struct FlutterEngine {
+    inner: Arc<FlutterEngineInner>,
 }
 
-pub fn init() -> Result<FlutterDesktop, glfw::InitError> {
-    glfw::init(Some(glfw::Callback {
-        f: glfw_error_callback,
-        data: (),
-    }))
-    .map(|glfw| FlutterDesktop {
-        glfw,
-        window: None,
-        resource_window: None,
-        resource_window_receiver: None,
-        user_data: Box::new(RefCell::new(DesktopUserData::None)),
-        event_loop: Box::new(RefCell::new(EventLoop::new(glfw))),
-    })
-}
+unsafe impl Send for FlutterEngine {}
 
-impl FlutterDesktop {
-    pub fn create_window(
-        &mut self,
-        window_args: &WindowArgs,
-        assets_path: String,
-        icu_data_path: String,
-        arguments: Vec<String>,
-    ) -> Result<(), Error> {
-        match *self.user_data.borrow() {
-            DesktopUserData::None => {}
-            _ => return Err(Error::WindowAlreadyCreated),
+unsafe impl Sync for FlutterEngine {}
+
+impl Clone for FlutterEngine {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
         }
-        let (window, receiver) = match window_args.mode {
-            WindowMode::Windowed => self
-                .glfw
-                .create_window(
-                    window_args.width as u32,
-                    window_args.height as u32,
-                    window_args.title,
-                    glfw::WindowMode::Windowed,
-                )
-                .ok_or(Error::WindowCreationFailed)?,
-            WindowMode::Borderless => {
-                self.glfw.window_hint(glfw::WindowHint::Decorated(false));
-                self.glfw
-                    .create_window(
-                        window_args.width as u32,
-                        window_args.height as u32,
-                        window_args.title,
-                        glfw::WindowMode::Windowed,
-                    )
-                    .ok_or(Error::WindowCreationFailed)?
-            }
-            WindowMode::Fullscreen(index) => {
-                self.glfw
-                    .with_connected_monitors(|glfw, monitors| -> Result<_, Error> {
-                        let monitor = monitors.get(index).ok_or(Error::MonitorNotFound)?;
-                        glfw.create_window(
-                            window_args.width as u32,
-                            window_args.height as u32,
-                            window_args.title,
-                            glfw::WindowMode::FullScreen(monitor),
-                        )
-                        .ok_or(Error::WindowCreationFailed)
-                    })?
-            }
+    }
+}
+
+pub trait FlutterEngineHandler {
+    fn swap_buffers(&self) -> bool;
+
+    fn make_current(&self) -> bool;
+
+    fn clear_current(&self) -> bool;
+
+    fn fbo_callback(&self) -> u32;
+
+    fn make_resource_current(&self) -> bool;
+
+    fn gl_proc_resolver(&self, proc: *const c_char) -> *mut c_void;
+
+    fn wake_platform_thread(&self);
+
+    fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
+
+    fn get_texture_frame(
+        &self,
+        texture_id: i64,
+        size: (usize, usize),
+    ) -> Option<ExternalTextureFrame>;
+}
+
+struct PlatformRunnerHandler {
+    handler: Weak<dyn FlutterEngineHandler>,
+}
+
+impl TaskRunnerHandler for PlatformRunnerHandler {
+    fn wake(&self) {
+        if let Some(handler) = self.handler.upgrade() {
+            handler.wake_platform_thread();
+        }
+    }
+}
+
+impl FlutterEngine {
+    pub fn new(handler: Weak<dyn FlutterEngineHandler>) -> Self {
+        let platform_handler = Arc::new(PlatformRunnerHandler {
+            handler: handler.clone(),
+        });
+
+        let (main_tx, main_rx) = mpsc::channel();
+
+        let engine = Self {
+            inner: Arc::new(FlutterEngineInner {
+                handler,
+                engine_ptr: AtomicPtr::new(ptr::null_mut()),
+                plugins: RwLock::new(PluginRegistrar::new()),
+                platform_runner: TaskRunner::new(
+                    Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>
+                ),
+                _platform_runner_handler: platform_handler,
+                platform_receiver: main_rx,
+                platform_sender: main_tx,
+            }),
         };
 
-        // create invisible resource window
-        self.glfw.window_hint(glfw::WindowHint::Decorated(false));
-        self.glfw.window_hint(glfw::WindowHint::Visible(false));
-        let (res_window, res_window_recv) = window
-            .create_shared(1, 1, "", glfw::WindowMode::Windowed)
-            .ok_or(Error::WindowCreationFailed)?;
-        self.glfw.default_window_hints();
+        let inner = &engine.inner;
+        inner.plugins.write().init(engine.downgrade());
+        inner.platform_runner.init(engine.downgrade());
 
-        self.window = Some(window);
-        self.resource_window = Some(res_window);
-        self.resource_window_receiver = Some(res_window_recv);
-        let window_ref = if let Some(window) = &mut self.window {
-            window as *mut glfw::Window
-        } else {
-            panic!("The window has vanished");
-        };
-        let res_window_ref = if let Some(res_window) = &mut self.resource_window {
-            res_window as *mut glfw::Window
-        } else {
-            panic!("The window has vanished");
-        };
-
-        // as FlutterEngineRun already calls the make_current callback, user_data must be set now
-        self.user_data
-            .replace(DesktopUserData::Window(window_ref, res_window_ref));
-
-        // draw initial screen to avoid blinking
-        if let Some(window) = self.user_data.borrow_mut().get_window() {
-            window.make_current();
-            draw::init_gl(window);
-            draw::draw_bg(window, window_args.bg_color);
-            glfw::make_context_current(None);
-        }
-
-        let engine = self.run_flutter_engine(assets_path, icu_data_path, arguments)?;
-        // now create the full desktop state
-        self.user_data
-            .replace(DesktopUserData::WindowState(Box::new(
-                DesktopWindowState::new(window_ref, res_window_ref, receiver, engine),
-            )));
-
-        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
-            // send initial size callback to engine
-            window_state.send_scale_or_size_change();
-
-            window_state.plugin_registrar.add_system_plugins();
-
-            let window = window_state.window();
-            // enable event polling
-            window.set_char_polling(true);
-            window.set_cursor_pos_polling(true);
-            window.set_cursor_enter_polling(true);
-            window.set_framebuffer_size_polling(true);
-            window.set_key_polling(true);
-            window.set_mouse_button_polling(true);
-            window.set_scroll_polling(true);
-            window.set_size_polling(true);
-            window.set_content_scale_polling(true);
-
-            unsafe {
-                glfw::ffi::glfwSetWindowRefreshCallback(
-                    window.window_ptr(),
-                    Some(window_refreshed),
-                );
-            }
-        }
-
-        Ok(())
+        engine
     }
 
-    fn run_flutter_engine(
-        &mut self,
+    #[inline]
+    pub fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
+        self.inner.engine_ptr.load(Ordering::Relaxed)
+    }
+
+    pub fn add_plugin<P>(&self, plugin: P) -> &Self
+    where
+        P: Plugin + 'static,
+    {
+        self.inner.plugins.write().add_plugin(plugin);
+        self
+    }
+
+    pub fn with_plugin<F, P>(&self, f: F)
+    where
+        F: FnOnce(&P),
+        P: Plugin + 'static,
+    {
+        self.inner.plugins.read().with_plugin(f)
+    }
+
+    pub fn with_plugin_mut<F, P>(&self, f: F)
+    where
+        F: FnOnce(&mut P),
+        P: Plugin + 'static,
+    {
+        self.inner.plugins.write().with_plugin_mut(f)
+    }
+
+    pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
+        self.inner
+            .plugins
+            .write()
+            .channel_registry
+            .remove_channel(channel_name)
+    }
+
+    pub fn with_channel<F>(&self, channel_name: &str, f: F)
+    where
+        F: FnMut(&dyn Channel),
+    {
+        self.inner
+            .plugins
+            .read()
+            .channel_registry
+            .with_channel(channel_name, f)
+    }
+
+    pub fn downgrade(&self) -> FlutterEngineWeakRef {
+        FlutterEngineWeakRef {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+
+    pub fn run(
+        &self,
         assets_path: String,
         icu_data_path: String,
         mut arguments: Vec<String>,
-    ) -> Result<FlutterEngine, Error> {
-        arguments.insert(0, "placeholder".into());
+    ) -> Result<(), ()> {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
+
+        arguments.insert(0, "flutter-rs".into());
         let arguments = utils::CStringVec::new(&arguments);
 
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {
@@ -272,10 +248,16 @@ impl FlutterDesktop {
                 },
             },
         };
+
+        // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
+        let runner_ptr = {
+            let arc = self.inner.platform_runner.clone().inner;
+            Arc::into_raw(arc) as *mut std::ffi::c_void
+        };
+
         let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
-            user_data: &mut *self.event_loop.borrow_mut() as *mut EventLoop
-                as *mut std::ffi::c_void,
+            user_data: runner_ptr,
             runs_task_on_current_thread_callback: Some(
                 flutter_callbacks::runs_task_on_current_thread,
             ),
@@ -315,119 +297,221 @@ impl FlutterDesktop {
         };
 
         unsafe {
+            // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
+            let inner_ptr = Arc::into_raw(self.inner.clone()) as *mut std::ffi::c_void;
+
             let engine_ptr: flutter_engine_sys::FlutterEngine = std::ptr::null_mut();
             if flutter_engine_sys::FlutterEngineRun(
                 1,
                 &renderer_config,
                 &project_args,
-                &mut *self.user_data.borrow_mut() as *mut DesktopUserData as *mut std::ffi::c_void,
+                inner_ptr,
                 &engine_ptr as *const flutter_engine_sys::FlutterEngine
                     as *mut flutter_engine_sys::FlutterEngine,
             ) != flutter_engine_sys::FlutterEngineResult::kSuccess
                 || engine_ptr.is_null()
             {
-                Err(Error::EngineFailed)
+                Err(())
             } else {
-                Ok(FlutterEngine::new(engine_ptr).unwrap())
+                self.inner.engine_ptr.store(engine_ptr, Ordering::Relaxed);
+                Ok(())
             }
         }
     }
 
-    pub fn init_with_window_state<F>(&mut self, init_fn: F)
+    pub(crate) fn post_platform_callback(&self, callback: MainThreadCallback) {
+        self.inner.platform_sender.send(callback).unwrap();
+        self.inner.platform_runner.wake();
+    }
+
+    #[inline]
+    pub fn is_platform_thread(&self) -> bool {
+        self.inner.platform_runner.runs_task_on_current_thread()
+    }
+
+    pub fn run_on_platform_thread<F>(&self, f: F)
     where
-        F: FnOnce(&mut DesktopWindowState),
+        F: FnOnce(&FlutterEngine) -> () + 'static + Send,
     {
-        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
-            init_fn(window_state);
+        if self.is_platform_thread() {
+            f(self);
+        } else {
+            self.post_platform_callback(MainThreadCallback::EngineFn(Box::new(f)));
         }
     }
 
-    pub fn run_window_loop(
-        self,
-        mut custom_handler: Option<&mut WindowEventHandler>,
-        mut frame_callback: Option<&mut PerFrameCallback>,
+    pub fn run_on_render_thread<F>(&self, f: F)
+    where
+        F: FnOnce(&FlutterEngine) -> () + 'static + Send,
+    {
+        if self.is_platform_thread() {
+            f(self);
+        } else {
+            self.post_platform_callback(MainThreadCallback::RenderThreadFn(Box::new(f)));
+        }
+    }
+
+    pub fn run_in_background(&self, future: impl Future<Output = ()> + Send + 'static) {
+        if let Some(handler) = self.inner.handler.upgrade() {
+            handler.run_in_background(Box::new(future));
+        }
+    }
+
+    pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
+        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
+            width: width as usize,
+            height: height as usize,
+            pixel_ratio,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event);
+        }
+    }
+
+    pub fn send_pointer_event(
+        &self,
+        phase: FlutterPointerPhase,
+        x: f64,
+        y: f64,
+        signal_kind: FlutterPointerSignalKind,
+        scroll_delta_x: f64,
+        scroll_delta_y: f64,
+        buttons: FlutterPointerMouseButtons,
     ) {
-        if let DesktopUserData::WindowState(window_state) = &mut *self.user_data.borrow_mut() {
-            window_state.plugin_registrar.with_plugin(
-                |localization: &plugins::LocalizationPlugin| {
-                    localization.send_locale(locale_config::Locale::current());
-                },
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
+        let event = flutter_engine_sys::FlutterPointerEvent {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
+            timestamp: timestamp.as_micros() as usize,
+            phase: phase.into(),
+            x,
+            y,
+            device: 0,
+            signal_kind: signal_kind.into(),
+            scroll_delta_x,
+            scroll_delta_y,
+            device_kind:
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            buttons: buttons as i64,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr(), &event, 1);
+        }
+    }
+
+    pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
+        trace!("Sending message on channel {}", message.channel);
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessage(
+                self.engine_ptr(),
+                &message.into(),
             );
-            let engine = Arc::clone(&window_state.init_data.engine);
-            while !window_state.window().should_close() {
-                self.event_loop.borrow_mut().wait_for_events(&engine);
-
-                let events: Vec<(f64, glfw::WindowEvent)> =
-                    glfw::flush_messages(&window_state.window_event_receiver).collect();
-                for (_, event) in events {
-                    let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
-                        custom_handler(window_state, event.clone())
-                    } else {
-                        true
-                    };
-                    if run_default_handler {
-                        window_state.handle_glfw_event(event);
-                    }
-                }
-
-                window_state.handle_main_thread_callbacks();
-
-                if let Some(callback) = &mut frame_callback {
-                    callback(window_state);
-                }
-            }
-        }
-        self.shutdown();
-    }
-
-    fn shutdown(self) {
-        if let DesktopUserData::WindowState(window_state) = self.user_data.into_inner() {
-            // The window state itself must be dropped completely to make sure that all plugins and textures
-            // are cleaned up. Only then may the engine itself be shutdown.
-            let engine = window_state.shutdown();
-            // The window state is consumed by `shutdown`, so by now it has been dropped. We can shut down the
-            // engine itself now.
-            engine.shutdown();
         }
     }
-}
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn glfw_error_callback(error: glfw::Error, description: String, _: &()) {
-    error!("GLFW error ({}): {}", error, description);
-}
+    pub(crate) fn send_platform_message_response(
+        &self,
+        response_handle: PlatformMessageResponseHandle,
+        bytes: &[u8],
+    ) {
+        trace!("Sending message response");
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
+                self.engine_ptr(),
+                response_handle.into(),
+                bytes.as_ptr(),
+                bytes.len(),
+            );
+        }
+    }
 
-extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
-    if let Some(engine) = desktop_window_state::get_engine(window) {
-        let mut window_size: (i32, i32) = (0, 0);
-        let mut framebuffer_size: (i32, i32) = (0, 0);
-        let mut scale: (f32, f32) = (0.0, 0.0);
+    pub fn shutdown(&self) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
+        }
 
         unsafe {
-            glfw::ffi::glfwGetWindowSize(window, &mut window_size.0, &mut window_size.1);
-            glfw::ffi::glfwGetFramebufferSize(
-                window,
-                &mut framebuffer_size.0,
-                &mut framebuffer_size.1,
-            );
-            glfw::ffi::glfwGetWindowContentScale(window, &mut scale.0, &mut scale.1);
+            flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr());
+        }
+    }
+
+    pub fn execute_platform_tasks(&self) -> Option<Instant> {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread")
         }
 
-        // probably dont need this, since after resize a framebuffer size
-        // change event is sent and set this regardless
-        // self.window_pixels_per_screen_coordinate =
-        //     f64::from(framebuffer_size.0) / f64::from(window_size.0);
+        let next_task = self.inner.platform_runner.execute_tasks();
 
-        log::debug!(
-            "Setting framebuffer size to {:?}, scale to {}",
-            framebuffer_size,
-            scale.0
-        );
+        let mut render_thread_fns = Vec::new();
+        let callbacks: Vec<MainThreadCallback> = self.inner.platform_receiver.try_iter().collect();
+        for cb in callbacks {
+            match cb {
+                MainThreadCallback::EngineFn(func) => func(self),
+                MainThreadCallback::ChannelFn((name, mut f)) => {
+                    self.inner
+                        .plugins
+                        .write()
+                        .channel_registry
+                        .with_channel(&name, |channel| {
+                            f(channel);
+                        });
+                }
+                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
+            }
+        }
+        if !render_thread_fns.is_empty() {
+            let engine_copy = self.clone();
+            self.post_render_thread_task(move || {
+                for f in render_thread_fns {
+                    f(&engine_copy);
+                }
+            });
+        }
 
-        engine.send_window_metrics_event(
-            framebuffer_size.0,
-            framebuffer_size.1,
-            f64::from(scale.0),
-        );
+        next_task
+    }
+
+    pub(crate) fn run_task(&self, task: &FlutterTask) {
+        unsafe {
+            flutter_engine_sys::FlutterEngineRunTask(self.engine_ptr(), task as *const FlutterTask);
+        }
+    }
+
+    fn post_render_thread_task<F>(&self, f: F)
+    where
+        F: FnOnce() -> () + 'static,
+    {
+        unsafe {
+            let cbk = CallbackBox { cbk: Box::new(f) };
+            let b = Box::new(cbk);
+            let ptr = Box::into_raw(b);
+            flutter_engine_sys::FlutterEnginePostRenderThreadTask(
+                self.engine_ptr(),
+                Some(render_thread_task),
+                ptr as *mut cty::c_void,
+            );
+        }
+
+        struct CallbackBox {
+            pub cbk: Box<dyn FnOnce()>,
+        }
+
+        unsafe extern "C" fn render_thread_task(user_data: *mut cty::c_void) {
+            let ptr = user_data as *mut CallbackBox;
+            let b = Box::from_raw(ptr);
+            (b.cbk)()
+        }
+    }
+
+    pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
+        trace!("registering new external texture with id {}", texture_id);
+        unsafe {
+            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr(), texture_id);
+        }
+        ExternalTexture {
+            engine_ptr: self.engine_ptr(),
+            texture_id,
+        }
     }
 }

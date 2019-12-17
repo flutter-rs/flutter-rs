@@ -5,12 +5,12 @@ use log::error;
 use crate::{
     channel::{ChannelImpl, MethodCallHandler, MethodChannel},
     codec::{json_codec::CODEC, MethodCodec},
-    desktop_window_state::InitData,
+    FlutterEngine, FlutterEngineWeakRef,
 };
 
 pub struct JsonMethodChannel {
     name: String,
-    init_data: Weak<InitData>,
+    engine: FlutterEngineWeakRef,
     method_handler: Weak<RwLock<dyn MethodCallHandler + Send + Sync>>,
     plugin_name: Option<&'static str>,
 }
@@ -22,7 +22,7 @@ impl JsonMethodChannel {
     ) -> Self {
         Self {
             name: name.as_ref().to_owned(),
-            init_data: Weak::new(),
+            engine: Default::default(),
             method_handler,
             plugin_name: None,
         }
@@ -41,15 +41,15 @@ impl ChannelImpl for JsonMethodChannel {
         self.name.as_str()
     }
 
-    fn init_data(&self) -> Option<Arc<InitData>> {
-        self.init_data.upgrade()
+    fn engine(&self) -> Option<FlutterEngine> {
+        self.engine.upgrade()
     }
 
-    fn init(&mut self, init_data: Weak<InitData>, plugin_name: &'static str) {
-        if self.init_data.upgrade().is_some() {
+    fn init(&mut self, engine: FlutterEngineWeakRef, plugin_name: &'static str) {
+        if self.engine.upgrade().is_some() {
             error!("Channel {} was already initialized", self.name);
         }
-        self.init_data = init_data;
+        self.engine = engine;
         self.plugin_name.replace(plugin_name);
     }
 

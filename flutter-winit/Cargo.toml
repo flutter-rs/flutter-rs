@@ -1,0 +1,19 @@
+[package]
+name = "flutter-winit"
+version = "0.1.0"
+authors = ["David Craven <david@craven.ch>"]
+edition = "2018"
+
+[dependencies]
+async-std = "1.4.0"
+cty = "0.2.1"
+failure = "0.1.6"
+flutter-engine-sys = { path = "../flutter-engine-sys" }
+flutter-engine = { path = "../flutter-engine" }
+flutter-plugins = { path = "../flutter-plugins" }
+futures-task = "0.3.1"
+glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }
+locale_config = "0.2.0"
+log = "0.4.8"
+parking_lot = "0.10.0"
+priority-queue = "0.6.0"

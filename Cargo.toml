@@ -1,10 +1,11 @@
 [workspace]
 members = [
+    "flutter-download",
     "flutter-engine",
     "flutter-engine-sys",
     "flutter-glfw",
-    "flutter-download",
     "flutter-plugins",
+    "flutter-winit",
 ]
 
 exclude = [

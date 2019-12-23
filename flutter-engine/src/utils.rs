@@ -1,56 +1,4 @@
-use std::ffi::CString;
 use std::ops::Range;
-use std::os::raw::c_char;
-use std::{mem, ptr, slice};
-
-pub struct CStringVec {
-    inner: Box<[*mut c_char]>,
-}
-
-impl CStringVec {
-    pub fn new<T: AsRef<str>>(v: &[T]) -> CStringVec {
-        let mut ptrs: Vec<*mut c_char> = Vec::with_capacity(v.len());
-        for s in v {
-            let c = CString::new(s.as_ref()).unwrap();
-            ptrs.push(c.into_raw());
-        }
-        CStringVec {
-            inner: ptrs.into_boxed_slice(),
-        }
-    }
-
-    /// Bypass "move out of struct which implements [`Drop`] trait" restriction.
-    pub fn into_raw(self) -> *const *const c_char {
-        unsafe {
-            let p = ptr::read(&self.inner);
-            mem::forget(self);
-            Box::into_raw(p) as *const *const c_char
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn from_raw(len: usize, ptr: *const *const c_char) -> CStringVec {
-        unsafe {
-            let data = slice::from_raw_parts_mut(ptr as *mut _, len as usize);
-            let inner = Box::from_raw(data);
-            CStringVec { inner }
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-}
-
-impl Drop for CStringVec {
-    fn drop(&mut self) {
-        unsafe {
-            for &v in self.inner.iter() {
-                let _ = CString::from_raw(v);
-            }
-        }
-    }
-}
 
 pub trait StringUtils {
     fn substring(&self, start: usize, end: usize) -> &str;
@@ -110,29 +58,7 @@ impl OwnedStringUtils for String {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CStr;
-
     use super::*;
-
-    #[test]
-    fn test_cstring_vec() {
-        let v = CStringVec::new(&["hello", "world"]);
-        let ptr = v.inner[0] as *const c_char;
-        unsafe {
-            let s1 = CStr::from_ptr(ptr as *mut c_char);
-            assert_eq!(s1.to_str().unwrap(), "hello");
-        }
-        let ptr = v.inner[1] as *const c_char;
-        unsafe {
-            let s1 = CStr::from_ptr(ptr as *mut c_char);
-            assert_eq!(s1.to_str().unwrap(), "world");
-        }
-
-        let len = v.len();
-        let ptr = v.into_raw();
-        let v = CStringVec::from_raw(len, ptr);
-        assert_eq!(v.len(), len);
-    }
 
     #[test]
     fn test_substring() {

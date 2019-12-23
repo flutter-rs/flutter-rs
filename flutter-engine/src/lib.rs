@@ -8,12 +8,13 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
+pub mod texture_registry;
 pub mod utils;
 
 use crate::channel::Channel;
 use crate::ffi::{
-    ExternalTexture, ExternalTextureFrame, FlutterPointerMouseButtons, FlutterPointerPhase,
-    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+    ExternalTexture, ExternalTextureFrame, FlutterPointerDeviceKind, FlutterPointerMouseButtons,
+    FlutterPointerPhase, FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
 };
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
@@ -23,6 +24,7 @@ use parking_lot::RwLock;
 use std::ffi::CString;
 use std::future::Future;
 use std::os::raw::{c_char, c_void};
+use std::path::Path;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Weak};
@@ -217,16 +219,19 @@ impl FlutterEngine {
 
     pub fn run(
         &self,
-        assets_path: String,
-        icu_data_path: String,
-        mut arguments: Vec<String>,
-    ) -> Result<(), ()> {
+        assets_path: &Path,
+        icu_data_path: &Path,
+        arguments: &[&str],
+    ) -> Result<(), RunError> {
         if !self.is_platform_thread() {
-            panic!("Not on platform thread")
+            return Err(RunError::NotPlatformThread);
         }
 
-        arguments.insert(0, "flutter-rs".into());
-        let arguments = utils::CStringVec::new(&arguments);
+        let mut args = Vec::with_capacity(arguments.len() + 1);
+        args.push(CString::new("flutter-rs").unwrap());
+        for arg in arguments.into_iter() {
+            args.push(CString::new(*arg).unwrap());
+        }
 
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {
             type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
@@ -273,12 +278,12 @@ impl FlutterEngine {
         };
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: CString::new(assets_path).unwrap().into_raw(),
+            assets_path: path_to_cstring(assets_path).into_raw(),
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
-            icu_data_path: CString::new(icu_data_path).unwrap().into_raw(),
-            command_line_argc: arguments.len() as i32,
-            command_line_argv: arguments.into_raw(),
+            icu_data_path: path_to_cstring(icu_data_path).into_raw(),
+            command_line_argc: args.len() as i32,
+            command_line_argv: args.as_mut_ptr() as _,
             platform_message_callback: Some(flutter_callbacks::platform_message_callback),
             vm_snapshot_data: std::ptr::null(),
             vm_snapshot_data_size: 0,
@@ -316,7 +321,7 @@ impl FlutterEngine {
             ) != flutter_engine_sys::FlutterEngineResult::kSuccess
                 || engine_ptr.is_null()
             {
-                Err(())
+                return Err(RunError::EnginePtrNull);
             } else {
                 self.inner.engine_ptr.store(engine_ptr, Ordering::Relaxed);
                 Ok(())
@@ -362,11 +367,11 @@ impl FlutterEngine {
         }
     }
 
-    pub fn send_window_metrics_event(&self, width: i32, height: i32, pixel_ratio: f64) {
+    pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
         let event = flutter_engine_sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
-            width: width as usize,
-            height: height as usize,
+            width,
+            height,
             pixel_ratio,
         };
         unsafe {
@@ -377,11 +382,10 @@ impl FlutterEngine {
     pub fn send_pointer_event(
         &self,
         phase: FlutterPointerPhase,
-        x: f64,
-        y: f64,
+        (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
-        scroll_delta_x: f64,
-        scroll_delta_y: f64,
+        (scroll_delta_x, scroll_delta_y): (f64, f64),
+        device_kind: FlutterPointerDeviceKind,
         buttons: FlutterPointerMouseButtons,
     ) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
@@ -396,8 +400,7 @@ impl FlutterEngine {
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,
-            device_kind:
-                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse,
+            device_kind: device_kind.into(),
             buttons: buttons as i64,
         };
         unsafe {
@@ -520,3 +523,32 @@ impl FlutterEngine {
         }
     }
 }
+
+#[cfg(unix)]
+fn path_to_cstring(path: &Path) -> CString {
+    use std::os::unix::ffi::OsStrExt;
+    CString::new(path.as_os_str().as_bytes()).unwrap()
+}
+
+#[cfg(not(unix))]
+fn path_to_cstring(path: &Path) -> CString {
+    CString::new(path.to_string_lossy().to_string()).unwrap()
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum RunError {
+    NotPlatformThread,
+    EnginePtrNull,
+}
+
+impl core::fmt::Display for RunError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let msg = match self {
+            RunError::NotPlatformThread => "Not on platform thread.",
+            RunError::EnginePtrNull => "Engine ptr is null.",
+        };
+        writeln!(f, "{}", msg)
+    }
+}
+
+impl std::error::Error for RunError {}

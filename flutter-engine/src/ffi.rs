@@ -106,6 +106,25 @@ impl From<FlutterPointerPhase> for flutter_engine_sys::FlutterPointerPhase {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum FlutterPointerDeviceKind {
+    Mouse,
+    Touch,
+}
+
+impl From<FlutterPointerDeviceKind> for flutter_engine_sys::FlutterPointerDeviceKind {
+    fn from(device_kind: FlutterPointerDeviceKind) -> Self {
+        match device_kind {
+            FlutterPointerDeviceKind::Mouse => {
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindMouse
+            }
+            FlutterPointerDeviceKind::Touch => {
+                flutter_engine_sys::FlutterPointerDeviceKind::kFlutterPointerDeviceKindTouch
+            }
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FlutterPointerSignalKind {
     None,

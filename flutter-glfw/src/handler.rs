@@ -1,6 +1,6 @@
-use crate::texture_registry::TextureRegistry;
 use async_std::task;
 use flutter_engine::ffi::ExternalTextureFrame;
+use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};

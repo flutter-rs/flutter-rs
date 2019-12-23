@@ -3,7 +3,6 @@ use log::error;
 
 mod draw;
 mod handler;
-pub mod texture_registry;
 pub mod window;
 
 pub fn init() -> Result<FlutterDesktop, glfw::InitError> {

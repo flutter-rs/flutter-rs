@@ -1,12 +1,13 @@
 use crate::draw;
 use crate::handler::{GlfwFlutterEngineHandler, GlfwPlatformHandler, GlfwWindowHandler};
-use crate::texture_registry::{ExternalTexture, TextureRegistry};
 use flutter_engine::channel::Channel;
 use flutter_engine::ffi::{
-    FlutterPointerMouseButtons, FlutterPointerPhase, FlutterPointerSignalKind,
+    FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
+    FlutterPointerSignalKind,
 };
 use flutter_engine::plugins::Plugin;
-use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
+use flutter_engine::{FlutterEngine, FlutterEngineHandler, RunError};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
@@ -24,6 +25,7 @@ use log::{debug, info};
 use parking_lot::{Mutex, MutexGuard};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::sync::{mpsc, Arc};
@@ -303,14 +305,14 @@ impl FlutterWindow {
 
     pub fn run(
         &self,
-        assets_path: String,
-        icu_data_path: String,
-        arguments: Vec<String>,
+        assets_path: &Path,
+        icu_data_path: &Path,
+        arguments: &[&str],
         mut custom_handler: Option<&mut WindowEventHandler>,
         mut frame_callback: Option<&mut PerFrameCallback>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), RunError> {
         // Start engine
-        let _ = self.engine.run(assets_path, icu_data_path, arguments)?;
+        self.engine.run(assets_path, icu_data_path, arguments)?;
 
         // send initial size callback to engine
         self.send_scale_or_size_change();
@@ -429,8 +431,8 @@ impl FlutterWindow {
             framebuffer_size, scale.0
         );
         self.engine.send_window_metrics_event(
-            framebuffer_size.0,
-            framebuffer_size.1,
+            framebuffer_size.0 as _,
+            framebuffer_size.1 as _,
             f64::from(scale.0),
         );
     }
@@ -468,11 +470,16 @@ impl FlutterWindow {
         );
         self.engine.send_pointer_event(
             phase,
-            x * window_pixels_per_screen_coordinate,
-            y * window_pixels_per_screen_coordinate,
+            (
+                x * window_pixels_per_screen_coordinate,
+                y * window_pixels_per_screen_coordinate,
+            ),
             signal_kind,
-            scroll_delta_x * window_pixels_per_screen_coordinate,
-            scroll_delta_y * window_pixels_per_screen_coordinate,
+            (
+                scroll_delta_x * window_pixels_per_screen_coordinate,
+                scroll_delta_y * window_pixels_per_screen_coordinate,
+            ),
+            FlutterPointerDeviceKind::Mouse,
             buttons,
         );
 
@@ -813,8 +820,8 @@ extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
         );
 
         engine.send_window_metrics_event(
-            framebuffer_size.0,
-            framebuffer_size.1,
+            framebuffer_size.0 as _,
+            framebuffer_size.1 as _,
             f64::from(scale.0),
         );
     }

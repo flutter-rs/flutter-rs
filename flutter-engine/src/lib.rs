@@ -373,6 +373,8 @@ impl FlutterEngine {
             width,
             height,
             pixel_ratio,
+            #[cfg(target_arch = "arm")]
+            __bindgen_padding_0: 0,
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event);
@@ -402,6 +404,10 @@ impl FlutterEngine {
             scroll_delta_y,
             device_kind: device_kind.into(),
             buttons: buttons as i64,
+            #[cfg(target_arch = "arm")]
+            __bindgen_padding_0: 0,
+            #[cfg(target_arch = "arm")]
+            __bindgen_padding_1: 0,
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr(), &event, 1);

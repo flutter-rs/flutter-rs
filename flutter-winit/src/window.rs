@@ -48,11 +48,8 @@ impl FlutterWindow {
         let proxy = event_loop.create_proxy();
 
         let context = ContextBuilder::new().build_windowed(window, &event_loop)?;
-        let resource_context = ContextBuilder::new()
-            .with_shared_lists(&context)
-            .build_windowed(WindowBuilder::new(), &event_loop)?;
-        let context = Arc::new(Mutex::new(Context::new(context)));
-        let resource_context = Arc::new(Mutex::new(Context::new(resource_context)));
+        let context = Arc::new(Mutex::new(Context::from_context(context)));
+        let resource_context = Arc::new(Mutex::new(Context::empty()));
 
         let texture_registry = Arc::new(Mutex::new(TextureRegistry::new()));
         let engine_handler = Arc::new(WinitFlutterEngineHandler::new(
@@ -90,6 +87,18 @@ impl FlutterWindow {
             engine_handler,
             texture_registry,
         })
+    }
+
+    pub fn with_resource_context(self) -> Result<Self, Error> {
+        {
+            let context = self.context.lock();
+            let resource_context = ContextBuilder::new()
+                .with_shared_lists(context.context().unwrap())
+                .build_windowed(WindowBuilder::new(), &self.event_loop)?;
+            let mut guard = self.resource_context.lock();
+            *guard = Context::from_context(resource_context);
+        }
+        Ok(self)
     }
 
     pub fn engine(&self) -> FlutterEngine {

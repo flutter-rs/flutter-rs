@@ -6,8 +6,16 @@ use std::ffi::c_void;
 pub struct Context(Option<ContextWrapper<PossiblyCurrent, Window>>);
 
 impl Context {
-    pub fn new(ctx: ContextWrapper<NotCurrent, Window>) -> Self {
+    pub fn from_context(ctx: ContextWrapper<NotCurrent, Window>) -> Self {
         Self(Some(unsafe { ctx.treat_as_current() }))
+    }
+
+    pub fn empty() -> Self {
+        Self(None)
+    }
+
+    pub fn context(&self) -> Option<&ContextWrapper<PossiblyCurrent, Window>> {
+        self.0.as_ref()
     }
 
     pub unsafe fn make_current(&mut self) -> bool {

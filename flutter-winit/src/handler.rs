@@ -1,14 +1,16 @@
 use crate::context::Context;
 use crate::window::FlutterEvent;
 use async_std::task;
+use copypasta::{ClipboardContext, ClipboardProvider};
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
+use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler, MimeError};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glutin::event_loop::EventLoopProxy;
 use parking_lot::Mutex;
+use std::error::Error;
 use std::ffi::CStr;
 use std::future::Future;
 use std::sync::Arc;
@@ -85,21 +87,36 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
     }
 }
 
-pub struct WinitPlatformHandler {}
+pub struct WinitPlatformHandler {
+    clipboard: ClipboardContext,
+}
 
 impl WinitPlatformHandler {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new() -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            clipboard: ClipboardContext::new()?,
+        })
     }
 }
 
 impl PlatformHandler for WinitPlatformHandler {
     fn set_application_switcher_description(&mut self, _description: AppSwitcherDescription) {}
 
-    fn set_clipboard_data(&mut self, _text: String) {}
+    fn set_clipboard_data(&mut self, text: String) {
+        if let Err(err) = self.clipboard.set_contents(text) {
+            log::error!("{}", err);
+        }
+    }
 
-    fn get_clipboard_data(&mut self, _mime: String) -> Result<String, ()> {
-        Err(())
+    fn get_clipboard_data(&mut self, mime: &str) -> Result<String, MimeError> {
+        if mime != "text/plain" {
+            return Err(MimeError);
+        }
+        let result = self.clipboard.get_contents();
+        if let Err(err) = &result {
+            log::error!("{}", err);
+        }
+        Ok(result.unwrap_or_default())
     }
 }
 

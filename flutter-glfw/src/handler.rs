@@ -2,7 +2,7 @@ use async_std::task;
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler};
+use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler, MimeError};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glfw::Context;
@@ -87,13 +87,13 @@ impl PlatformHandler for GlfwPlatformHandler {
         self.window.lock().set_clipboard_string(&text);
     }
 
-    fn get_clipboard_data(&mut self, mime: String) -> Result<String, ()> {
-        match mime.as_str() {
+    fn get_clipboard_data(&mut self, mime: &str) -> Result<String, MimeError> {
+        match mime {
             "text/plain" => Ok(match self.window.lock().get_clipboard_string() {
                 None => "".to_string(),
                 Some(val) => val,
             }),
-            _ => Err(()),
+            _ => Err(MimeError),
         }
     }
 }

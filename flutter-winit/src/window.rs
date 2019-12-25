@@ -1,6 +1,5 @@
 use crate::context::Context;
 use crate::handler::{WinitFlutterEngineHandler, WinitPlatformHandler, WinitWindowHandler};
-use failure::Error;
 use flutter_engine::channel::Channel;
 use flutter_engine::ffi::{
     FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
@@ -28,6 +27,7 @@ use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
 use parking_lot::Mutex;
+use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -46,7 +46,7 @@ pub struct FlutterWindow {
 }
 
 impl FlutterWindow {
-    pub fn new(window: WindowBuilder) -> Result<Self, Error> {
+    pub fn new(window: WindowBuilder) -> Result<Self, Box<dyn Error>> {
         let event_loop = EventLoop::with_user_event();
         let proxy = event_loop.create_proxy();
 
@@ -67,7 +67,7 @@ impl FlutterWindow {
         let isolate_cb = move || {
             proxy.send_event(FlutterEvent::IsolateCreated).ok();
         };
-        let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new()) as _));
+        let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new()?) as _));
         let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new()));
 
         engine.add_plugin(DialogPlugin::default());
@@ -92,7 +92,7 @@ impl FlutterWindow {
         })
     }
 
-    pub fn with_resource_context(self) -> Result<Self, Error> {
+    pub fn with_resource_context(self) -> Result<Self, Box<dyn Error>> {
         {
             let context = self.context.lock();
             let resource_context = ContextBuilder::new()
@@ -160,7 +160,7 @@ impl FlutterWindow {
         assets_path: &Path,
         icu_data_path: &Path,
         arguments: &[&str],
-    ) -> Result<(), Error> {
+    ) -> Result<(), Box<dyn Error>> {
         let engine = self.engine.clone();
         let context = self.context.clone();
 
@@ -293,7 +293,7 @@ impl FlutterWindow {
                             match state {
                                 ElementState::Pressed => {
                                     if let Some(key) = virtual_keycode {
-                                        text_input_shortcuts(&engine, key, &modifiers);
+                                        text_input_shortcuts(&engine, key);
                                     }
 
                                     engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
@@ -358,7 +358,10 @@ fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
     engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
 }
 
-fn text_input_shortcuts(engine: &FlutterEngine, key: VirtualKeyCode, modifiers: &ModifiersState) {
+fn text_input_shortcuts(
+    engine: &FlutterEngine,
+    key: VirtualKeyCode,
+) {
     engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
         match key {
             VirtualKeyCode::Return => {
@@ -373,107 +376,9 @@ fn text_input_shortcuts(engine: &FlutterEngine, key: VirtualKeyCode, modifiers: 
                 });
                 text_input.notify_changes();
             }
-            VirtualKeyCode::Delete => {
-                text_input.with_state(|state| {
-                    state.delete();
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Up => {
-                text_input.with_state(|state| {
-                    state.move_up(select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Down => {
-                text_input.with_state(|state| {
-                    state.move_down(select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Left => {
-                text_input.with_state(|state| {
-                    state.move_left(by_word_modifier(&modifiers), select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Right => {
-                text_input.with_state(|state| {
-                    state.move_right(by_word_modifier(&modifiers), select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Home => {
-                text_input.with_state(|state| {
-                    state.move_to_beginning(select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::End => {
-                text_input.with_state(|state| {
-                    state.move_to_end(select_modifier(&modifiers));
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::A => {
-                if function_modifier(&modifiers) {
-                    text_input.with_state(|state| {
-                        state.select_all();
-                    });
-                    text_input.notify_changes();
-                }
-            }
-            VirtualKeyCode::X => {
-                if function_modifier(&modifiers) {
-                    text_input.with_state(|state| {
-                        // TODO set_clipboard_string(state.get_selected_text())
-                        state.delete_selected();
-                    });
-                    text_input.notify_changes();
-                }
-            }
-            VirtualKeyCode::C => {
-                if function_modifier(&modifiers) {
-                    text_input.with_state(|_state| {
-                        // TODO set_clipboard_string(state.get_selected_text())
-                    });
-                    text_input.notify_changes();
-                }
-            }
-            VirtualKeyCode::V => {
-                if function_modifier(&modifiers) {
-                    text_input.with_state(|state| {
-                        // TODO get_clipboard_string()
-                        let text = "";
-                        state.add_characters(&text);
-                    });
-                    text_input.notify_changes();
-                }
-            }
             _ => {}
         }
     });
-}
-
-#[inline(always)]
-fn select_modifier(modifiers: &ModifiersState) -> bool {
-    modifiers.shift
-}
-
-#[inline(always)]
-fn function_modifier(modifiers: &ModifiersState) -> bool {
-    #[cfg(target_os = "macos")]
-    return modifiers.logo;
-    #[cfg(not(target_os = "macos"))]
-    return modifiers.ctrl;
-}
-
-#[inline(always)]
-fn by_word_modifier(modifiers: &ModifiersState) -> bool {
-    #[cfg(target_os = "macos")]
-    return modifiers.ctrl;
-    #[cfg(not(target_os = "macos"))]
-    return modifiers.alt;
 }
 
 fn raw_key(key: Option<VirtualKeyCode>) -> u32 {

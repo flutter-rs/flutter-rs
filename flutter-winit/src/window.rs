@@ -11,7 +11,7 @@ use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
-use flutter_plugins::keyevent::KeyEventPlugin;
+use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
@@ -20,7 +20,10 @@ use flutter_plugins::settings::SettingsPlugin;
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
-use glutin::event::{ElementState, Event, MouseButton, Touch, TouchPhase, WindowEvent};
+use glutin::event::{
+    ElementState, Event, KeyboardInput, ModifiersState, MouseButton, Touch, TouchPhase,
+    VirtualKeyCode, WindowEvent,
+};
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
@@ -158,12 +161,13 @@ impl FlutterWindow {
         icu_data_path: &Path,
         arguments: &[&str],
     ) -> Result<(), Error> {
-        self.engine.run(assets_path, icu_data_path, arguments)?;
         let engine = self.engine.clone();
         let context = self.context.clone();
+
+        engine.run(assets_path, icu_data_path, arguments)?;
         resize(&engine, &context);
 
-        self.with_plugin(|localization: &LocalizationPlugin| {
+        engine.with_plugin(|localization: &LocalizationPlugin| {
             localization.send_locale(locale_config::Locale::current());
         });
 
@@ -264,6 +268,59 @@ impl FlutterWindow {
                                 FlutterPointerMouseButtons::Primary,
                             );
                         }
+                        WindowEvent::ReceivedCharacter(ch) => {
+                            if !ch.is_control() {
+                                engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
+                                    text_input.with_state(|state| {
+                                        state.add_characters(&ch.to_string());
+                                    });
+                                    text_input.notify_changes();
+                                });
+                            }
+                        }
+                        WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state,
+                                    virtual_keycode,
+                                    modifiers,
+                                    scancode,
+                                },
+                            ..
+                        } => {
+                            let raw_key = raw_key(virtual_keycode);
+                            let raw_modifiers = raw_modifiers(&modifiers);
+                            match state {
+                                ElementState::Pressed => {
+                                    if let Some(key) = virtual_keycode {
+                                        text_input_shortcuts(&engine, key, &modifiers);
+                                    }
+
+                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
+                                        keyevent.key_action(KeyAction {
+                                            toolkit: "glfw".to_string(),
+                                            key_code: raw_key as _,
+                                            scan_code: scancode as _,
+                                            modifiers: raw_modifiers as _,
+                                            keymap: "linux".to_string(),
+                                            _type: KeyActionType::Keydown,
+                                        });
+                                    });
+                                }
+                                ElementState::Released => {
+                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
+                                        keyevent.key_action(KeyAction {
+                                            toolkit: "glfw".to_string(),
+                                            key_code: raw_key as _,
+                                            scan_code: scancode as _,
+                                            modifiers: raw_modifiers as _,
+                                            keymap: "linux".to_string(),
+                                            _type: KeyActionType::Keyup,
+                                        });
+                                    });
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -299,4 +356,255 @@ fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
     );
     context.resize(size);
     engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
+}
+
+fn text_input_shortcuts(engine: &FlutterEngine, key: VirtualKeyCode, modifiers: &ModifiersState) {
+    engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
+        match key {
+            VirtualKeyCode::Return => {
+                text_input.with_state(|state| {
+                    state.add_characters(&"\n");
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Back => {
+                text_input.with_state(|state| {
+                    state.backspace();
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Delete => {
+                text_input.with_state(|state| {
+                    state.delete();
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Up => {
+                text_input.with_state(|state| {
+                    state.move_up(select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Down => {
+                text_input.with_state(|state| {
+                    state.move_down(select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Left => {
+                text_input.with_state(|state| {
+                    state.move_left(by_word_modifier(&modifiers), select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Right => {
+                text_input.with_state(|state| {
+                    state.move_right(by_word_modifier(&modifiers), select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::Home => {
+                text_input.with_state(|state| {
+                    state.move_to_beginning(select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::End => {
+                text_input.with_state(|state| {
+                    state.move_to_end(select_modifier(&modifiers));
+                });
+                text_input.notify_changes();
+            }
+            VirtualKeyCode::A => {
+                if function_modifier(&modifiers) {
+                    text_input.with_state(|state| {
+                        state.select_all();
+                    });
+                    text_input.notify_changes();
+                }
+            }
+            VirtualKeyCode::X => {
+                if function_modifier(&modifiers) {
+                    text_input.with_state(|state| {
+                        // TODO set_clipboard_string(state.get_selected_text())
+                        state.delete_selected();
+                    });
+                    text_input.notify_changes();
+                }
+            }
+            VirtualKeyCode::C => {
+                if function_modifier(&modifiers) {
+                    text_input.with_state(|_state| {
+                        // TODO set_clipboard_string(state.get_selected_text())
+                    });
+                    text_input.notify_changes();
+                }
+            }
+            VirtualKeyCode::V => {
+                if function_modifier(&modifiers) {
+                    text_input.with_state(|state| {
+                        // TODO get_clipboard_string()
+                        let text = "";
+                        state.add_characters(&text);
+                    });
+                    text_input.notify_changes();
+                }
+            }
+            _ => {}
+        }
+    });
+}
+
+#[inline(always)]
+fn select_modifier(modifiers: &ModifiersState) -> bool {
+    modifiers.shift
+}
+
+#[inline(always)]
+fn function_modifier(modifiers: &ModifiersState) -> bool {
+    #[cfg(target_os = "macos")]
+    return modifiers.logo;
+    #[cfg(not(target_os = "macos"))]
+    return modifiers.ctrl;
+}
+
+#[inline(always)]
+fn by_word_modifier(modifiers: &ModifiersState) -> bool {
+    #[cfg(target_os = "macos")]
+    return modifiers.ctrl;
+    #[cfg(not(target_os = "macos"))]
+    return modifiers.alt;
+}
+
+fn raw_key(key: Option<VirtualKeyCode>) -> u32 {
+    if let Some(key) = key {
+        use VirtualKeyCode as Key;
+        match key {
+            Key::A => 65,
+            Key::B => 66,
+            Key::C => 67,
+            Key::D => 68,
+            Key::E => 69,
+            Key::F => 70,
+            Key::G => 71,
+            Key::H => 72,
+            Key::I => 73,
+            Key::J => 74,
+            Key::K => 75,
+            Key::L => 76,
+            Key::M => 77,
+            Key::N => 78,
+            Key::O => 79,
+            Key::P => 80,
+            Key::Q => 81,
+            Key::R => 82,
+            Key::S => 83,
+            Key::T => 84,
+            Key::U => 85,
+            Key::V => 86,
+            Key::W => 87,
+            Key::X => 88,
+            Key::Y => 89,
+            Key::Z => 90,
+            Key::Key0 => 48,
+            Key::Key1 => 49,
+            Key::Key2 => 50,
+            Key::Key3 => 51,
+            Key::Key4 => 52,
+            Key::Key5 => 53,
+            Key::Key6 => 54,
+            Key::Key7 => 55,
+            Key::Key8 => 56,
+            Key::Key9 => 57,
+            Key::Return => 257,
+            Key::Escape => 256,
+            Key::Back => 259,
+            Key::Tab => 258,
+            Key::Space => 32,
+            Key::Minus => 45,
+            Key::Equals => 61,
+            Key::LBracket => 91,
+            Key::RBracket => 93,
+            Key::Backslash => 92,
+            Key::Semicolon => 59,
+            Key::Apostrophe => 39,
+            //Key::Backquote => 96,
+            Key::Comma => 44,
+            Key::Period => 46,
+            Key::Slash => 47,
+            //Key::CapsLock => 280,
+            Key::Snapshot => 283,
+            Key::Pause => 284,
+            Key::Insert => 260,
+            Key::Home => 268,
+            Key::PageUp => 266,
+            Key::Delete => 261,
+            Key::End => 269,
+            Key::PageDown => 267,
+            Key::Right => 262,
+            Key::Left => 263,
+            Key::Down => 264,
+            Key::Up => 265,
+            Key::Numlock => 282,
+            //Key::NumpadDivide => 331,
+            //Key::NumpadMultiply => 332,
+            //Key::NumpadAdd => 334,
+            Key::NumpadEnter => 335,
+            Key::Numpad0 => 320,
+            Key::Numpad1 => 321,
+            Key::Numpad2 => 322,
+            Key::Numpad3 => 323,
+            Key::Numpad4 => 324,
+            Key::Numpad5 => 325,
+            Key::Numpad6 => 326,
+            Key::Numpad7 => 327,
+            Key::Numpad8 => 328,
+            Key::Numpad9 => 329,
+            //Key::NumpadDecimal => 330,
+            //Key::ContextMenu => 348,
+            Key::NumpadEquals => 336,
+            Key::LControl => 341,
+            Key::LShift => 340,
+            Key::LAlt => 342,
+            Key::LWin => 343,
+            Key::RControl => 345,
+            Key::RShift => 344,
+            Key::RAlt => 346,
+            Key::RWin => 347,
+            Key::F1 => 290,
+            Key::F2 => 291,
+            Key::F3 => 292,
+            Key::F4 => 293,
+            Key::F5 => 294,
+            Key::F6 => 295,
+            Key::F7 => 296,
+            Key::F8 => 297,
+            Key::F9 => 298,
+            Key::F10 => 299,
+            Key::F11 => 300,
+            Key::F12 => 301,
+            Key::F13 => 302,
+            Key::F14 => 303,
+            Key::F15 => 304,
+            Key::F16 => 305,
+            Key::F17 => 306,
+            Key::F18 => 307,
+            Key::F19 => 308,
+            Key::F20 => 309,
+            Key::F21 => 310,
+            Key::F22 => 311,
+            Key::F23 => 312,
+            _ => 0,
+        }
+    } else {
+        0
+    }
+}
+
+fn raw_modifiers(modifiers: &ModifiersState) -> u32 {
+    let shift = modifiers.shift as u32;
+    let ctrl = modifiers.ctrl as u32;
+    let alt = modifiers.alt as u32;
+    let logo = modifiers.logo as u32;
+    shift | ctrl << 1 | alt << 2 | logo << 3
 }

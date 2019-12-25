@@ -1,20 +1,29 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
-
+use crate::prelude::*;
 use log::debug;
-
-use super::prelude::*;
 use parking_lot::Mutex;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/platform";
+
+#[derive(Debug)]
+pub struct MimeError;
+
+impl std::fmt::Display for MimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Mime error")
+    }
+}
+
+impl std::error::Error for MimeError {}
 
 pub trait PlatformHandler {
     fn set_application_switcher_description(&mut self, description: AppSwitcherDescription);
 
     fn set_clipboard_data(&mut self, text: String);
 
-    fn get_clipboard_data(&mut self, mime: String) -> Result<String, ()>;
+    fn get_clipboard_data(&mut self, mime: &str) -> Result<String, MimeError>;
 }
 
 pub struct PlatformPlugin {
@@ -76,7 +85,7 @@ impl MethodCallHandler for Handler {
             }
             "Clipboard.getData" => {
                 if let Value::String(mime) = &call.args {
-                    match self.handler.lock().get_clipboard_data(mime.to_string()) {
+                    match self.handler.lock().get_clipboard_data(mime) {
                         Ok(text) => Ok(json_value!({ "text": text })),
                         Err(_) => Err(MethodCallError::UnspecifiedError),
                     }

@@ -29,6 +29,7 @@ use glutin::ContextBuilder;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub enum FlutterEvent {
@@ -43,6 +44,7 @@ pub struct FlutterWindow {
     engine: FlutterEngine,
     engine_handler: Arc<WinitFlutterEngineHandler>,
     texture_registry: Arc<Mutex<TextureRegistry>>,
+    close: Arc<AtomicBool>,
 }
 
 impl FlutterWindow {
@@ -70,7 +72,11 @@ impl FlutterWindow {
         let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new(
             context.clone(),
         )?) as _));
-        let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new(context.clone())));
+        let close = Arc::new(AtomicBool::new(false));
+        let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new(
+            context.clone(),
+            close.clone(),
+        )));
 
         engine.add_plugin(DialogPlugin::default());
         engine.add_plugin(IsolatePlugin::new(isolate_cb));
@@ -78,11 +84,11 @@ impl FlutterWindow {
         engine.add_plugin(LifecyclePlugin::default());
         engine.add_plugin(LocalizationPlugin::default());
         engine.add_plugin(NavigationPlugin::default());
-        engine.add_plugin(PlatformPlugin::new(platform_handler.clone()));
+        engine.add_plugin(PlatformPlugin::new(platform_handler));
         engine.add_plugin(SettingsPlugin::default());
         engine.add_plugin(SystemPlugin::default());
         engine.add_plugin(TextInputPlugin::default());
-        engine.add_plugin(WindowPlugin::new(window_handler.clone()));
+        engine.add_plugin(WindowPlugin::new(window_handler));
 
         Ok(Self {
             event_loop,
@@ -91,6 +97,7 @@ impl FlutterWindow {
             engine,
             engine_handler,
             texture_registry,
+            close,
         })
     }
 
@@ -165,6 +172,7 @@ impl FlutterWindow {
     ) -> Result<(), Box<dyn Error>> {
         let engine = self.engine.clone();
         let context = self.context.clone();
+        let close = self.close.clone();
 
         engine.run(assets_path, icu_data_path, arguments)?;
         resize(&engine, &context);
@@ -291,7 +299,7 @@ impl FlutterWindow {
                             ..
                         } => {
                             let raw_key = raw_key(virtual_keycode);
-                            let raw_modifiers = raw_modifiers(&modifiers);
+                            let raw_modifiers = raw_modifiers(modifiers);
                             match state {
                                 ElementState::Pressed => {
                                     if let Some(key) = virtual_keycode {
@@ -330,6 +338,11 @@ impl FlutterWindow {
                     engine.shutdown();
                 }
                 _ => {
+                    if close.load(Ordering::Relaxed) {
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+
                     let next_task_time = engine.execute_platform_tasks();
 
                     if let Some(next_task_time) = next_task_time {
@@ -503,7 +516,7 @@ fn raw_key(key: Option<VirtualKeyCode>) -> u32 {
     }
 }
 
-fn raw_modifiers(modifiers: &ModifiersState) -> u32 {
+fn raw_modifiers(modifiers: ModifiersState) -> u32 {
     let shift = modifiers.shift as u32;
     let ctrl = modifiers.ctrl as u32;
     let alt = modifiers.alt as u32;

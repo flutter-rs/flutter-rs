@@ -79,6 +79,9 @@ impl TextEditingState {
             .byte_index_of_char(self.selection_extent as usize)
             .unwrap_or_else(|| self.text.len());
         self.text.insert_str(index, c);
+        if self.selection_extent < 0 {
+            self.selection_extent = 0;
+        }
         self.move_to(self.selection_extent as usize + c.char_count());
     }
 

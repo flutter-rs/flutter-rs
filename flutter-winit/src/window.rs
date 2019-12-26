@@ -164,17 +164,21 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn run(
-        self,
+    pub fn start_engine(
+        &self,
         assets_path: &Path,
         icu_data_path: &Path,
         arguments: &[&str],
     ) -> Result<(), Box<dyn Error>> {
+        self.engine.run(assets_path, icu_data_path, arguments)?;
+        Ok(())
+    }
+
+    pub fn run(self) -> ! {
         let engine = self.engine.clone();
         let context = self.context.clone();
         let close = self.close.clone();
 
-        engine.run(assets_path, icu_data_path, arguments)?;
         resize(&engine, &context);
 
         engine.with_plugin(|localization: &LocalizationPlugin| {

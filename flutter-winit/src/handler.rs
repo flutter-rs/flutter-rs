@@ -5,7 +5,7 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler, MimeError};
+use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glutin::event_loop::EventLoopProxy;
@@ -89,18 +89,22 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
 
 pub struct WinitPlatformHandler {
     clipboard: ClipboardContext,
+    context: Arc<Mutex<Context>>,
 }
 
 impl WinitPlatformHandler {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new(context: Arc<Mutex<Context>>) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             clipboard: ClipboardContext::new()?,
+            context,
         })
     }
 }
 
 impl PlatformHandler for WinitPlatformHandler {
-    fn set_application_switcher_description(&mut self, _description: AppSwitcherDescription) {}
+    fn set_application_switcher_description(&mut self, description: AppSwitcherDescription) {
+        self.context.lock().window().set_title(&description.label);
+    }
 
     fn set_clipboard_data(&mut self, text: String) {
         if let Err(err) = self.clipboard.set_contents(text) {
@@ -120,37 +124,61 @@ impl PlatformHandler for WinitPlatformHandler {
     }
 }
 
-pub struct WinitWindowHandler {}
+pub struct WinitWindowHandler {
+    context: Arc<Mutex<Context>>,
+    maximized: bool,
+    visible: bool,
+    close: bool,
+}
 
 impl WinitWindowHandler {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(context: Arc<Mutex<Context>>) -> Self {
+        Self {
+            context,
+            maximized: false,
+            visible: false,
+            close: false,
+        }
     }
 }
 
 impl WindowHandler for WinitWindowHandler {
-    fn close(&mut self) {}
-
-    fn show(&mut self) {}
-
-    fn hide(&mut self) {}
-
-    fn maximize(&mut self) {}
-
-    fn iconify(&mut self) {}
-
-    fn restore(&mut self) {}
-
-    fn is_maximized(&mut self) -> bool {
-        false
+    fn close(&mut self) {
+        self.close = true;
     }
 
-    fn is_iconified(&mut self) -> bool {
-        false
+    fn show(&mut self) {
+        self.visible = true;
+        self.context.lock().window().set_visible(self.visible);
+    }
+
+    fn hide(&mut self) {
+        self.visible = false;
+        self.context.lock().window().set_visible(self.visible);
     }
 
     fn is_visible(&mut self) -> bool {
-        true
+        self.visible
+    }
+
+    fn maximize(&mut self) {
+        self.maximized = true;
+        self.context.lock().window().set_maximized(self.maximized);
+    }
+
+    fn restore(&mut self) {
+        self.maximized = false;
+        self.context.lock().window().set_maximized(self.maximized);
+    }
+
+    fn is_maximized(&mut self) -> bool {
+        self.maximized
+    }
+
+    fn iconify(&mut self) {}
+
+    fn is_iconified(&mut self) -> bool {
+        false
     }
 
     fn set_pos(&mut self, _pos: PositionParams) {}

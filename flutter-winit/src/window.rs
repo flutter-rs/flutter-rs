@@ -67,8 +67,10 @@ impl FlutterWindow {
         let isolate_cb = move || {
             proxy.send_event(FlutterEvent::IsolateCreated).ok();
         };
-        let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new()?) as _));
-        let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new()));
+        let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new(
+            context.clone(),
+        )?) as _));
+        let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new(context.clone())));
 
         engine.add_plugin(DialogPlugin::default());
         engine.add_plugin(IsolatePlugin::new(isolate_cb));
@@ -345,7 +347,7 @@ impl FlutterWindow {
 }
 
 fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
-    let context = context.lock();
+    let mut context = context.lock();
     let dpi = context.hidpi_factor();
     let size = context.size().to_physical(dpi);
     log::trace!(
@@ -358,26 +360,21 @@ fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
     engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
 }
 
-fn text_input_shortcuts(
-    engine: &FlutterEngine,
-    key: VirtualKeyCode,
-) {
-    engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
-        match key {
-            VirtualKeyCode::Return => {
-                text_input.with_state(|state| {
-                    state.add_characters(&"\n");
-                });
-                text_input.notify_changes();
-            }
-            VirtualKeyCode::Back => {
-                text_input.with_state(|state| {
-                    state.backspace();
-                });
-                text_input.notify_changes();
-            }
-            _ => {}
+fn text_input_shortcuts(engine: &FlutterEngine, key: VirtualKeyCode) {
+    engine.with_plugin_mut(|text_input: &mut TextInputPlugin| match key {
+        VirtualKeyCode::Return => {
+            text_input.with_state(|state| {
+                state.add_characters(&"\n");
+            });
+            text_input.notify_changes();
         }
+        VirtualKeyCode::Back => {
+            text_input.with_state(|state| {
+                state.backspace();
+            });
+            text_input.notify_changes();
+        }
+        _ => {}
     });
 }
 

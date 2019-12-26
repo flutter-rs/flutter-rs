@@ -2,7 +2,7 @@ use async_std::task;
 use flutter_engine::ffi::ExternalTextureFrame;
 use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, PlatformHandler, MimeError};
+use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glfw::Context;

@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use std::error::Error;
 use std::ffi::CStr;
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub struct WinitFlutterEngineHandler {
@@ -128,23 +129,23 @@ pub struct WinitWindowHandler {
     context: Arc<Mutex<Context>>,
     maximized: bool,
     visible: bool,
-    close: bool,
+    close: Arc<AtomicBool>,
 }
 
 impl WinitWindowHandler {
-    pub fn new(context: Arc<Mutex<Context>>) -> Self {
+    pub fn new(context: Arc<Mutex<Context>>, close: Arc<AtomicBool>) -> Self {
         Self {
             context,
             maximized: false,
             visible: false,
-            close: false,
+            close,
         }
     }
 }
 
 impl WindowHandler for WinitWindowHandler {
     fn close(&mut self) {
-        self.close = true;
+        self.close.store(true, Ordering::Relaxed);
     }
 
     fn show(&mut self) {

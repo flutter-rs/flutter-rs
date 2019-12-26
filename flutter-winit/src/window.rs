@@ -20,8 +20,8 @@ use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
 use glutin::event::{
-    ElementState, Event, KeyboardInput, ModifiersState, MouseButton, Touch, TouchPhase,
-    VirtualKeyCode, WindowEvent,
+    ElementState, Event, KeyboardInput, ModifiersState, MouseButton, MouseScrollDelta, Touch,
+    TouchPhase, VirtualKeyCode, WindowEvent,
 };
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
@@ -249,13 +249,22 @@ impl FlutterWindow {
                                 button,
                             );
                         }
-                        WindowEvent::MouseWheel { .. } => {
+                        WindowEvent::MouseWheel { delta, .. } => {
+                            let delta = match delta {
+                                MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
+                                MouseScrollDelta::PixelDelta(position) => {
+                                    let dpi = { context.lock().hidpi_factor() };
+                                    let (dx, dy): (f64, f64) = position.to_physical(dpi).into();
+                                    (-dx, dy)
+                                }
+                            };
+
                             engine.send_pointer_event(
                                 // TODO
                                 FlutterPointerPhase::Hover,
                                 cursor,
                                 FlutterPointerSignalKind::Scroll,
-                                (0.0, 0.0), // TODO
+                                delta,
                                 FlutterPointerDeviceKind::Mouse,
                                 FlutterPointerMouseButtons::Primary,
                             );

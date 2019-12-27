@@ -221,7 +221,6 @@ impl FlutterEngine {
     pub fn run(
         &self,
         assets_path: &Path,
-        icu_data_path: &Path,
         arguments: &[&str],
     ) -> Result<(), RunError> {
         if !self.is_platform_thread() {
@@ -232,6 +231,8 @@ impl FlutterEngine {
         args.push(CString::new("flutter-rs").unwrap());
         for arg in arguments.into_iter() {
             args.push(CString::new(*arg).unwrap());
+            args.push(CString::new("--icu-symbol-prefix").unwrap());
+            args.push(CString::new("_binary_icudtl_dat").unwrap());
         }
 
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {
@@ -282,7 +283,7 @@ impl FlutterEngine {
             assets_path: path_to_cstring(assets_path).into_raw(),
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
-            icu_data_path: path_to_cstring(icu_data_path).into_raw(),
+            icu_data_path: std::ptr::null(),
             command_line_argc: args.len() as i32,
             command_line_argv: args.as_mut_ptr() as _,
             platform_message_callback: Some(flutter_callbacks::platform_message_callback),

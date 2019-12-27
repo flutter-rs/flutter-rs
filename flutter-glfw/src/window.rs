@@ -306,13 +306,12 @@ impl FlutterWindow {
     pub fn run(
         &self,
         assets_path: &Path,
-        icu_data_path: &Path,
         arguments: &[&str],
         mut custom_handler: Option<&mut WindowEventHandler>,
         mut frame_callback: Option<&mut PerFrameCallback>,
     ) -> Result<(), RunError> {
         // Start engine
-        self.engine.run(assets_path, icu_data_path, arguments)?;
+        self.engine.run(assets_path, arguments)?;
 
         // send initial size callback to engine
         self.send_scale_or_size_change();

@@ -20,8 +20,8 @@ use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
 use glutin::event::{
-    ElementState, Event, KeyboardInput, ModifiersState, MouseButton, MouseScrollDelta, Touch,
-    TouchPhase, VirtualKeyCode, WindowEvent,
+    ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, Touch, TouchPhase,
+    VirtualKeyCode, WindowEvent,
 };
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
@@ -311,12 +311,38 @@ impl FlutterWindow {
                                 },
                             ..
                         } => {
-                            let raw_key = raw_key(virtual_keycode);
-                            let raw_modifiers = raw_modifiers(modifiers);
+                            let raw_key = if let Some(raw_key) = raw_key(virtual_keycode) {
+                                raw_key
+                            } else {
+                                return;
+                            };
+
+                            let shift = modifiers.shift as u32;
+                            let ctrl = modifiers.ctrl as u32;
+                            let alt = modifiers.alt as u32;
+                            let logo = modifiers.logo as u32;
+                            let raw_modifiers = shift | ctrl << 1 | alt << 2 | logo << 3;
+
                             match state {
                                 ElementState::Pressed => {
                                     if let Some(key) = virtual_keycode {
-                                        text_input_shortcuts(&engine, key);
+                                        engine.with_plugin_mut(
+                                            |text_input: &mut TextInputPlugin| match key {
+                                                VirtualKeyCode::Return => {
+                                                    text_input.with_state(|state| {
+                                                        state.add_characters(&"\n");
+                                                    });
+                                                    text_input.notify_changes();
+                                                }
+                                                VirtualKeyCode::Back => {
+                                                    text_input.with_state(|state| {
+                                                        state.backspace();
+                                                    });
+                                                    text_input.notify_changes();
+                                                }
+                                                _ => {}
+                                            },
+                                        );
                                     }
 
                                     engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
@@ -386,153 +412,105 @@ fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
     engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
 }
 
-fn text_input_shortcuts(engine: &FlutterEngine, key: VirtualKeyCode) {
-    engine.with_plugin_mut(|text_input: &mut TextInputPlugin| match key {
-        VirtualKeyCode::Return => {
-            text_input.with_state(|state| {
-                state.add_characters(&"\n");
-            });
-            text_input.notify_changes();
+// Emulates glfw key numbers
+// https://github.com/flutter/flutter/blob/master/packages/flutter/lib/src/services/keyboard_maps.dart
+fn raw_key(key: Option<VirtualKeyCode>) -> Option<u32> {
+    let key = if let Some(key) = key {
+        if key as u32 >= Key::A as u32 && key as u32 <= Key::Z as u32 {
+            return Some(key as u32 - Key::A as u32 + 65);
         }
-        VirtualKeyCode::Back => {
-            text_input.with_state(|state| {
-                state.backspace();
-            });
-            text_input.notify_changes();
-        }
-        _ => {}
-    });
-}
 
-fn raw_key(key: Option<VirtualKeyCode>) -> u32 {
-    if let Some(key) = key {
-        use VirtualKeyCode as Key;
-        match key {
-            Key::A => 65,
-            Key::B => 66,
-            Key::C => 67,
-            Key::D => 68,
-            Key::E => 69,
-            Key::F => 70,
-            Key::G => 71,
-            Key::H => 72,
-            Key::I => 73,
-            Key::J => 74,
-            Key::K => 75,
-            Key::L => 76,
-            Key::M => 77,
-            Key::N => 78,
-            Key::O => 79,
-            Key::P => 80,
-            Key::Q => 81,
-            Key::R => 82,
-            Key::S => 83,
-            Key::T => 84,
-            Key::U => 85,
-            Key::V => 86,
-            Key::W => 87,
-            Key::X => 88,
-            Key::Y => 89,
-            Key::Z => 90,
-            Key::Key0 => 48,
-            Key::Key1 => 49,
-            Key::Key2 => 50,
-            Key::Key3 => 51,
-            Key::Key4 => 52,
-            Key::Key5 => 53,
-            Key::Key6 => 54,
-            Key::Key7 => 55,
-            Key::Key8 => 56,
-            Key::Key9 => 57,
-            Key::Return => 257,
-            Key::Escape => 256,
-            Key::Back => 259,
-            Key::Tab => 258,
-            Key::Space => 32,
-            Key::Minus => 45,
-            Key::Equals => 61,
-            Key::LBracket => 91,
-            Key::RBracket => 93,
-            Key::Backslash => 92,
-            Key::Semicolon => 59,
-            Key::Apostrophe => 39,
-            //Key::Backquote => 96,
-            Key::Comma => 44,
-            Key::Period => 46,
-            Key::Slash => 47,
-            //Key::CapsLock => 280,
-            Key::Snapshot => 283,
-            Key::Pause => 284,
-            Key::Insert => 260,
-            Key::Home => 268,
-            Key::PageUp => 266,
-            Key::Delete => 261,
-            Key::End => 269,
-            Key::PageDown => 267,
-            Key::Right => 262,
-            Key::Left => 263,
-            Key::Down => 264,
-            Key::Up => 265,
-            Key::Numlock => 282,
-            //Key::NumpadDivide => 331,
-            //Key::NumpadMultiply => 332,
-            //Key::NumpadAdd => 334,
-            Key::NumpadEnter => 335,
-            Key::Numpad0 => 320,
-            Key::Numpad1 => 321,
-            Key::Numpad2 => 322,
-            Key::Numpad3 => 323,
-            Key::Numpad4 => 324,
-            Key::Numpad5 => 325,
-            Key::Numpad6 => 326,
-            Key::Numpad7 => 327,
-            Key::Numpad8 => 328,
-            Key::Numpad9 => 329,
-            //Key::NumpadDecimal => 330,
-            //Key::ContextMenu => 348,
-            Key::NumpadEquals => 336,
-            Key::LControl => 341,
-            Key::LShift => 340,
-            Key::LAlt => 342,
-            Key::LWin => 343,
-            Key::RControl => 345,
-            Key::RShift => 344,
-            Key::RAlt => 346,
-            Key::RWin => 347,
-            Key::F1 => 290,
-            Key::F2 => 291,
-            Key::F3 => 292,
-            Key::F4 => 293,
-            Key::F5 => 294,
-            Key::F6 => 295,
-            Key::F7 => 296,
-            Key::F8 => 297,
-            Key::F9 => 298,
-            Key::F10 => 299,
-            Key::F11 => 300,
-            Key::F12 => 301,
-            Key::F13 => 302,
-            Key::F14 => 303,
-            Key::F15 => 304,
-            Key::F16 => 305,
-            Key::F17 => 306,
-            Key::F18 => 307,
-            Key::F19 => 308,
-            Key::F20 => 309,
-            Key::F21 => 310,
-            Key::F22 => 311,
-            Key::F23 => 312,
-            _ => 0,
+        if key as u32 >= Key::Key1 as u32 && key as u32 <= Key::Key9 as u32 {
+            return Some(key as u32 - Key::Key1 as u32 + 49);
         }
+
+        key
     } else {
-        0
-    }
-}
+        return None;
+    };
 
-fn raw_modifiers(modifiers: ModifiersState) -> u32 {
-    let shift = modifiers.shift as u32;
-    let ctrl = modifiers.ctrl as u32;
-    let alt = modifiers.alt as u32;
-    let logo = modifiers.logo as u32;
-    shift | ctrl << 1 | alt << 2 | logo << 3
+    use VirtualKeyCode as Key;
+    let code = match key {
+        Key::Key0 => 48,
+        Key::Return => 257,
+        Key::Escape => 256,
+        Key::Back => 259,
+        Key::Tab => 258,
+        Key::Space => 32,
+        Key::LControl => 341,
+        Key::LShift => 340,
+        Key::LAlt => 342,
+        Key::LWin => 343,
+        Key::RControl => 345,
+        Key::RShift => 344,
+        Key::RAlt => 346,
+        Key::RWin => 347,
+        Key::Minus => 45,
+        Key::Equals => 61,
+        Key::LBracket => 91,
+        Key::RBracket => 93,
+        Key::Backslash => 92,
+        Key::Semicolon => 59,
+        Key::Apostrophe => 39,
+        //Key::Backquote => 96,
+        Key::Comma => 44,
+        Key::Period => 46,
+        Key::Slash => 47,
+        //Key::CapsLock => 280,
+        Key::Snapshot => 283,
+        Key::Pause => 284,
+        Key::Insert => 260,
+        Key::Home => 268,
+        Key::PageUp => 266,
+        Key::Delete => 261,
+        Key::End => 269,
+        Key::PageDown => 267,
+        Key::Right => 262,
+        Key::Left => 263,
+        Key::Down => 264,
+        Key::Up => 265,
+        Key::Numlock => 282,
+        //Key::NumpadDivide => 331,
+        //Key::NumpadMultiply => 332,
+        //Key::NumpadAdd => 334,
+        Key::NumpadEnter => 335,
+        Key::Numpad0 => 320,
+        Key::Numpad1 => 321,
+        Key::Numpad2 => 322,
+        Key::Numpad3 => 323,
+        Key::Numpad4 => 324,
+        Key::Numpad5 => 325,
+        Key::Numpad6 => 326,
+        Key::Numpad7 => 327,
+        Key::Numpad8 => 328,
+        Key::Numpad9 => 329,
+        //Key::NumpadDecimal => 330,
+        //Key::ContextMenu => 348,
+        Key::NumpadEquals => 336,
+        Key::F1 => 290,
+        Key::F2 => 291,
+        Key::F3 => 292,
+        Key::F4 => 293,
+        Key::F5 => 294,
+        Key::F6 => 295,
+        Key::F7 => 296,
+        Key::F8 => 297,
+        Key::F9 => 298,
+        Key::F10 => 299,
+        Key::F11 => 300,
+        Key::F12 => 301,
+        Key::F13 => 302,
+        Key::F14 => 303,
+        Key::F15 => 304,
+        Key::F16 => 305,
+        Key::F17 => 306,
+        Key::F18 => 307,
+        Key::F19 => 308,
+        Key::F20 => 309,
+        Key::F21 => 310,
+        Key::F22 => 311,
+        Key::F23 => 312,
+        _ => return None,
+    };
+    Some(code)
 }

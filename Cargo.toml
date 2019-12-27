@@ -7,7 +7,3 @@ members = [
     "flutter-plugins",
     "flutter-winit",
 ]
-
-exclude = [
-    "flutter-app-demo"
-]

@@ -167,10 +167,9 @@ impl FlutterWindow {
     pub fn start_engine(
         &self,
         assets_path: &Path,
-        icu_data_path: &Path,
         arguments: &[&str],
     ) -> Result<(), Box<dyn Error>> {
-        self.engine.run(assets_path, icu_data_path, arguments)?;
+        self.engine.run(assets_path, arguments)?;
         Ok(())
     }
 

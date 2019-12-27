@@ -10,9 +10,9 @@ edition = "2018"
 
 [dependencies]
 async-std = "1.2"
-flutter-engine-sys = { version = "0.3.5", path = "../flutter-engine-sys" }
-flutter-engine = { version = "0.3.5", path = "../flutter-engine" }
-flutter-plugins = { version = "0.3.5", path = "../flutter-plugins" }
+flutter-engine-sys = { path = "../flutter-engine-sys" }
+flutter-engine = { path = "../flutter-engine", features = ["texture-registry"] }
+flutter-plugins = { path = "../flutter-plugins" }
 futures-task = "0.3.1"
 glfw = "^0.28"
 gl = "0.11.0"

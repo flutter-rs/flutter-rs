@@ -9,7 +9,7 @@ async-std = "1.4.0"
 copypasta = "0.6.1"
 cty = "0.2.1"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
-flutter-engine = { path = "../flutter-engine" }
+flutter-engine = { path = "../flutter-engine", features = ["texture-registry"] }
 flutter-plugins = { path = "../flutter-plugins" }
 futures-task = "0.3.1"
 glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }

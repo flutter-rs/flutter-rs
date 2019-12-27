@@ -8,6 +8,7 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
+#[cfg(feature = "texture-registry")]
 pub mod texture_registry;
 pub mod utils;
 

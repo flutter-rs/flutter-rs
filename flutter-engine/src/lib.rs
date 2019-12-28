@@ -227,12 +227,11 @@ impl FlutterEngine {
             return Err(RunError::NotPlatformThread);
         }
 
-        let mut args = Vec::with_capacity(arguments.len() + 1);
-        args.push(CString::new("flutter-rs").unwrap());
+        let mut args = Vec::with_capacity(arguments.len() + 2);
+        args.push(CString::new("flutter-rs").unwrap().into_raw());
+        args.push(CString::new("--icu-symbol-prefix=_binary_icudtl_dat").unwrap().into_raw());
         for arg in arguments.into_iter() {
-            args.push(CString::new(*arg).unwrap());
-            args.push(CString::new("--icu-symbol-prefix").unwrap());
-            args.push(CString::new("_binary_icudtl_dat").unwrap());
+            args.push(CString::new(*arg).unwrap().into_raw());
         }
 
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {

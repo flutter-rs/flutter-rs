@@ -135,6 +135,17 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
     }
 }
 
+pub struct FlutterAotSnapshot {
+    pub vm_snapshot_data: *const u8,
+    pub vm_snapshot_data_size: usize,
+    pub vm_snapshot_instructions: *const u8,
+    pub vm_snapshot_instructions_size: usize,
+    pub isolate_snapshot_data: *const u8,
+    pub isolate_snapshot_data_size: usize,
+    pub isolate_snapshot_instructions: *const u8,
+    pub isolate_snapshot_instructions_size: usize,
+}
+
 impl FlutterEngine {
     pub fn new(handler: Weak<dyn FlutterEngineHandler>) -> Self {
         let platform_handler = Arc::new(PlatformRunnerHandler {
@@ -222,6 +233,7 @@ impl FlutterEngine {
         &self,
         assets_path: &Path,
         arguments: &[&str],
+        aot: Option<FlutterAotSnapshot>,
     ) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
@@ -229,7 +241,11 @@ impl FlutterEngine {
 
         let mut args = Vec::with_capacity(arguments.len() + 2);
         args.push(CString::new("flutter-rs").unwrap().into_raw());
-        args.push(CString::new("--icu-symbol-prefix=_binary_icudtl_dat").unwrap().into_raw());
+        args.push(
+            CString::new("--icu-symbol-prefix=_binary_icudtl_dat")
+                .unwrap()
+                .into_raw(),
+        );
         for arg in arguments.into_iter() {
             args.push(CString::new(*arg).unwrap().into_raw());
         }
@@ -277,6 +293,37 @@ impl FlutterEngine {
             render_task_runner: &platform_task_runner
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
+
+        let vm_snapshot_data = aot
+            .as_ref()
+            .map(|v| v.vm_snapshot_data)
+            .unwrap_or(std::ptr::null());
+        let vm_snapshot_data_size = aot.as_ref().map(|v| v.vm_snapshot_data_size).unwrap_or(0);
+        let vm_snapshot_instructions = aot
+            .as_ref()
+            .map(|v| v.vm_snapshot_instructions)
+            .unwrap_or(std::ptr::null());
+        let vm_snapshot_instructions_size = aot
+            .as_ref()
+            .map(|v| v.vm_snapshot_instructions_size)
+            .unwrap_or(0);
+        let isolate_snapshot_data = aot
+            .as_ref()
+            .map(|v| v.isolate_snapshot_data)
+            .unwrap_or(std::ptr::null());
+        let isolate_snapshot_data_size = aot
+            .as_ref()
+            .map(|v| v.isolate_snapshot_data_size)
+            .unwrap_or(0);
+        let isolate_snapshot_instructions = aot
+            .as_ref()
+            .map(|v| v.isolate_snapshot_instructions)
+            .unwrap_or(std::ptr::null());
+        let isolate_snapshot_instructions_size = aot
+            .as_ref()
+            .map(|v| v.isolate_snapshot_instructions_size)
+            .unwrap_or(0);
+
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
             assets_path: path_to_cstring(assets_path).into_raw(),
@@ -286,14 +333,14 @@ impl FlutterEngine {
             command_line_argc: args.len() as i32,
             command_line_argv: args.as_mut_ptr() as _,
             platform_message_callback: Some(flutter_callbacks::platform_message_callback),
-            vm_snapshot_data: std::ptr::null(),
-            vm_snapshot_data_size: 0,
-            vm_snapshot_instructions: std::ptr::null(),
-            vm_snapshot_instructions_size: 0,
-            isolate_snapshot_data: std::ptr::null(),
-            isolate_snapshot_data_size: 0,
-            isolate_snapshot_instructions: std::ptr::null(),
-            isolate_snapshot_instructions_size: 0,
+            vm_snapshot_data,
+            vm_snapshot_data_size,
+            vm_snapshot_instructions,
+            vm_snapshot_instructions_size,
+            isolate_snapshot_data,
+            isolate_snapshot_data_size,
+            isolate_snapshot_instructions,
+            isolate_snapshot_instructions_size,
             root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
             update_semantics_node_callback: None,
             update_semantics_custom_action_callback: None,

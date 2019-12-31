@@ -7,7 +7,7 @@ use flutter_engine::ffi::{
 };
 use flutter_engine::plugins::Plugin;
 use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
-use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_engine::{FlutterAotSnapshot, FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
@@ -168,8 +168,9 @@ impl FlutterWindow {
         &self,
         assets_path: &Path,
         arguments: &[&str],
+        aot: Option<FlutterAotSnapshot>,
     ) -> Result<(), Box<dyn Error>> {
-        self.engine.run(assets_path, arguments)?;
+        self.engine.run(assets_path, arguments, aot)?;
         Ok(())
     }
 

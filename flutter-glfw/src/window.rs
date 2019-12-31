@@ -311,7 +311,7 @@ impl FlutterWindow {
         mut frame_callback: Option<&mut PerFrameCallback>,
     ) -> Result<(), RunError> {
         // Start engine
-        self.engine.run(assets_path, arguments)?;
+        self.engine.run(assets_path, arguments, None)?;
 
         // send initial size callback to engine
         self.send_scale_or_size_change();

@@ -6,6 +6,8 @@ pub mod codec;
 pub mod error;
 pub mod ffi;
 mod flutter_callbacks;
+#[cfg(feature = "loader")]
+pub mod loader;
 pub mod plugins;
 pub mod tasks;
 #[cfg(feature = "texture-registry")]

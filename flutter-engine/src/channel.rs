@@ -7,8 +7,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use log::{error, trace};
-
 use crate::{
     codec::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value},
     error::{MessageError, MethodCallError},
@@ -55,7 +53,7 @@ pub trait Channel {
         if let Some(engine) = self.engine() {
             engine.send_platform_message_response(response_handle, buf);
         } else {
-            error!("Channel {} was not initialized", self.name());
+            log::error!("Channel {} was not initialized", self.name());
         }
     }
 
@@ -64,7 +62,7 @@ pub trait Channel {
         if let Some(engine) = self.engine() {
             engine.send_platform_message(message);
         } else {
-            error!("Channel {} was not initialized", self.name());
+            log::error!("Channel {} was not initialized", self.name());
         }
     }
 
@@ -89,7 +87,7 @@ pub trait MethodChannel: Channel {
             if let Some(engine) = self.engine() {
                 let call = self.codec().decode_method_call(msg.message).unwrap();
                 let channel = self.name().to_owned();
-                trace!(
+                log::trace!(
                     "on channel {}, got method call {} with args {:?}",
                     channel,
                     call.method,
@@ -105,15 +103,25 @@ pub trait MethodChannel: Channel {
                     let result = handler.on_method_call(call, engine.clone());
                     let response = match result {
                         Ok(value) => MethodCallResult::Ok(value),
+                        Err(MethodCallError::NotImplemented) => {
+                            let target = handler.log_target().unwrap_or(plugin_name);
+                            log::info!(
+                                target: target,
+                                "method call {}#{} is unimplemented.",
+                                channel,
+                                method
+                            );
+                            MethodCallError::NotImplemented.into()
+                        }
                         Err(error) => {
-                            error!(
-                                target: handler
-                                    .log_target()
-                                    .unwrap_or(plugin_name),
+                            let target = handler.log_target().unwrap_or(plugin_name);
+                            log::error!(
+                                target: target,
                                 "error in method call {}#{}: {}",
                                 channel,
                                 method,
-                                error);
+                                error
+                            );
                             error.into()
                         }
                     };
@@ -165,7 +173,7 @@ pub trait MessageChannel: Channel {
             if let Some(engine) = self.engine() {
                 let message = self.codec().decode_message(msg.message).unwrap();
                 let channel = self.name().to_owned();
-                trace!("on channel {}, got message {:?}", channel, message);
+                log::trace!("on channel {}, got message {:?}", channel, message);
                 let plugin_name = self.plugin_name();
                 let mut response_handle = msg.response_handle.take();
                 let codec = self.codec();
@@ -175,7 +183,7 @@ pub trait MessageChannel: Channel {
                     let response = match result {
                         Ok(value) => value,
                         Err(error) => {
-                            error!(
+                            log::error!(
                                 target: handler
                                     .log_target()
                                     .unwrap_or(plugin_name),

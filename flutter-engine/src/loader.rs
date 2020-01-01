@@ -1,6 +1,6 @@
 use crate::FlutterAotSnapshot;
 use libloading::Library;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 use xmas_elf::sections::SectionData;
 use xmas_elf::symbol_table::Entry;
@@ -36,6 +36,14 @@ pub unsafe fn load_snapshot(aot_path: &Path) -> Result<(Library, FlutterAotSnaps
             }
         }
     };
+    if vm_snapshot_data_size == 0
+        || vm_snapshot_instructions_size == 0
+        || isolate_snapshot_data_size == 0
+        || isolate_snapshot_instructions_size == 0
+    {
+        return Err(Error::new(ErrorKind::Other, "section not found"));
+    }
+
     let lib = Library::new(aot_path)?;
     let vm_snapshot_data = lib
         .get::<*const u8>(b"_kDartVmSnapshotData")?

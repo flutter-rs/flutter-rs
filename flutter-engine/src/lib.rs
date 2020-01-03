@@ -234,8 +234,7 @@ impl FlutterEngine {
     pub fn run(
         &self,
         assets_path: &Path,
-        arguments: &[&str],
-        aot: Option<FlutterAotSnapshot>,
+        arguments: &[String],
     ) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
@@ -249,7 +248,7 @@ impl FlutterEngine {
                 .into_raw(),
         );
         for arg in arguments.into_iter() {
-            args.push(CString::new(*arg).unwrap().into_raw());
+            args.push(CString::new(arg.as_str()).unwrap().into_raw());
         }
 
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {
@@ -296,36 +295,6 @@ impl FlutterEngine {
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
 
-        let vm_snapshot_data = aot
-            .as_ref()
-            .map(|v| v.vm_snapshot_data)
-            .unwrap_or(std::ptr::null());
-        let vm_snapshot_data_size = aot.as_ref().map(|v| v.vm_snapshot_data_size).unwrap_or(0);
-        let vm_snapshot_instructions = aot
-            .as_ref()
-            .map(|v| v.vm_snapshot_instructions)
-            .unwrap_or(std::ptr::null());
-        let vm_snapshot_instructions_size = aot
-            .as_ref()
-            .map(|v| v.vm_snapshot_instructions_size)
-            .unwrap_or(0);
-        let isolate_snapshot_data = aot
-            .as_ref()
-            .map(|v| v.isolate_snapshot_data)
-            .unwrap_or(std::ptr::null());
-        let isolate_snapshot_data_size = aot
-            .as_ref()
-            .map(|v| v.isolate_snapshot_data_size)
-            .unwrap_or(0);
-        let isolate_snapshot_instructions = aot
-            .as_ref()
-            .map(|v| v.isolate_snapshot_instructions)
-            .unwrap_or(std::ptr::null());
-        let isolate_snapshot_instructions_size = aot
-            .as_ref()
-            .map(|v| v.isolate_snapshot_instructions_size)
-            .unwrap_or(0);
-
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
             assets_path: path_to_cstring(assets_path).into_raw(),
@@ -335,14 +304,14 @@ impl FlutterEngine {
             command_line_argc: args.len() as i32,
             command_line_argv: args.as_mut_ptr() as _,
             platform_message_callback: Some(flutter_callbacks::platform_message_callback),
-            vm_snapshot_data,
-            vm_snapshot_data_size,
-            vm_snapshot_instructions,
-            vm_snapshot_instructions_size,
-            isolate_snapshot_data,
-            isolate_snapshot_data_size,
-            isolate_snapshot_instructions,
-            isolate_snapshot_instructions_size,
+            vm_snapshot_data: std::ptr::null(),
+            vm_snapshot_data_size: 0,
+            vm_snapshot_instructions: std::ptr::null(),
+            vm_snapshot_instructions_size: 0,
+            isolate_snapshot_data: std::ptr::null(),
+            isolate_snapshot_data_size: 0,
+            isolate_snapshot_instructions: std::ptr::null(),
+            isolate_snapshot_instructions_size: 0,
             root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
             update_semantics_node_callback: None,
             update_semantics_custom_action_callback: None,

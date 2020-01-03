@@ -7,7 +7,7 @@ use flutter_engine::ffi::{
 };
 use flutter_engine::plugins::Plugin;
 use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
-use flutter_engine::{FlutterAotSnapshot, FlutterEngine, FlutterEngineHandler, RunError};
+use flutter_engine::{FlutterEngine, FlutterEngineHandler, RunError};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
@@ -306,13 +306,12 @@ impl FlutterWindow {
     pub fn run(
         &self,
         assets_path: &Path,
-        arguments: &[&str],
+        arguments: &[String],
         mut custom_handler: Option<&mut WindowEventHandler>,
         mut frame_callback: Option<&mut PerFrameCallback>,
-        snapshot: Option<FlutterAotSnapshot>,
     ) -> Result<(), RunError> {
         // Start engine
-        self.engine.run(assets_path, arguments, snapshot)?;
+        self.engine.run(assets_path, arguments)?;
 
         // send initial size callback to engine
         self.send_scale_or_size_change();

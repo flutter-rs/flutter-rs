@@ -131,7 +131,7 @@ pub extern "C" fn gl_external_texture_frame(
     unsafe {
         if let Some(handler) = get_handler(user_data) {
             if let Some(frame) = handler.get_texture_frame(texture_id, (width, height)) {
-                frame.to_ffi(&mut *texture);
+                frame.into_ffi(&mut *texture);
                 return true;
             }
         }

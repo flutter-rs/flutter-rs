@@ -95,7 +95,7 @@ lazy_static! {
 }
 
 pub fn get_engine(window: *mut glfw::ffi::GLFWwindow) -> Option<FlutterEngine> {
-    ENGINES.lock().get(&WindowSafe(window)).map(|v| v.clone())
+    ENGINES.lock().get(&WindowSafe(window)).cloned()
 }
 
 pub(crate) type MainTheadFn = Box<dyn FnMut(&FlutterWindow) + Send>;
@@ -187,7 +187,7 @@ impl FlutterWindow {
 
         // Create engine
         let handler = Arc::new(GlfwFlutterEngineHandler {
-            glfw: glfw.clone(),
+            glfw: *glfw,
             window: window.clone(),
             resource_window: res_window.clone(),
             texture_registry: texture_registry.clone(),
@@ -233,7 +233,7 @@ impl FlutterWindow {
         engine.add_plugin(WindowPlugin::new(window_handler.clone() as _));
 
         Ok(Self {
-            glfw: glfw.clone(),
+            glfw: *glfw,
             window,
             window_receiver: receiver,
             resource_window: res_window,
@@ -343,7 +343,7 @@ impl FlutterWindow {
             },
         );
 
-        let mut glfw = self.glfw.clone();
+        let mut glfw = self.glfw;
         while !self.window.lock().should_close() {
             // Execute tasks and callbacks
             let next_task_time = self.engine.execute_platform_tasks();

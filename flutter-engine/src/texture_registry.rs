@@ -13,10 +13,12 @@ use crate::FlutterEngine;
 
 type TextureID = i64;
 
+#[derive(Default)]
 pub struct TextureRegistry {
     textures: TextureStore,
 }
 
+#[derive(Default)]
 struct TextureStore {
     /// Stores freshly registered textures without an OpenGL texture attached.
     initial: HashMap<TextureID, Arc<ExternalTexture>>,
@@ -37,12 +39,7 @@ struct TextureData {
 
 impl TextureRegistry {
     pub fn new() -> Self {
-        Self {
-            textures: TextureStore {
-                initial: HashMap::new(),
-                created: HashMap::new(),
-            },
-        }
+        Default::default()
     }
 
     pub fn create_texture(&mut self, engine: &FlutterEngine) -> Arc<ExternalTexture> {

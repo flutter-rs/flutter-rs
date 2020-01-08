@@ -12,6 +12,7 @@ use crate::{
     FlutterEngineWeakRef, PlatformMessage,
 };
 
+#[derive(Default)]
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
     pub channel_registry: ChannelRegistry,
@@ -19,10 +20,7 @@ pub struct PluginRegistrar {
 
 impl PluginRegistrar {
     pub fn new() -> Self {
-        Self {
-            plugins: HashMap::new(),
-            channel_registry: ChannelRegistry::new(),
-        }
+        Default::default()
     }
 
     pub fn init(&mut self, engine: FlutterEngineWeakRef) {

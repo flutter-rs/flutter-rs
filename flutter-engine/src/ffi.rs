@@ -234,7 +234,7 @@ impl ExternalTextureFrame {
         }
     }
 
-    pub(crate) fn to_ffi(self, target: &mut FlutterOpenGLTexture) {
+    pub(crate) fn into_ffi(self, target: &mut FlutterOpenGLTexture) {
         target.target = self.target;
         target.name = self.name;
         target.format = self.format;

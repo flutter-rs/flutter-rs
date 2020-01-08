@@ -125,7 +125,7 @@ pub trait MethodChannel: Channel {
                             error.into()
                         }
                     };
-                    engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                    engine.post_platform_callback(crate::MainThreadCallback::Channel((
                         channel,
                         Box::new(move |channel| {
                             let buf = codec.encode_method_call_response(&response);
@@ -194,7 +194,7 @@ pub trait MessageChannel: Channel {
                         }
                     };
                     if response_handle.is_some() {
-                        engine.post_platform_callback(crate::MainThreadCallback::ChannelFn((
+                        engine.post_platform_callback(crate::MainThreadCallback::Channel((
                             channel,
                             Box::new(move |channel| {
                                 let buf = codec.encode_message(&response);

@@ -6,8 +6,6 @@ pub mod codec;
 pub mod error;
 pub mod ffi;
 mod flutter_callbacks;
-#[cfg(feature = "loader")]
-pub mod loader;
 pub mod plugins;
 pub mod tasks;
 #[cfg(feature = "texture-registry")]
@@ -39,9 +37,9 @@ pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Sen
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 
 pub(crate) enum MainThreadCallback {
-    EngineFn(MainThreadEngineFn),
-    ChannelFn(MainThreadChannelFn),
-    RenderThreadFn(MainThreadRenderThreadFn),
+    Engine(MainThreadEngineFn),
+    Channel(MainThreadChannelFn),
+    RenderThread(MainThreadRenderThreadFn),
 }
 
 struct FlutterEngineInner {
@@ -231,11 +229,7 @@ impl FlutterEngine {
         }
     }
 
-    pub fn run(
-        &self,
-        assets_path: &Path,
-        arguments: &[String],
-    ) -> Result<(), RunError> {
+    pub fn run(&self, assets_path: &Path, arguments: &[String]) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
         }
@@ -247,7 +241,7 @@ impl FlutterEngine {
                 .unwrap()
                 .into_raw(),
         );
-        for arg in arguments.into_iter() {
+        for arg in arguments.iter() {
             args.push(CString::new(arg.as_str()).unwrap().into_raw());
         }
 
@@ -340,7 +334,7 @@ impl FlutterEngine {
             ) != flutter_engine_sys::FlutterEngineResult::kSuccess
                 || engine_ptr.is_null()
             {
-                return Err(RunError::EnginePtrNull);
+                Err(RunError::EnginePtrNull)
             } else {
                 self.inner.engine_ptr.store(engine_ptr, Ordering::Relaxed);
                 Ok(())
@@ -365,7 +359,7 @@ impl FlutterEngine {
         if self.is_platform_thread() {
             f(self);
         } else {
-            self.post_platform_callback(MainThreadCallback::EngineFn(Box::new(f)));
+            self.post_platform_callback(MainThreadCallback::Engine(Box::new(f)));
         }
     }
 
@@ -376,7 +370,7 @@ impl FlutterEngine {
         if self.is_platform_thread() {
             f(self);
         } else {
-            self.post_platform_callback(MainThreadCallback::RenderThreadFn(Box::new(f)));
+            self.post_platform_callback(MainThreadCallback::RenderThread(Box::new(f)));
         }
     }
 
@@ -480,8 +474,8 @@ impl FlutterEngine {
         let callbacks: Vec<MainThreadCallback> = self.inner.platform_receiver.try_iter().collect();
         for cb in callbacks {
             match cb {
-                MainThreadCallback::EngineFn(func) => func(self),
-                MainThreadCallback::ChannelFn((name, mut f)) => {
+                MainThreadCallback::Engine(func) => func(self),
+                MainThreadCallback::Channel((name, mut f)) => {
                     self.inner
                         .plugins
                         .write()
@@ -490,7 +484,7 @@ impl FlutterEngine {
                             f(channel);
                         });
                 }
-                MainThreadCallback::RenderThreadFn(f) => render_thread_fns.push(f),
+                MainThreadCallback::RenderThread(f) => render_thread_fns.push(f),
             }
         }
         if !render_thread_fns.is_empty() {

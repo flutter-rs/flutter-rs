@@ -10,6 +10,7 @@ use crate::{FlutterEngineWeakRef, PlatformMessage};
 
 use super::Channel;
 
+#[derive(Default)]
 pub struct ChannelRegistry {
     channels: HashMap<String, Arc<dyn Channel>>,
     engine: FlutterEngineWeakRef,
@@ -23,10 +24,7 @@ pub struct ChannelRegistrar<'a> {
 
 impl ChannelRegistry {
     pub fn new() -> Self {
-        Self {
-            channels: HashMap::new(),
-            engine: Default::default(),
-        }
+        Default::default()
     }
 
     pub fn init(&mut self, engine: FlutterEngineWeakRef) {

@@ -1,8 +1,8 @@
 use crate::tasks::{TaskRunner, TaskRunnerInner};
 use crate::{FlutterEngineHandler, FlutterEngineInner};
-use cty::{c_char, c_uint, c_void};
 use log::trace;
 use parking_lot::Mutex;
+use std::os::raw::{c_char, c_uint, c_void};
 use std::sync::Arc;
 
 #[inline]

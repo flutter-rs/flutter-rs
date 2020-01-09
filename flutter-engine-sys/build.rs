@@ -49,7 +49,7 @@ fn sdk_path(target: &str) -> Option<String> {
         "macosx"
     } else if target == "x86_64-apple-ios" || target == "i386-apple-ios" {
         "iphonesimulator"
-    } else if target == "aarch64-apple-ios" {
+    } else if target == "aarch64-apple-ios" || target == "armv7-apple-ios" {
         "iphoneos"
     } else {
         return None;

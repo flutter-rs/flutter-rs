@@ -386,7 +386,7 @@ impl FlutterEngine {
             width,
             height,
             pixel_ratio,
-            #[cfg(target_arch = "arm")]
+            #[cfg(all(target_arch = "arm", target_os = "android"))]
             __bindgen_padding_0: 0,
         };
         unsafe {
@@ -417,9 +417,9 @@ impl FlutterEngine {
             scroll_delta_y,
             device_kind: device_kind.into(),
             buttons: buttons as i64,
-            #[cfg(target_arch = "arm")]
+            #[cfg(all(target_arch = "arm", target_os = "android"))]
             __bindgen_padding_0: 0,
-            #[cfg(target_arch = "arm")]
+            #[cfg(all(target_arch = "arm", target_os = "android"))]
             __bindgen_padding_1: 0,
         };
         unsafe {
@@ -516,7 +516,7 @@ impl FlutterEngine {
             flutter_engine_sys::FlutterEnginePostRenderThreadTask(
                 self.engine_ptr(),
                 Some(render_thread_task),
-                ptr as *mut cty::c_void,
+                ptr as *mut c_void,
             );
         }
 
@@ -524,7 +524,7 @@ impl FlutterEngine {
             pub cbk: Box<dyn FnOnce()>,
         }
 
-        unsafe extern "C" fn render_thread_task(user_data: *mut cty::c_void) {
+        unsafe extern "C" fn render_thread_task(user_data: *mut c_void) {
             let ptr = user_data as *mut CallbackBox;
             let b = Box::from_raw(ptr);
             (b.cbk)()

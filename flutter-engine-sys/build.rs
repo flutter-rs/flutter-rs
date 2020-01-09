@@ -5,6 +5,14 @@ fn main() {
     let target = std::env::var("TARGET").unwrap();
     let mut clang_args: Vec<String> = Vec::new();
 
+    // This adds the sysroot specific to the android NDK
+    if target.contains("android") {
+        let ndk_home = std::env::var("NDK_HOME").expect("NDK_HOME is set");
+        let sysroot = PathBuf::from(ndk_home).join("sysroot");
+        clang_args.push("--sysroot".into());
+        clang_args.push(sysroot.to_str().unwrap().to_string());
+    }
+
     // This adds the sysroot specific to the apple SDK for clang.
     if let Some(sdk_path) = sdk_path(&target) {
         clang_args.push("-isysroot".into());

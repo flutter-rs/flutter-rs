@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use std::error::Error;
 use std::ffi::CStr;
 use std::future::Future;
+use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -60,7 +61,7 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
         unsafe { self.resource_context.lock().make_current() }
     }
 
-    fn gl_proc_resolver(&self, proc: *const cty::c_char) -> *mut cty::c_void {
+    fn gl_proc_resolver(&self, proc: *const c_char) -> *mut c_void {
         unsafe {
             if let Ok(proc) = CStr::from_ptr(proc).to_str() {
                 return self.context.lock().get_proc_address(proc) as _;

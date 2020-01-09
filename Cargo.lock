@@ -418,11 +418,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cty"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "dirs"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -518,7 +513,6 @@ dependencies = [
 name = "flutter-engine"
 version = "0.3.5"
 dependencies = [
- "cty 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-engine-sys 0.3.5",
  "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -573,7 +567,6 @@ version = "0.1.0"
 dependencies = [
  "async-std 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "copypasta 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cty 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-engine 0.3.5",
  "flutter-engine-sys 0.3.5",
  "flutter-plugins 0.3.5",
@@ -1920,7 +1913,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum crossbeam-epoch 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5064ebdbf05ce3cb95e45c8b086f72263f4166b29b97f6baff7ef7fe047b55ac"
 "checksum crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)" = "04973fa96e96579258a5091af6003abde64af786b860f18622b82e026cca60e6"
 "checksum crossbeam-utils 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ce446db02cdc3165b94ae73111e570793400d0794e46125cc4056c81cbb039f4"
-"checksum cty 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
 "checksum dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "13aea89a5c93364a98e9b37b2fa237effbb694d5cfe01c5b70941f7eb087d5e3"
 "checksum dirs-sys 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "afa0b23de8fd801745c471deffa6e12d248f962c9fd4b4c33787b055599bde7b"
 "checksum dispatch 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "04e93ca78226c51902d7aa8c12c988338aadd9e85ed9c6be8aaac39192ff3605"

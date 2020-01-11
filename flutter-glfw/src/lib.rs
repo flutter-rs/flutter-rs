@@ -31,6 +31,6 @@ impl FlutterDesktop {
     }
 
     pub fn glfw(&self) -> glfw::Glfw {
-        self.glfw
+        self.glfw.clone()
     }
 }

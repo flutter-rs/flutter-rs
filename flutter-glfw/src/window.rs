@@ -187,7 +187,7 @@ impl FlutterWindow {
 
         // Create engine
         let handler = Arc::new(GlfwFlutterEngineHandler {
-            glfw: *glfw,
+            glfw: glfw.clone(),
             window: window.clone(),
             resource_window: res_window.clone(),
             texture_registry: texture_registry.clone(),
@@ -233,7 +233,7 @@ impl FlutterWindow {
         engine.add_plugin(WindowPlugin::new(window_handler.clone() as _));
 
         Ok(Self {
-            glfw: *glfw,
+            glfw: glfw.clone(),
             window,
             window_receiver: receiver,
             resource_window: res_window,
@@ -343,7 +343,7 @@ impl FlutterWindow {
             },
         );
 
-        let mut glfw = self.glfw;
+        let mut glfw = self.glfw.clone();
         while !self.window.lock().should_close() {
             // Execute tasks and callbacks
             let next_task_time = self.engine.execute_platform_tasks();

@@ -51,7 +51,7 @@ impl LocalizationPlugin {
                     languages.push(loc.get_language().to_owned());
                     languages.push(loc.get_region().unwrap_or_default().to_owned());
                     languages.push(loc.get_script().unwrap_or_default().to_owned());
-                    languages.push(loc.get_variants().first().map_or("", |v| *v).to_owned());
+                    languages.push(loc.get_variants().next().map_or("", |v| v).to_owned());
                 } else {
                     warn!("Failed to parse language range: {}", language);
                 }

@@ -6,12 +6,12 @@ edition = "2018"
 
 [dependencies]
 async-std = "1.4.0"
-copypasta = "0.6.1"
+copypasta = "0.6.2"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 flutter-engine = { path = "../flutter-engine", features = ["texture-registry"] }
 flutter-plugins = { path = "../flutter-plugins" }
 futures-task = "0.3.1"
 glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }
-locale_config = "0.2.0"
+locale_config = "0.3.0"
 log = "0.4.8"
 parking_lot = "0.10.0"

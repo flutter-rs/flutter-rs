@@ -1,0 +1,116 @@
+on: [push, pull_request]
+
+name: Flutter Rust
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+        - rust: stable
+          flutter: stable
+        - rust: nightly
+          flutter: dev
+        platform:
+        - target: x86_64-unknown-linux-gnu
+          host: ubuntu-latest
+          cross: false
+
+        - target: x86_64-apple-darwin
+          host: macos-latest
+          cross: false
+
+        - target: x86_64-pc-windows-msvc
+          host: windows-latest
+          cross: false
+
+        - target: armv7-linux-androideabi
+          host: ubuntu-latest
+          cross: true
+        - target: aarch64-linux-android
+          host: ubuntu-latest
+          cross: true
+        - target: i686-linux-android
+          host: ubuntu-latest
+          cross: true
+        - target: x86_64-linux-android
+          host: ubuntu-latest
+          cross: true
+
+        - target: armv7-apple-ios
+          host: macos-latest
+          cross: true
+        - target: aarch64-apple-ios
+          host: macos-latest
+          cross: true
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_INCREMENTAL: 0
+      LLVM_CONFIG_PATH: /usr/local/opt/llvm/bin/llvm-config
+      NDK_HOME: /usr/local/lib/android/sdk/ndk-bundle
+
+    runs-on: ${{ matrix.platform.host }}
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@v2
+
+    - name: Cache cargo folder
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo
+        key: ${{ matrix.platform.target }}-cargo-${{ matrix.toolchain.rust }}
+
+    - name: Install dependencies ubuntu
+      if: matrix.platform.host == 'ubuntu-latest'
+      run: sudo apt-get install llvm-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+    - name: Install dependencies macos
+      if: matrix.platform.host == 'macos-latest'
+      run: brew install llvm
+
+    - name: Install glfw dependencies
+      if: matrix.platform.target == 'x86_64-unknown-linux-gnu'
+      run: sudo apt-get install libgl1-mesa-dev libxxf86vm-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+    - name: Install rust toolchain
+      uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ matrix.toolchain.rust }}
+        targets: ${{ matrix.platform.target }}
+
+    - name: Install flutter
+      uses: subosito/flutter-action@v1
+      with:
+        channel: ${{ matrix.toolchain.flutter }}
+
+    - name: Install cargo-flutter
+      run: cargo install cargo-flutter --force
+
+    - name: Build
+      run: cargo flutter --quiet --no-flutter build -p flutter-winit --target ${{ matrix.platform.target }}
+
+    - name: Test
+      if: matrix.platform.cross == false
+      run: cargo flutter --quiet --no-flutter test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@v2
+
+    - name: Install glfw dependencies
+      run: sudo apt-get install libgl1-mesa-dev libxxf86vm-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+    - name: Install rust toolchain
+      uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: stable
+        components: clippy, rustfmt
+
+    - name: cargo fmt
+      run: cargo fmt --all -- --check
+
+    - name: cargo clippy
+      run: cargo clippy -- -D warnings

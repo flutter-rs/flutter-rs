@@ -24,3 +24,13 @@ extern "C" {}
 #[cfg(target_os = "windows")]
 #[link(name = "flutter_engine.dll")]
 extern "C" {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link() {
+        println!("linking works");
+    }
+}

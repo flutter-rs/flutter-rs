@@ -304,7 +304,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "copypasta"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "clipboard-win 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -313,7 +313,7 @@ dependencies = [
  "objc_id 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "smithay-clipboard 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "wayland-client 0.23.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "x11-clipboard 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "x11-clipboard 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -529,7 +529,7 @@ name = "flutter-winit"
 version = "0.1.0"
 dependencies = [
  "async-std 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "copypasta 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "copypasta 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-engine 0.3.5",
  "flutter-engine-sys 0.3.5",
  "flutter-plugins 0.3.5",
@@ -1691,7 +1691,7 @@ dependencies = [
 
 [[package]]
 name = "x11-clipboard"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "xcb 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1762,7 +1762,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum cmake 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "81fb25b677f8bf1eb325017cb6bb8452f87969db0fedb4f757b297bee78a7c62"
 "checksum cocoa 0.19.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f29f7768b2d1be17b96158e3285951d366b40211320fb30826a76cb7a0da6400"
 "checksum constant_time_eq 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "995a44c877f9212528ccc74b21a232f66ad69001e40ede5bcee2ac9ef2657120"
-"checksum copypasta 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)" = "330f194e0a09fce5852e073bcb7b6fb81ea50415a90c605647ae19cdb7f5e87f"
+"checksum copypasta 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f1fcbfb17a41091ba8bad1233d0178fda058968a71998dde3f11189f0b4aa9da"
 "checksum core-foundation 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "25b9e03f145fd4f2bf705e07b900cd41fc636598fe5dc452fd0db1441c3f496d"
 "checksum core-foundation-sys 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "e7ca8a5221364ef15ce201e8ed2f609fc312682a8f4e0e3d4aa5879764e0fa3b"
 "checksum core-graphics 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)" = "56790968ab1c8a1202a102e6de05fc6e1ec87da99e4e93e9a7d13efbfc1e95a9"
@@ -1921,7 +1921,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum wincolor 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "96f5016b18804d24db43cebf3c77269e7569b8954a8464501c216cc5e070eaa9"
 "checksum winit 0.20.0-alpha5 (git+https://github.com/dvc94ch/winit?branch=android)" = "<none>"
 "checksum ws2_32-sys 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
-"checksum x11-clipboard 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "13e34d90fe39ce667d0f70938b5859b7b363d8fab95cf9635848481fb9b60d5b"
+"checksum x11-clipboard 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "e5e937afd03b64b7be4f959cc044e09260a47241b71e56933f37db097bf7859d"
 "checksum x11-dl 2.18.4 (registry+https://github.com/rust-lang/crates.io-index)" = "be65e1342a3baae65439cd03306778831a3d133b0d20243a7fb83fd5cf403c58"
 "checksum xcb 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "62056f63138b39116f82a540c983cc11f1c90cd70b3d492a70c25eaa50bd22a6"
 "checksum xdg 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d089681aa106a86fade1b0128fb5daf07d5867a509ab036d99988dec80429a57"

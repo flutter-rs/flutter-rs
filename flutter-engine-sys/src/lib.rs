@@ -27,10 +27,23 @@ extern "C" {}
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused)]
     use super::*;
+    use libloading::Library;
+
+    #[cfg(target_os = "linux")]
+    const LIB: &str = "libflutter_engine.so";
+    #[cfg(target_os = "macos")]
+    const LIB: &str = "libflutter_engine.dylib";
+    #[cfg(target_os = "windows")]
+    const LIB: &str = "flutter_engine.dll.lib";
 
     #[test]
     fn link() {
-        println!("linking works");
+        let lib = Library::new(LIB).unwrap();
+        unsafe {
+            lib.get::<*const ()>(b"_binary_icudtl_dat_start\0").unwrap();
+            lib.get::<*const ()>(b"_binary_icudtl_dat_size\0").unwrap();
+        }
     }
 }

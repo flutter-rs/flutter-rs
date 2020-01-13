@@ -10,3 +10,6 @@ edition = "2018"
 [build-dependencies]
 bindgen = "0.52.0"
 dirs = "2.0.2"
+
+[dev-dependencies]
+libloading = "0.5.2"

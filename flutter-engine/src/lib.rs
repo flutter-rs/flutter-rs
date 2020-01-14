@@ -237,7 +237,7 @@ impl FlutterEngine {
         let mut args = Vec::with_capacity(arguments.len() + 2);
         args.push(CString::new("flutter-rs").unwrap().into_raw());
         args.push(
-            CString::new("--icu-symbol-prefix=_binary_icudtl_dat")
+            CString::new("--icu-symbol-prefix=gIcudtl")
                 .unwrap()
                 .into_raw(),
         );

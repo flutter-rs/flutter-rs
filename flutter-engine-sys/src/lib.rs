@@ -42,8 +42,9 @@ mod tests {
     fn link() {
         let lib = Library::new(LIB).unwrap();
         unsafe {
-            lib.get::<*const ()>(b"_binary_icudtl_dat_start\0").unwrap();
-            lib.get::<*const ()>(b"_binary_icudtl_dat_size\0").unwrap();
+            lib.get::<*const ()>(b"gIcudtlData\0").unwrap();
+            lib.get::<*const ()>(b"gIcudtlEnd\0").unwrap();
+            lib.get::<*const ()>(b"gIcudtlSize\0").unwrap();
         }
     }
 }

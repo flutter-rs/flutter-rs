@@ -1,12 +1,12 @@
 [package]
 name = "flutter-glfw"
-description = "Flutter engine embedder in rust"
-version = "0.3.5"
+version = "0.4.0"
 authors = ["juju <gliheng@gmail.com>", "Sophie Tauchert <sophie@999eagle.moe>"]
-keywords = ["flutter", "GUI"]
-license = "MIT"
-repository = "https://github.com/gliheng/flutter-rs"
 edition = "2018"
+description = "Flutter engine embedder using glfw."
+keywords = ["flutter", "GUI"]
+repository = "https://github.com/gliheng/flutter-rs"
+license = "MIT"
 
 [dependencies]
 async-std = "1.4.0"

@@ -1,15 +1,15 @@
 [package]
 name = "flutter-plugins"
-description = "flutter-rs plugins"
-version = "0.3.5"
+version = "0.4.0"
 authors = ["juju <gliheng@gmail.com>"]
 edition = "2018"
-keywords = ["flutter"]
+description = "flutter-rs plugins"
+keywords = ["flutter", "GUI"]
+repository = "https://github.com/flutter-rs/flutter-rs"
 license = "MIT"
-repository = "https://github.com/gliheng/flutter-rs"
 
 [dependencies]
-flutter-engine = { version = "0.3.5", path = "../flutter-engine" }
+flutter-engine = { path = "../flutter-engine" }
 locale_config = "0.3.0"
 log = "0.4.8"
 parking_lot = "0.10.0"

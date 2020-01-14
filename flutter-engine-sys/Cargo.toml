@@ -1,11 +1,12 @@
 [package]
 name = "flutter-engine-sys"
-description = "flutter engine sys crate"
-version = "0.3.5"
+version = "0.4.0"
 authors = ["juju <gliheng@gmail.com>"]
-keywords = ["flutter", "GUI"]
-license = "MIT"
 edition = "2018"
+description = "Rust bindings for the flutter engine."
+keywords = ["flutter", "GUI"]
+repository = "https://github.com/flutter-rs/flutter-rs"
+license = "MIT"
 
 [build-dependencies]
 bindgen = "0.52.0"

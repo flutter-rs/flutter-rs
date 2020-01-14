@@ -1,8 +1,12 @@
 [package]
 name = "flutter-winit"
-version = "0.1.0"
+version = "0.4.0"
 authors = ["David Craven <david@craven.ch>"]
 edition = "2018"
+description = "Flutter engine embedder using winit."
+keywords = ["flutter", "GUI"]
+repository = "https://github.com/flutter-rs/flutter-rs"
+license = "MIT"
 
 [dependencies]
 async-std = "1.4.0"

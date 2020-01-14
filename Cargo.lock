@@ -474,9 +474,9 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine"
-version = "0.3.5"
+version = "0.4.0"
 dependencies = [
- "flutter-engine-sys 0.3.5",
+ "flutter-engine-sys 0.4.0",
  "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "flutter-engine-sys"
-version = "0.3.5"
+version = "0.4.0"
 dependencies = [
  "bindgen 0.52.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -496,12 +496,12 @@ dependencies = [
 
 [[package]]
 name = "flutter-glfw"
-version = "0.3.5"
+version = "0.4.0"
 dependencies = [
  "async-std 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "flutter-engine 0.3.5",
- "flutter-engine-sys 0.3.5",
- "flutter-plugins 0.3.5",
+ "flutter-engine 0.4.0",
+ "flutter-engine-sys 0.4.0",
+ "flutter-plugins 0.4.0",
  "futures-task 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -513,9 +513,9 @@ dependencies = [
 
 [[package]]
 name = "flutter-plugins"
-version = "0.3.5"
+version = "0.4.0"
 dependencies = [
- "flutter-engine 0.3.5",
+ "flutter-engine 0.4.0",
  "locale_config 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -527,13 +527,13 @@ dependencies = [
 
 [[package]]
 name = "flutter-winit"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "async-std 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "copypasta 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "flutter-engine 0.3.5",
- "flutter-engine-sys 0.3.5",
- "flutter-plugins 0.3.5",
+ "flutter-engine 0.4.0",
+ "flutter-engine-sys 0.4.0",
+ "flutter-plugins 0.4.0",
  "futures-task 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "glutin 0.22.0-alpha5 (git+https://github.com/dvc94ch/glutin?branch=android)",
  "locale_config 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",

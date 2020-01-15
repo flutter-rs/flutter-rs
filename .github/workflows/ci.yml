@@ -73,10 +73,6 @@ jobs:
       if: matrix.platform.host == 'windows-latest'
       run: choco install llvm
 
-    - name: Install glfw dependencies
-      if: matrix.platform.target == 'x86_64-unknown-linux-gnu'
-      run: sudo apt-get install libgl1-mesa-dev libxxf86vm-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-
     - name: Install rust toolchain
       uses: hecrj/setup-rust-action@v1
       with:
@@ -103,9 +99,6 @@ jobs:
     steps:
     - name: Checkout sources
       uses: actions/checkout@v2
-
-    - name: Install glfw dependencies
-      run: sudo apt-get install libgl1-mesa-dev libxxf86vm-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 
     - name: Install rust toolchain
       uses: hecrj/setup-rust-action@v1

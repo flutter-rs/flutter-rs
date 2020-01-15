@@ -11,3 +11,11 @@
 - support windows
 - nsis installer for windows
 - new example UI
+
+# 0.4.0
+- use winit instead of glfw
+- use custom flutter engine builds
+- new cli tool `cargo-flutter`
+- refactor engine to be window framework agnostic
+- dropped tokio and libc dependencies
+- move plugins to `flutter-plugins`

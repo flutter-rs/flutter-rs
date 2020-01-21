@@ -510,7 +510,7 @@ dependencies = [
  "flutter-engine-sys 0.4.0",
  "flutter-plugins 0.4.0",
  "futures-task 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin 0.22.0-alpha5",
+ "glutin 0.22.0-alpha5 (git+https://github.com/dvc94ch/glutin?branch=android)",
  "locale_config 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -604,6 +604,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "glutin"
 version = "0.22.0-alpha5"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 dependencies = [
  "android-ndk 0.0.6 (git+https://github.com/rust-windowing/android-ndk-rs)",
  "android_glue 0.2.3 (git+https://github.com/rust-windowing/android-rs-glue)",
@@ -611,11 +612,11 @@ dependencies = [
  "cocoa 0.19.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-foundation 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-graphics 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_egl_sys 0.1.4",
- "glutin_emscripten_sys 0.1.0",
- "glutin_gles2_sys 0.1.3",
- "glutin_glx_sys 0.1.5",
- "glutin_wgl_sys 0.1.3",
+ "glutin_egl_sys 0.1.4 (git+https://github.com/dvc94ch/glutin?branch=android)",
+ "glutin_emscripten_sys 0.1.0 (git+https://github.com/dvc94ch/glutin?branch=android)",
+ "glutin_gles2_sys 0.1.3 (git+https://github.com/dvc94ch/glutin?branch=android)",
+ "glutin_glx_sys 0.1.5 (git+https://github.com/dvc94ch/glutin?branch=android)",
+ "glutin_wgl_sys 0.1.3 (git+https://github.com/dvc94ch/glutin?branch=android)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libloading 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -624,12 +625,13 @@ dependencies = [
  "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wayland-client 0.23.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "winit 0.20.0-alpha5",
+ "winit 0.20.0-alpha5 (git+https://github.com/dvc94ch/winit?branch=android)",
 ]
 
 [[package]]
 name = "glutin_egl_sys"
 version = "0.1.4"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 dependencies = [
  "gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -638,10 +640,12 @@ dependencies = [
 [[package]]
 name = "glutin_emscripten_sys"
 version = "0.1.0"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 
 [[package]]
 name = "glutin_gles2_sys"
 version = "0.1.3"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 dependencies = [
  "gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "objc 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -650,6 +654,7 @@ dependencies = [
 [[package]]
 name = "glutin_glx_sys"
 version = "0.1.5"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 dependencies = [
  "gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "x11-dl 2.18.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -658,6 +663,7 @@ dependencies = [
 [[package]]
 name = "glutin_wgl_sys"
 version = "0.1.3"
+source = "git+https://github.com/dvc94ch/glutin?branch=android#3c3159922d13cc5ef0291dc114a1ab4238979f91"
 dependencies = [
  "gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1593,6 +1599,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "winit"
 version = "0.20.0-alpha5"
+source = "git+https://github.com/dvc94ch/winit?branch=android#1603d8b5bbf632419cec52d904eeb00ce124ba5b"
 dependencies = [
  "android-ndk 0.0.6 (git+https://github.com/rust-windowing/android-ndk-rs)",
  "android-ndk-sys 0.2.0 (git+https://github.com/rust-windowing/android-ndk-rs)",
@@ -1730,6 +1737,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)" = "ca98bbde17256e02d17336a6bdb5a50f7d0ccacee502e191d3e3d0ec2f96f84a"
 "checksum gl_generator 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d"
 "checksum glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
+"checksum glutin 0.22.0-alpha5 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
+"checksum glutin_egl_sys 0.1.4 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
+"checksum glutin_emscripten_sys 0.1.0 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
+"checksum glutin_gles2_sys 0.1.3 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
+"checksum glutin_glx_sys 0.1.5 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
+"checksum glutin_wgl_sys 0.1.3 (git+https://github.com/dvc94ch/glutin?branch=android)" = "<none>"
 "checksum hermit-abi 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "eff2656d88f158ce120947499e971d743c05dbcbed62e5bd2f38f1698bbc3772"
 "checksum humantime 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
 "checksum indexmap 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0b54058f0a6ff80b6803da8faf8997cde53872b38f4023728f6830b06cd3c0dc"
@@ -1847,6 +1860,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum winapi-i686-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
 "checksum winapi-util 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "4ccfbf554c6ad11084fb7517daca16cfdcaccbdadba4fc336f032a8b12c2ad80"
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+"checksum winit 0.20.0-alpha5 (git+https://github.com/dvc94ch/winit?branch=android)" = "<none>"
 "checksum ws2_32-sys 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 "checksum x11-clipboard 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "e5e937afd03b64b7be4f959cc044e09260a47241b71e56933f37db097bf7859d"
 "checksum x11-dl 2.18.4 (registry+https://github.com/rust-lang/crates.io-index)" = "be65e1342a3baae65439cd03306778831a3d133b0d20243a7fb83fd5cf403c58"

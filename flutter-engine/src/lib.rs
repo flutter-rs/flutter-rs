@@ -396,6 +396,7 @@ impl FlutterEngine {
 
     pub fn send_pointer_event(
         &self,
+        device_id: i32,
         phase: FlutterPointerPhase,
         (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
@@ -411,7 +412,7 @@ impl FlutterEngine {
             phase: phase.into(),
             x,
             y,
-            device: 0,
+            device: device_id,
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,

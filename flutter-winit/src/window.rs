@@ -26,11 +26,13 @@ use glutin::event::{
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
+use glutin::event::DeviceId;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::collections::HashMap;
 
 pub enum FlutterEvent {
     WakePlatformThread,
@@ -184,6 +186,7 @@ impl FlutterWindow {
             localization.send_locale(locale_config::Locale::current());
         });
 
+        let mut active_devices: HashMap<i32, DeviceId> = HashMap::new();
         let mut cursor = (0.0, 0.0);
         self.event_loop
             .run(move |event, _, control_flow| match event {
@@ -192,31 +195,42 @@ impl FlutterWindow {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(_) => resize(&engine, &context),
                         WindowEvent::HiDpiFactorChanged(_) => resize(&engine, &context),
-                        WindowEvent::CursorEntered { .. } => {
-                            engine.send_pointer_event(
-                                FlutterPointerPhase::Add,
-                                cursor,
-                                FlutterPointerSignalKind::None,
-                                (0.0, 0.0),
-                                FlutterPointerDeviceKind::Mouse,
-                                FlutterPointerMouseButtons::Primary,
-                            );
+                        WindowEvent::CursorEntered { device_id, .. } => {
+                            let idx = device_id.get_index();
+                            eprintln!("{:?}", active_devices);
+                            match active_devices.get(&idx) {
+                                Some(device) => eprintln!("{:?} already exists", device),
+                                None => {
+                                    active_devices.insert(idx, device_id);
+                                }
+                            };
                         }
-                        WindowEvent::CursorLeft { .. } => {
-                            engine.send_pointer_event(
-                                FlutterPointerPhase::Remove,
-                                cursor,
-                                FlutterPointerSignalKind::None,
-                                (0.0, 0.0),
-                                FlutterPointerDeviceKind::Mouse,
-                                FlutterPointerMouseButtons::Primary,
-                            );
+                        WindowEvent::CursorLeft { device_id, .. } => {
+                            let idx = device_id.get_index();
+                            match active_devices.get(&idx) {
+                                Some(_device) => {
+                                    active_devices.remove(&idx);
+                                    engine.send_pointer_event(
+                                        idx,
+                                        FlutterPointerPhase::Remove,
+                                        cursor,
+                                        FlutterPointerSignalKind::None,
+                                        (0.0, 0.0),
+                                        FlutterPointerDeviceKind::Mouse,
+                                        FlutterPointerMouseButtons::Primary,
+                                    );
+
+                                }
+                                None => eprintln!("{:?} doesn't exist", device_id),
+                            };
                         }
-                        WindowEvent::CursorMoved { position, .. } => {
+                        WindowEvent::CursorMoved { device_id, position, .. } => {
                             let dpi = { context.lock().hidpi_factor() };
                             cursor = position.to_physical(dpi).into();
 
+                            let idx = device_id.get_index();
                             engine.send_pointer_event(
+                                idx,
                                 // TODO Move
                                 FlutterPointerPhase::Hover,
                                 cursor,
@@ -226,7 +240,7 @@ impl FlutterWindow {
                                 FlutterPointerMouseButtons::Primary,
                             );
                         }
-                        WindowEvent::MouseInput { state, button, .. } => {
+                        WindowEvent::MouseInput { device_id, state, button, .. } => {
                             let phase = match state {
                                 ElementState::Pressed => FlutterPointerPhase::Down,
                                 ElementState::Released => FlutterPointerPhase::Up,
@@ -239,7 +253,9 @@ impl FlutterWindow {
                                 MouseButton::Other(5) => FlutterPointerMouseButtons::Forward,
                                 _ => FlutterPointerMouseButtons::Primary,
                             };
+                            let idx = device_id.get_index();
                             engine.send_pointer_event(
+                                idx,
                                 phase,
                                 cursor,
                                 FlutterPointerSignalKind::None,
@@ -248,7 +264,7 @@ impl FlutterWindow {
                                 button,
                             );
                         }
-                        WindowEvent::MouseWheel { delta, .. } => {
+                        WindowEvent::MouseWheel { device_id, delta, .. } => {
                             let delta = match delta {
                                 MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
                                 MouseScrollDelta::PixelDelta(position) => {
@@ -258,7 +274,9 @@ impl FlutterWindow {
                                 }
                             };
 
+                            let idx = device_id.get_index();
                             engine.send_pointer_event(
+                                idx,
                                 // TODO
                                 FlutterPointerPhase::Hover,
                                 cursor,
@@ -269,7 +287,7 @@ impl FlutterWindow {
                             );
                         }
                         WindowEvent::Touch(Touch {
-                            phase, location, ..
+                            device_id, phase, location, ..
                         }) => {
                             let dpi = { context.lock().hidpi_factor() };
                             cursor = location.to_physical(dpi).into();
@@ -280,7 +298,10 @@ impl FlutterWindow {
                                 TouchPhase::Cancelled => FlutterPointerPhase::Cancel,
                             };
 
+                            let idx = device_id.get_index();
+                            
                             engine.send_pointer_event(
+                                idx,
                                 phase,
                                 cursor,
                                 FlutterPointerSignalKind::None,

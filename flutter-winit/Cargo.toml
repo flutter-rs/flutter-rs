@@ -15,8 +15,7 @@ flutter-engine-sys = { path = "../flutter-engine-sys" }
 flutter-engine = { path = "../flutter-engine", features = ["texture-registry"] }
 flutter-plugins = { path = "../flutter-plugins" }
 futures-task = "0.3.1"
-glutin = { path = "../../glutin/glutin" }
-# glutin = { git = "https://github.com/j4qfrost/glutin", branch = "android" }
+glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }
 locale_config = "0.3.0"
 log = "0.4.8"
 parking_lot = "0.10.0"

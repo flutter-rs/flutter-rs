@@ -32,7 +32,7 @@ use std::error::Error;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub enum FlutterEvent {
     WakePlatformThread,
@@ -186,7 +186,7 @@ impl FlutterWindow {
             localization.send_locale(locale_config::Locale::current());
         });
 
-        let mut active_devices: HashMap<i32, DeviceId> = HashMap::new();
+        let mut active_devices: HashSet<i32> = HashSet::new();
         let mut cursor = (0.0, 0.0);
         self.event_loop
             .run(move |event, _, control_flow| match event {
@@ -197,32 +197,29 @@ impl FlutterWindow {
                         WindowEvent::HiDpiFactorChanged(_) => resize(&engine, &context),
                         WindowEvent::CursorEntered { device_id, .. } => {
                             let idx = device_id.get_index();
-                            eprintln!("{:?}", active_devices);
-                            match active_devices.get(&idx) {
-                                Some(device) => eprintln!("{:?} already exists", device),
-                                None => {
-                                    active_devices.insert(idx, device_id);
-                                }
-                            };
+                            if active_devices.contains(idx) {
+                                eprintln!("{:?} already exists", device);
+                            }
+                            else {
+                                active_devices.insert(idx);
+                            }
                         }
                         WindowEvent::CursorLeft { device_id, .. } => {
                             let idx = device_id.get_index();
-                            match active_devices.get(&idx) {
-                                Some(_device) => {
-                                    active_devices.remove(&idx);
-                                    engine.send_pointer_event(
-                                        idx,
-                                        FlutterPointerPhase::Remove,
-                                        cursor,
-                                        FlutterPointerSignalKind::None,
-                                        (0.0, 0.0),
-                                        FlutterPointerDeviceKind::Mouse,
-                                        FlutterPointerMouseButtons::Primary,
-                                    );
-
-                                }
-                                None => eprintln!("{:?} doesn't exist", device_id),
-                            };
+                            if active_devices.contains(idx) {
+                                engine.send_pointer_event(
+                                    idx,
+                                    FlutterPointerPhase::Remove,
+                                    cursor,
+                                    FlutterPointerSignalKind::None,
+                                    (0.0, 0.0),
+                                    FlutterPointerDeviceKind::Mouse,
+                                    FlutterPointerMouseButtons::Primary,
+                                );
+                            }
+                            else {
+                                eprintln!("{:?} doesn't exist", device_id);
+                            }
                         }
                         WindowEvent::CursorMoved { device_id, position, .. } => {
                             let dpi = { context.lock().hidpi_factor() };

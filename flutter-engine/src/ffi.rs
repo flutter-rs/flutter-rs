@@ -175,10 +175,12 @@ impl From<FlutterPointerMouseButtons> for flutter_engine_sys::FlutterPointerMous
     }
 }
 
+pub type TextureId = i64;
+
 #[derive(Debug)]
 pub struct ExternalTexture {
     pub(crate) engine_ptr: flutter_engine_sys::FlutterEngine,
-    pub texture_id: i64,
+    pub texture_id: TextureId,
 }
 
 unsafe impl Send for ExternalTexture {}

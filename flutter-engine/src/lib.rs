@@ -16,10 +16,12 @@ use crate::channel::Channel;
 use crate::ffi::{
     ExternalTexture, ExternalTextureFrame, FlutterPointerDeviceKind, FlutterPointerMouseButtons,
     FlutterPointerPhase, FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+    TextureId,
 };
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
 use flutter_engine_sys::FlutterTask;
+use image::RgbaImage;
 use log::trace;
 use parking_lot::RwLock;
 use std::ffi::CString;
@@ -116,9 +118,11 @@ pub trait FlutterEngineHandler {
 
     fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
 
+    fn create_texture(&self, engine: &FlutterEngine, img: RgbaImage) -> TextureId;
+
     fn get_texture_frame(
         &self,
-        texture_id: i64,
+        texture_id: TextureId,
         size: (usize, usize),
     ) -> Option<ExternalTextureFrame>;
 }
@@ -133,17 +137,6 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
             handler.wake_platform_thread();
         }
     }
-}
-
-pub struct FlutterAotSnapshot {
-    pub vm_snapshot_data: *const u8,
-    pub vm_snapshot_data_size: usize,
-    pub vm_snapshot_instructions: *const u8,
-    pub vm_snapshot_instructions_size: usize,
-    pub isolate_snapshot_data: *const u8,
-    pub isolate_snapshot_data_size: usize,
-    pub isolate_snapshot_instructions: *const u8,
-    pub isolate_snapshot_instructions_size: usize,
 }
 
 impl FlutterEngine {
@@ -540,6 +533,14 @@ impl FlutterEngine {
             engine_ptr: self.engine_ptr(),
             texture_id,
         }
+    }
+
+    pub fn create_texture(&self, img: RgbaImage) -> TextureId {
+        self.inner
+            .handler
+            .upgrade()
+            .unwrap()
+            .create_texture(self, img)
     }
 }
 

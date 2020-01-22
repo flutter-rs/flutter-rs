@@ -1,40 +1,14 @@
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    sync::{atomic::AtomicI64, Arc, Mutex, Weak},
-};
-
-use gl::types::*;
-use log::debug;
-
-use crate::ffi::ExternalTexture as FlutterTexture;
-use crate::ffi::ExternalTextureFrame;
+use crate::ffi::{ExternalTexture, ExternalTextureFrame, TextureId};
 use crate::FlutterEngine;
+use image::RgbaImage;
+use std::collections::HashMap;
+use std::sync::atomic::AtomicI64;
+use std::sync::{Arc, Mutex};
 
-type TextureID = i64;
-
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TextureRegistry {
-    textures: TextureStore,
-}
-
-#[derive(Default)]
-struct TextureStore {
-    /// Stores freshly registered textures without an OpenGL texture attached.
-    initial: HashMap<TextureID, Arc<ExternalTexture>>,
-    /// Stores created textures that may be dropped in other locations.
-    created: HashMap<TextureID, Weak<ExternalTexture>>,
-}
-
-pub struct ExternalTexture {
-    texture: FlutterTexture,
-    texture_data: Mutex<Option<TextureData>>,
-}
-
-struct TextureData {
-    name: GLuint,
-    width: u32,
-    height: u32,
+    textures: Arc<Mutex<HashMap<TextureId, ExternalTexture>>>,
+    data: Arc<Mutex<HashMap<TextureId, RgbaImage>>>,
 }
 
 impl TextureRegistry {
@@ -42,122 +16,73 @@ impl TextureRegistry {
         Default::default()
     }
 
-    pub fn create_texture(&mut self, engine: &FlutterEngine) -> Arc<ExternalTexture> {
+    pub fn create_texture(&self, engine: &FlutterEngine, img: RgbaImage) -> TextureId {
         static TEXTURE_ID: AtomicI64 = AtomicI64::new(1);
-
         let texture_id = TEXTURE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let flutter_texture = engine.register_external_texture(texture_id);
 
-        let texture = Arc::new(ExternalTexture {
-            texture: flutter_texture,
-            texture_data: Mutex::new(None),
+        self.data.lock().unwrap().insert(texture_id, img);
+
+        let textures = self.textures.clone();
+        engine.run_on_platform_thread(move |engine| {
+            let texture = engine.register_external_texture(texture_id);
+            textures.lock().unwrap().insert(texture_id, texture);
         });
-
-        self.textures
-            .initial
-            .insert(texture_id, Arc::clone(&texture));
-
-        texture
+        texture_id
     }
 
     pub fn get_texture_frame(
-        &mut self,
-        texture_id: TextureID,
-        (width, height): (u32, u32),
+        &self,
+        texture_id: TextureId,
+        _size: (usize, usize),
     ) -> Option<ExternalTextureFrame> {
-        if let Some(texture) = self.textures.initial.remove(&texture_id) {
-            // texture is still initial --> create it
-            let frame = unsafe { create_gl_texture(texture_id, (width, height)) };
-            let mut data = texture.texture_data.lock().unwrap();
-            data.replace(TextureData {
-                name: frame.name,
-                width,
-                height,
-            });
-            self.textures
-                .created
-                .insert(texture_id, Arc::downgrade(&texture));
-            return Some(frame);
-        }
+        let data = self.data.lock().unwrap();
+        let img = data.get(&texture_id).unwrap();
+        Some(unsafe { create_gl_texture(texture_id, img) })
+    }
 
-        if let Some(texture) = self.textures.created.get(&texture_id) {
-            // texture has been created, this is a notification that a new frame is available
-            if let Some(_texture) = texture.upgrade() {
-                // texture still alive
-                // TODO: notify of new frame
-            } else {
-                // texture was dropped, remove it from here as well
-                self.textures.created.remove(&texture_id);
-            }
+    pub fn mark_frame_available(&self, texture_id: TextureId) {
+        if let Some(texture) = self.textures.lock().unwrap().get(&texture_id) {
+            texture.mark_frame_available();
         }
-        None
     }
 }
 
-impl ExternalTexture {
-    pub fn handle(&self) -> TextureID {
-        self.texture.texture_id
-    }
-
-    pub fn gl_texture(&self) -> Option<GLuint> {
-        let data = self.texture_data.lock().unwrap();
-        data.as_ref().map(|data| data.name)
-    }
-
-    pub fn size(&self) -> Option<(u32, u32)> {
-        let data = self.texture_data.lock().unwrap();
-        data.as_ref().map(|data| (data.width, data.height))
-    }
-
-    pub fn mark_frame_available(&self) {
-        self.texture.mark_frame_available();
-    }
-}
-
-unsafe fn create_gl_texture(
-    texture_id: TextureID,
-    (width, height): (u32, u32),
-) -> ExternalTextureFrame {
-    debug!(
+unsafe fn create_gl_texture(texture_id: TextureId, img: &RgbaImage) -> ExternalTextureFrame {
+    let (width, height) = img.dimensions();
+    log::debug!(
         "creating external texture with id {}, size {}x{}",
-        texture_id, width, height,
+        texture_id,
+        width,
+        height,
     );
     let mut texture_name: u32 = 0;
     gl::GenTextures(1, &mut texture_name as *mut _);
     gl::BindTexture(gl::TEXTURE_2D, texture_name);
     gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-    gl::TexParameteri(
-        gl::TEXTURE_2D,
-        gl::TEXTURE_MIN_FILTER,
-        gl::LINEAR.try_into().unwrap(),
-    );
-    gl::TexParameteri(
-        gl::TEXTURE_2D,
-        gl::TEXTURE_MAG_FILTER,
-        gl::LINEAR.try_into().unwrap(),
-    );
-    // length of data: 4 bytes per pixel (RGBA)
-    let data_length = (width * height * 4) as usize;
-    let data = vec![0_u8; data_length];
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+    let data = &img;
     gl::TexImage2D(
         gl::TEXTURE_2D,
-        0,                            // mipmap level
-        gl::RGBA.try_into().unwrap(), // internal format of the texture
-        width.try_into().unwrap(),
-        height.try_into().unwrap(),
+        0,             // mipmap level
+        gl::RGBA as _, // internal format of the texture
+        width as _,
+        height as _,
         0,                         // border, must be 0
         gl::RGBA,                  // format of the pixel data
         gl::UNSIGNED_BYTE,         // data type of the pixel data
         data.as_ptr() as *const _, // pixel data
     );
-    debug!(
+    log::debug!(
         "created texture {}, gl texture {}",
-        texture_id, texture_name
+        texture_id,
+        texture_name
     );
     ExternalTextureFrame::new(gl::TEXTURE_2D, texture_name, gl::RGBA8, move || {
-        debug!(
+        log::debug!(
             "destroying texture {}, gl texture {}",
-            texture_id, texture_name
+            texture_id,
+            texture_name
         );
         let texture_name = texture_name;
         gl::DeleteTextures(1, &texture_name as *const _)

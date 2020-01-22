@@ -6,7 +6,7 @@ use flutter_engine::ffi::{
     FlutterPointerSignalKind,
 };
 use flutter_engine::plugins::Plugin;
-use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
+use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
@@ -26,6 +26,7 @@ use glutin::event::{
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
+use image::RgbaImage;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::path::Path;
@@ -43,7 +44,7 @@ pub struct FlutterWindow {
     resource_context: Arc<Mutex<Context>>,
     engine: FlutterEngine,
     engine_handler: Arc<WinitFlutterEngineHandler>,
-    texture_registry: Arc<Mutex<TextureRegistry>>,
+    texture_registry: Arc<TextureRegistry>,
     close: Arc<AtomicBool>,
 }
 
@@ -56,7 +57,7 @@ impl FlutterWindow {
         let context = Arc::new(Mutex::new(Context::from_context(context)));
         let resource_context = Arc::new(Mutex::new(Context::empty()));
 
-        let texture_registry = Arc::new(Mutex::new(TextureRegistry::new()));
+        let texture_registry = Arc::new(TextureRegistry::new());
         let engine_handler = Arc::new(WinitFlutterEngineHandler::new(
             proxy,
             context.clone(),
@@ -107,6 +108,11 @@ impl FlutterWindow {
             let resource_context = ContextBuilder::new()
                 .with_shared_lists(context.context().unwrap())
                 .build_windowed(WindowBuilder::new(), &self.event_loop)?;
+
+            let resource_context = unsafe { resource_context.make_current().unwrap() };
+            gl::load_with(|s| resource_context.get_proc_address(s));
+            let resource_context = unsafe { resource_context.make_not_current().unwrap() };
+
             let mut guard = self.resource_context.lock();
             *guard = Context::from_context(resource_context);
         }
@@ -125,8 +131,8 @@ impl FlutterWindow {
         self.resource_context.clone()
     }
 
-    pub fn create_texture(&self) -> Arc<ExternalTexture> {
-        self.texture_registry.lock().create_texture(&self.engine)
+    pub fn create_texture(&self, img: RgbaImage) -> i64 {
+        self.texture_registry.create_texture(&self.engine, img)
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self

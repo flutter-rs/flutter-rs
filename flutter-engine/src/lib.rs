@@ -387,8 +387,10 @@ impl FlutterEngine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_pointer_event(
         &self,
+        device: i32,
         phase: FlutterPointerPhase,
         (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
@@ -404,7 +406,7 @@ impl FlutterEngine {
             phase: phase.into(),
             x,
             y,
-            device: 0,
+            device,
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,

@@ -21,9 +21,9 @@ jobs:
           host: macos-latest
           cross: false
 
-        - target: x86_64-pc-windows-msvc
-          host: windows-latest
-          cross: false
+        #- target: x86_64-pc-windows-msvc
+        #  host: windows-latest
+        #  cross: false
 
         - target: armv7-linux-androideabi
           host: ubuntu-latest

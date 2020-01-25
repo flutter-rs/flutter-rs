@@ -12,7 +12,7 @@ pub mod tasks;
 pub mod texture_registry;
 pub mod utils;
 
-use crate::channel::Channel;
+use crate::channel::{Channel, ChannelRegistrar};
 use crate::ffi::{
     ExternalTexture, ExternalTextureFrame, FlutterPointerDeviceKind, FlutterPointerMouseButtons,
     FlutterPointerPhase, FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
@@ -214,6 +214,17 @@ impl FlutterEngine {
             .read()
             .channel_registry
             .with_channel(channel_name, f)
+    }
+
+    pub fn with_channel_registrar<F>(&self, plugin_name: &'static str, f: F)
+    where
+        F: FnOnce(&mut ChannelRegistrar),
+    {
+        self.inner
+            .plugins
+            .write()
+            .channel_registry
+            .with_channel_registrar(plugin_name, f)
     }
 
     pub fn downgrade(&self) -> FlutterEngineWeakRef {

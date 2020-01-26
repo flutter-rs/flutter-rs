@@ -8,20 +8,18 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
-#[cfg(feature = "texture-registry")]
 pub mod texture_registry;
 pub mod utils;
 
 use crate::channel::{Channel, ChannelRegistrar};
 use crate::ffi::{
-    ExternalTexture, ExternalTextureFrame, FlutterPointerDeviceKind, FlutterPointerMouseButtons,
-    FlutterPointerPhase, FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
-    TextureId,
+    FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
+    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
 };
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
+use crate::texture_registry::{GlTexture, Texture, TextureRegistry};
 use flutter_engine_sys::FlutterTask;
-use image::RgbaImage;
 use log::trace;
 use parking_lot::RwLock;
 use std::ffi::CString;
@@ -52,6 +50,7 @@ struct FlutterEngineInner {
     _platform_runner_handler: Arc<PlatformRunnerHandler>,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
+    texture_registry: TextureRegistry,
 }
 
 pub struct FlutterEngineWeakRef {
@@ -117,14 +116,6 @@ pub trait FlutterEngineHandler {
     fn wake_platform_thread(&self);
 
     fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
-
-    fn create_texture(&self, engine: &FlutterEngine, img: RgbaImage) -> TextureId;
-
-    fn get_texture_frame(
-        &self,
-        texture_id: TextureId,
-        size: (usize, usize),
-    ) -> Option<ExternalTextureFrame>;
 }
 
 struct PlatformRunnerHandler {
@@ -158,6 +149,7 @@ impl FlutterEngine {
                 _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
+                texture_registry: Default::default(),
             }),
         };
 
@@ -435,6 +427,9 @@ impl FlutterEngine {
 
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
         trace!("Sending message on channel {}", message.channel);
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(
                 self.engine_ptr(),
@@ -449,6 +444,9 @@ impl FlutterEngine {
         bytes: &[u8],
     ) {
         trace!("Sending message response");
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
                 self.engine_ptr(),
@@ -537,23 +535,10 @@ impl FlutterEngine {
         }
     }
 
-    pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
-        trace!("registering new external texture with id {}", texture_id);
-        unsafe {
-            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr(), texture_id);
-        }
-        ExternalTexture {
-            engine_ptr: self.engine_ptr(),
-            texture_id,
-        }
-    }
-
-    pub fn create_texture(&self, img: RgbaImage) -> TextureId {
+    pub fn create_texture<T: GlTexture + 'static>(&self, texture: T) -> Texture {
         self.inner
-            .handler
-            .upgrade()
-            .unwrap()
-            .create_texture(self, img)
+            .texture_registry
+            .create_texture(self, Box::new(texture))
     }
 }
 

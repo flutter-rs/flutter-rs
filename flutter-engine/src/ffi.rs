@@ -5,6 +5,7 @@ use log::{error, trace};
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::{mem, ptr};
 
 #[derive(Debug)]
@@ -179,29 +180,51 @@ pub type TextureId = i64;
 
 #[derive(Debug)]
 pub struct ExternalTexture {
-    pub(crate) engine_ptr: flutter_engine_sys::FlutterEngine,
-    pub texture_id: TextureId,
+    engine_ptr: flutter_engine_sys::FlutterEngine,
+    texture_id: TextureId,
 }
 
 unsafe impl Send for ExternalTexture {}
 unsafe impl Sync for ExternalTexture {}
 
-impl Drop for ExternalTexture {
-    fn drop(&mut self) {
-        trace!("dropping external texture id {}", self.texture_id);
+impl ExternalTexture {
+    pub fn new(engine_ptr: flutter_engine_sys::FlutterEngine) -> Self {
+        static TEXTURE_ID: AtomicI64 = AtomicI64::new(1);
+        let texture_id = TEXTURE_ID.fetch_add(1, Ordering::Relaxed);
+        Self {
+            engine_ptr,
+            texture_id,
+        }
+    }
+
+    pub fn id(&self) -> TextureId {
+        self.texture_id
+    }
+
+    pub fn register(&self) {
+        log::trace!("texture {}: register", self.texture_id);
         unsafe {
-            flutter_engine_sys::FlutterEngineUnregisterExternalTexture(
+            flutter_engine_sys::FlutterEngineRegisterExternalTexture(
                 self.engine_ptr,
                 self.texture_id,
             );
         }
     }
-}
 
-impl ExternalTexture {
     pub fn mark_frame_available(&self) {
+        log::trace!("texture {}: marking frame available", self.texture_id);
         unsafe {
             flutter_engine_sys::FlutterEngineMarkExternalTextureFrameAvailable(
+                self.engine_ptr,
+                self.texture_id,
+            );
+        }
+    }
+
+    pub fn unregister(&self) {
+        log::trace!("texture {}: unregister", self.texture_id);
+        unsafe {
+            flutter_engine_sys::FlutterEngineUnregisterExternalTexture(
                 self.engine_ptr,
                 self.texture_id,
             );

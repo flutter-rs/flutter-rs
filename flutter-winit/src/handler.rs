@@ -2,14 +2,11 @@ use crate::context::Context;
 use crate::window::FlutterEvent;
 use async_std::task;
 use copypasta::{ClipboardContext, ClipboardProvider};
-use flutter_engine::ffi::{ExternalTextureFrame, TextureId};
-use flutter_engine::texture_registry::TextureRegistry;
-use flutter_engine::{FlutterEngine, FlutterEngineHandler};
+use flutter_engine::FlutterEngineHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glutin::event_loop::EventLoopProxy;
-use image::RgbaImage;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::ffi::CStr;
@@ -22,7 +19,6 @@ pub struct WinitFlutterEngineHandler {
     proxy: EventLoopProxy<FlutterEvent>,
     context: Arc<Mutex<Context>>,
     resource_context: Arc<Mutex<Context>>,
-    texture_registry: Arc<TextureRegistry>,
 }
 
 impl WinitFlutterEngineHandler {
@@ -30,13 +26,11 @@ impl WinitFlutterEngineHandler {
         proxy: EventLoopProxy<FlutterEvent>,
         context: Arc<Mutex<Context>>,
         resource_context: Arc<Mutex<Context>>,
-        texture_registry: Arc<TextureRegistry>,
     ) -> Self {
         Self {
             proxy,
             context,
             resource_context,
-            texture_registry,
         }
     }
 }
@@ -77,18 +71,6 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
 
     fn run_in_background(&self, future: Box<dyn Future<Output = ()> + Send + 'static>) {
         task::spawn(FutureObj::new(future));
-    }
-
-    fn create_texture(&self, engine: &FlutterEngine, img: RgbaImage) -> TextureId {
-        self.texture_registry.create_texture(engine, img)
-    }
-
-    fn get_texture_frame(
-        &self,
-        texture_id: i64,
-        size: (usize, usize),
-    ) -> Option<ExternalTextureFrame> {
-        self.texture_registry.get_texture_frame(texture_id, size)
     }
 }
 

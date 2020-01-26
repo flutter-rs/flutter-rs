@@ -129,11 +129,13 @@ pub extern "C" fn gl_external_texture_frame(
 ) -> bool {
     trace!("gl_external_texture_frame");
     unsafe {
-        if let Some(handler) = get_handler(user_data) {
-            if let Some(frame) = handler.get_texture_frame(texture_id, (width, height)) {
-                frame.into_ffi(&mut *texture);
-                return true;
-            }
+        let engine = &*(user_data as *const FlutterEngineInner);
+        if let Some(frame) = engine
+            .texture_registry
+            .get_texture_frame(texture_id, (width, height))
+        {
+            frame.into_ffi(&mut *texture);
+            return true;
         }
         false
     }

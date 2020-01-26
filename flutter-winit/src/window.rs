@@ -4,7 +4,7 @@ use crate::keyboard::raw_key;
 use crate::pointer::Pointers;
 use flutter_engine::channel::Channel;
 use flutter_engine::plugins::Plugin;
-use flutter_engine::texture_registry::TextureRegistry;
+use flutter_engine::texture_registry::{GlTexture, Texture};
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
@@ -23,7 +23,6 @@ use glutin::event::{
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
-use image::RgbaImage;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::path::Path;
@@ -41,7 +40,6 @@ pub struct FlutterWindow {
     resource_context: Arc<Mutex<Context>>,
     engine: FlutterEngine,
     engine_handler: Arc<WinitFlutterEngineHandler>,
-    texture_registry: Arc<TextureRegistry>,
     close: Arc<AtomicBool>,
 }
 
@@ -54,12 +52,10 @@ impl FlutterWindow {
         let context = Arc::new(Mutex::new(Context::from_context(context)));
         let resource_context = Arc::new(Mutex::new(Context::empty()));
 
-        let texture_registry = Arc::new(TextureRegistry::new());
         let engine_handler = Arc::new(WinitFlutterEngineHandler::new(
             proxy,
             context.clone(),
             resource_context.clone(),
-            texture_registry.clone(),
         ));
         let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _);
 
@@ -94,7 +90,6 @@ impl FlutterWindow {
             resource_context,
             engine,
             engine_handler,
-            texture_registry,
             close,
         })
     }
@@ -128,8 +123,8 @@ impl FlutterWindow {
         self.resource_context.clone()
     }
 
-    pub fn create_texture(&self, img: RgbaImage) -> i64 {
-        self.texture_registry.create_texture(&self.engine, img)
+    pub fn create_texture<T: GlTexture + 'static>(&self, texture: T) -> Texture {
+        self.engine.create_texture(texture)
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self

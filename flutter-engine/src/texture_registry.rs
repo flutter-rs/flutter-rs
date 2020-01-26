@@ -2,6 +2,8 @@ use crate::ffi::{ExternalTexture, ExternalTextureFrame, TextureId};
 use crate::FlutterEngine;
 #[cfg(feature = "image")]
 use image::RgbaImage;
+#[cfg(feature = "image")]
+use parking_lot::Mutex;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -62,9 +64,9 @@ impl TextureRegistry {
         texture_id: TextureId,
         _size: (usize, usize),
     ) -> Option<ExternalTextureFrame> {
-        let textures = self.textures.read();
+        let mut textures = self.textures.write();
         textures
-            .get(&texture_id)
+            .get_mut(&texture_id)
             .map(|texture| texture.get_texture_frame())
     }
 
@@ -99,7 +101,7 @@ impl FlutterTexture {
         self.texture.mark_frame_available();
     }
 
-    fn get_texture_frame(&self) -> ExternalTextureFrame {
+    fn get_texture_frame(&mut self) -> ExternalTextureFrame {
         self.gl.get_texture_frame()
     }
 }
@@ -112,51 +114,64 @@ impl Drop for FlutterTexture {
 }
 
 pub trait GlTexture: Send + Sync {
-    fn get_texture_frame(&self) -> ExternalTextureFrame;
+    fn get_texture_frame(&mut self) -> ExternalTextureFrame;
 }
 
 #[cfg(feature = "image")]
 #[derive(Clone)]
-pub struct RgbaTexture(Arc<RwLock<RgbaImage>>);
+pub struct RgbaTexture {
+    data: Arc<Mutex<Option<RgbaImage>>>,
+    id: u32,
+}
 
 #[cfg(feature = "image")]
 impl RgbaTexture {
     pub fn new(img: RgbaImage) -> Self {
-        Self(Arc::new(RwLock::new(img)))
+        Self {
+            data: Arc::new(Mutex::new(Some(img))),
+            id: 0,
+        }
     }
 
     pub fn post_frame_rgba(&mut self, img: RgbaImage) {
-        *self.0.write() = img;
+        *self.data.lock() = Some(img);
     }
 }
 
 #[cfg(feature = "image")]
 impl GlTexture for RgbaTexture {
-    fn get_texture_frame(&self) -> ExternalTextureFrame {
-        let mut id: u32 = 0;
-        let img = self.0.read();
-        let (width, height) = img.dimensions();
-        unsafe {
-            gl::GenTextures(1, &mut id as *mut _);
-            gl::BindTexture(gl::TEXTURE_2D, id);
-            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,             // mipmap level
-                gl::RGBA as _, // internal format of the texture
-                width as _,
-                height as _,
-                0,                           // border, must be 0
-                gl::RGBA,                    // format of the pixel data
-                gl::UNSIGNED_BYTE,           // data type of the pixel data
-                (&img).as_ptr() as *const _, // pixel data
-            );
+    fn get_texture_frame(&mut self) -> ExternalTextureFrame {
+        if let Some(img) = self.data.lock().take() {
+            let (width, height) = img.dimensions();
+            unsafe {
+                gl::GenTextures(1, &mut self.id as *mut _);
+                gl::BindTexture(gl::TEXTURE_2D, self.id);
+                gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+                gl::TexImage2D(
+                    gl::TEXTURE_2D,
+                    0,             // mipmap level
+                    gl::RGBA as _, // internal format of the texture
+                    width as _,
+                    height as _,
+                    0,                           // border, must be 0
+                    gl::RGBA,                    // format of the pixel data
+                    gl::UNSIGNED_BYTE,           // data type of the pixel data
+                    (&img).as_ptr() as *const _, // pixel data
+                );
+                log::debug!("created gl texture with id {}", self.id);
+            }
         }
-        log::debug!("created gl texture with id {}", id);
-        ExternalTextureFrame::new(gl::TEXTURE_2D, id, gl::RGBA8, move || unsafe {
-            gl::DeleteTextures(1, &id as *const _);
-        })
+        ExternalTextureFrame::new(gl::TEXTURE_2D, self.id, gl::RGBA8, || {})
+    }
+}
+
+#[cfg(feature = "image")]
+impl Drop for RgbaTexture {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteTextures(1, &self.id as *const _);
+        }
     }
 }

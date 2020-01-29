@@ -25,7 +25,7 @@ use parking_lot::RwLock;
 use std::ffi::CString;
 use std::future::Future;
 use std::os::raw::{c_char, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Weak};
@@ -51,6 +51,7 @@ struct FlutterEngineInner {
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
     texture_registry: TextureRegistry,
+    assets: PathBuf,
 }
 
 pub struct FlutterEngineWeakRef {
@@ -131,7 +132,7 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
 }
 
 impl FlutterEngine {
-    pub fn new(handler: Weak<dyn FlutterEngineHandler>) -> Self {
+    pub fn new(handler: Weak<dyn FlutterEngineHandler>, assets: PathBuf) -> Self {
         let platform_handler = Arc::new(PlatformRunnerHandler {
             handler: handler.clone(),
         });
@@ -150,6 +151,7 @@ impl FlutterEngine {
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
                 texture_registry: Default::default(),
+                assets,
             }),
         };
 
@@ -225,7 +227,11 @@ impl FlutterEngine {
         }
     }
 
-    pub fn run(&self, assets_path: &Path, arguments: &[String]) -> Result<(), RunError> {
+    pub fn assets(&self) -> &Path {
+        &self.inner.assets
+    }
+
+    pub fn run(&self, arguments: &[String]) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
         }
@@ -287,7 +293,7 @@ impl FlutterEngine {
 
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: path_to_cstring(assets_path).into_raw(),
+            assets_path: path_to_cstring(self.assets()).into_raw(),
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
             icu_data_path: std::ptr::null(),

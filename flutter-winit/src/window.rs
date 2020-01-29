@@ -25,7 +25,7 @@ use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
 use parking_lot::Mutex;
 use std::error::Error;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -44,7 +44,7 @@ pub struct FlutterWindow {
 }
 
 impl FlutterWindow {
-    pub fn new(window: WindowBuilder) -> Result<Self, Box<dyn Error>> {
+    pub fn new(window: WindowBuilder, assets_path: PathBuf) -> Result<Self, Box<dyn Error>> {
         let event_loop = EventLoop::with_user_event();
         let proxy = event_loop.create_proxy();
 
@@ -57,7 +57,7 @@ impl FlutterWindow {
             context.clone(),
             resource_context.clone(),
         ));
-        let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _);
+        let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _, assets_path);
 
         let proxy = event_loop.create_proxy();
         let isolate_cb = move || {
@@ -163,12 +163,8 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn start_engine(
-        &self,
-        assets_path: &Path,
-        arguments: &[String],
-    ) -> Result<(), Box<dyn Error>> {
-        self.engine.run(assets_path, arguments)?;
+    pub fn start_engine(&self, arguments: &[String]) -> Result<(), Box<dyn Error>> {
+        self.engine.run(arguments)?;
         Ok(())
     }
 

@@ -58,9 +58,6 @@ pub struct Texture {
     frames: Arc<Mutex<HashMap<TextureId, TextureFrame>>>,
 }
 
-//unsafe impl Send for Texture {}
-//unsafe impl Sync for Texture {}
-
 impl Texture {
     pub fn id(&self) -> TextureId {
         self.texture_id
@@ -149,7 +146,7 @@ impl Drop for Texture {
     }
 }
 
-type DestructorType = Box<dyn FnOnce()>;
+type DestructorType = Box<dyn FnOnce() + Send>;
 
 pub struct TextureFrame {
     pub target: u32,

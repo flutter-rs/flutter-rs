@@ -150,7 +150,7 @@ impl FlutterEngine {
                 _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
-                texture_registry: Default::default(),
+                texture_registry: TextureRegistry::new(),
                 assets,
             }),
         };
@@ -542,7 +542,7 @@ impl FlutterEngine {
     }
 
     pub fn create_texture(&self) -> Texture {
-        Texture::new(self.clone())
+        self.inner.texture_registry.create_texture(self.clone())
     }
 }
 

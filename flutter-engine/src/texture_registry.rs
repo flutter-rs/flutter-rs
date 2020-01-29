@@ -98,7 +98,7 @@ impl Texture {
             };
 
             let engine_weak = engine.downgrade();
-            let frame = TextureFrame::new(gl::TEXTURE_2D, glid, gl::RGBA, move || {
+            let frame = TextureFrame::new(gl::TEXTURE_2D, glid, gl::RGBA8, move || {
                 if let Some(engine) = engine_weak.upgrade() {
                     engine.run_on_render_thread(move |_| unsafe {
                         gl::DeleteTextures(1, &glid as *const _);

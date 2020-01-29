@@ -79,7 +79,7 @@ impl Texture {
 
             let glid = unsafe {
                 let mut glid: u32 = 0;
-                gl::GenTexture(1, &mut glid as *mut _);
+                gl::GenTextures(1, &mut glid as *mut _);
                 gl::BindTexture(gl::TEXTURE_2D, glid);
                 gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);

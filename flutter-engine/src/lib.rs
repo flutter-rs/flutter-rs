@@ -19,6 +19,7 @@ use crate::ffi::{
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
 use crate::texture_registry::{Texture, TextureRegistry};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use flutter_engine_sys::FlutterTask;
 use log::trace;
 use parking_lot::RwLock;
@@ -27,7 +28,6 @@ use std::future::Future;
 use std::os::raw::{c_char, c_void};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Weak};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{mem, ptr};
@@ -137,7 +137,7 @@ impl FlutterEngine {
             handler: handler.clone(),
         });
 
-        let (main_tx, main_rx) = mpsc::channel();
+        let (main_tx, main_rx) = unbounded();
 
         let engine = Self {
             inner: Arc::new(FlutterEngineInner {

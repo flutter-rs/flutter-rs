@@ -10,10 +10,8 @@ pub use flutter_engine::{
         BasicMessageChannel, ChannelRegistrar, EventChannel, EventHandler, JsonMethodChannel,
         MessageChannel, MessageHandler, MethodCallHandler, MethodChannel, StandardMethodChannel,
     },
-    codec::{
-        json_codec, standard_codec, string_codec, value::from_value, MethodCall, MethodCallResult,
-        Value,
-    },
+    codec::value::{from_value, to_value, Error, Value},
+    codec::{json_codec, standard_codec, string_codec, MethodCall, MethodCallResult},
     error::{MessageError, MethodArgsError, MethodCallError},
     ffi::PlatformMessageResponseHandle,
     json_value,

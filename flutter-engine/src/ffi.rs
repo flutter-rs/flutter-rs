@@ -1,10 +1,7 @@
-use flutter_engine_sys::{
-    FlutterOpenGLTexture, FlutterPlatformMessage, FlutterPlatformMessageResponseHandle,
-};
-use log::{error, trace};
+use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
+use log::error;
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
-use std::os::raw::c_void;
 use std::{mem, ptr};
 
 #[derive(Debug)]
@@ -173,79 +170,4 @@ impl From<FlutterPointerMouseButtons> for flutter_engine_sys::FlutterPointerMous
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub struct ExternalTexture {
-    pub(crate) engine_ptr: flutter_engine_sys::FlutterEngine,
-    pub texture_id: i64,
-}
-
-unsafe impl Send for ExternalTexture {}
-unsafe impl Sync for ExternalTexture {}
-
-impl Drop for ExternalTexture {
-    fn drop(&mut self) {
-        trace!("dropping external texture id {}", self.texture_id);
-        unsafe {
-            flutter_engine_sys::FlutterEngineUnregisterExternalTexture(
-                self.engine_ptr,
-                self.texture_id,
-            );
-        }
-    }
-}
-
-impl ExternalTexture {
-    pub fn mark_frame_available(&self) {
-        unsafe {
-            flutter_engine_sys::FlutterEngineMarkExternalTextureFrameAvailable(
-                self.engine_ptr,
-                self.texture_id,
-            );
-        }
-    }
-}
-
-type DestructorType = Box<dyn FnOnce()>;
-
-pub struct ExternalTextureFrame {
-    pub target: u32,
-    pub name: u32,
-    pub format: u32,
-    pub destruction_callback: Box<DestructorType>,
-}
-
-impl ExternalTextureFrame {
-    pub fn new<F>(
-        target: u32,
-        name: u32,
-        format: u32,
-        destruction_callback: F,
-    ) -> ExternalTextureFrame
-    where
-        F: FnOnce() -> () + 'static + Send,
-    {
-        ExternalTextureFrame {
-            target,
-            name,
-            format,
-            destruction_callback: Box::new(Box::new(destruction_callback)),
-        }
-    }
-
-    pub(crate) fn into_ffi(self, target: &mut FlutterOpenGLTexture) {
-        target.target = self.target;
-        target.name = self.name;
-        target.format = self.format;
-        target.destruction_callback = Some(texture_destruction_callback);
-        target.user_data = Box::into_raw(self.destruction_callback) as _;
-    }
-}
-
-unsafe extern "C" fn texture_destruction_callback(user_data: *mut c_void) {
-    trace!("texture_destruction_callback");
-    let user_data = user_data as *mut DestructorType;
-    let user_data = Box::from_raw(user_data);
-    user_data();
 }

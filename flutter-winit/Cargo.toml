@@ -12,9 +12,10 @@ license = "MIT"
 async-std = "1.4.0"
 copypasta = "0.6.2"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
-flutter-engine = { path = "../flutter-engine", features = ["texture-registry"] }
+flutter-engine = { path = "../flutter-engine" }
 flutter-plugins = { path = "../flutter-plugins" }
 futures-task = "0.3.1"
+gl = "0.14.0"
 glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }
 locale_config = "0.3.0"
 log = "0.4.8"

@@ -1,7 +1,5 @@
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-};
+use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
 
 use serde::{de, ser, Deserialize, Serialize};
 
@@ -9,7 +7,7 @@ pub use self::deserializer::{from_value, Deserializer};
 
 mod deserializer;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Null,
     Boolean(bool),
@@ -24,8 +22,6 @@ pub enum Value {
     List(Vec<Value>),
     Map(HashMap<String, Value>),
 }
-
-impl Eq for Value {}
 
 impl Serialize for Value {
     #[inline]
@@ -158,10 +154,33 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
-impl TryFrom<serde_json::Value> for Value {
-    type Error = ();
+#[derive(Debug)]
+pub enum Error {
+    Json(serde_json::Error),
+    NumberOutOfRange,
+}
 
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Json(error) => error.fmt(f),
+            Self::NumberOutOfRange => write!(f, "Number is out of range."),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
+}
+
+impl TryFrom<serde_json::Value> for Value {
+    type Error = Error;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Error> {
         match value {
             serde_json::Value::Null => Ok(Value::Null),
             serde_json::Value::Bool(b) => Ok(Value::Boolean(b)),
@@ -172,7 +191,7 @@ impl TryFrom<serde_json::Value> for Value {
                 } else if let Some(f) = num.as_f64() {
                     Ok(Value::F64(f))
                 } else {
-                    Err(())
+                    Err(Error::NumberOutOfRange)
                 }
             }
             serde_json::Value::Array(vec) => Ok(Value::List({
@@ -191,4 +210,8 @@ impl TryFrom<serde_json::Value> for Value {
             })),
         }
     }
+}
+
+pub fn to_value<T: Serialize>(value: T) -> Result<Value, Error> {
+    serde_json::to_value(value)?.try_into()
 }

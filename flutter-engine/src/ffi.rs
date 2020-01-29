@@ -1,6 +1,4 @@
-use flutter_engine_sys::{
-    FlutterPlatformMessage, FlutterPlatformMessageResponseHandle,
-};
+use flutter_engine_sys::{FlutterPlatformMessage, FlutterPlatformMessageResponseHandle};
 use log::error;
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};

@@ -1,12 +1,12 @@
 use crate::FlutterEngine;
+use flutter_engine_sys::FlutterOpenGLTexture;
 #[cfg(feature = "image")]
 use image::RgbaImage;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
-use flutter_engine_sys::FlutterOpenGLTexture;
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 pub(crate) struct TextureRegistry {
     last_id: AtomicI64,
@@ -41,11 +41,14 @@ impl TextureRegistry {
         }
     }
 
-    pub fn get_texture_frame(&self, texture_id: TextureId, _size: (usize, usize)) -> Option<TextureFrame> {
+    pub fn get_texture_frame(
+        &self,
+        texture_id: TextureId,
+        _size: (usize, usize),
+    ) -> Option<TextureFrame> {
         self.frames.lock().remove(&texture_id)
     }
 }
-
 
 pub type TextureId = i64;
 
@@ -100,10 +103,8 @@ impl Texture {
             let engine_weak = engine.downgrade();
             let frame = TextureFrame::new(gl::TEXTURE_2D, glid, gl::RGBA, move || {
                 if let Some(engine) = engine_weak.upgrade() {
-                    engine.run_on_render_thread(move |_| {
-                        unsafe {
-                            gl::DeleteTextures(1, &glid as *const _);
-                        }
+                    engine.run_on_render_thread(move |_| unsafe {
+                        gl::DeleteTextures(1, &glid as *const _);
                     });
                 }
             });
@@ -113,7 +114,12 @@ impl Texture {
     }
 }
 
-fn post_frame_internal(engine: &FlutterEngine, texture_id: TextureId, frames: &Arc<Mutex<HashMap<TextureId, TextureFrame>>>, frame: TextureFrame) {
+fn post_frame_internal(
+    engine: &FlutterEngine,
+    texture_id: TextureId,
+    frames: &Arc<Mutex<HashMap<TextureId, TextureFrame>>>,
+    frame: TextureFrame,
+) {
     frames.lock().insert(texture_id, frame);
 
     let texture_id = texture_id;
@@ -153,14 +159,9 @@ pub struct TextureFrame {
 }
 
 impl TextureFrame {
-    pub fn new<F>(
-        target: u32,
-        name: u32,
-        format: u32,
-        destruction_callback: F,
-    ) -> TextureFrame
-        where
-            F: FnOnce() -> () + 'static + Send,
+    pub fn new<F>(target: u32, name: u32, format: u32, destruction_callback: F) -> TextureFrame
+    where
+        F: FnOnce() -> () + 'static + Send,
     {
         Self {
             target,

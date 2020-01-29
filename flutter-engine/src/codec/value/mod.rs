@@ -1,3 +1,4 @@
+use crate::error::MethodCallError;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 
@@ -174,6 +175,12 @@ impl std::error::Error for Error {}
 impl From<serde_json::Error> for Error {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+impl From<Error> for MethodCallError {
+    fn from(error: Error) -> Self {
+        Self::from_error(error)
     }
 }
 

@@ -178,7 +178,7 @@ impl From<FlutterPointerMouseButtons> for flutter_engine_sys::FlutterPointerMous
 
 pub type TextureId = i64;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExternalTexture {
     engine_ptr: flutter_engine_sys::FlutterEngine,
     texture_id: TextureId,

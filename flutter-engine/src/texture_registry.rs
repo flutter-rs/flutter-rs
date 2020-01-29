@@ -2,150 +2,86 @@ use crate::ffi::{ExternalTexture, ExternalTextureFrame, TextureId};
 use crate::FlutterEngine;
 #[cfg(feature = "image")]
 use image::RgbaImage;
-#[cfg(feature = "image")]
-use parking_lot::Mutex;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::Arc;
-
-pub struct Texture {
-    texture_id: TextureId,
-    registry: TextureRegistry,
-}
-
-impl Texture {
-    pub fn id(&self) -> TextureId {
-        self.texture_id
-    }
-
-    pub fn mark_frame_available(&self) {
-        self.registry.mark_frame_available(self.texture_id)
-    }
-}
-
-impl Drop for Texture {
-    fn drop(&mut self) {
-        log::trace!("dropping Texture");
-        self.registry.drop_texture(self.texture_id);
-    }
-}
+use std::sync::{Arc, Barrier};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Default)]
 pub struct TextureRegistry {
-    textures: Arc<RwLock<HashMap<TextureId, FlutterTexture>>>,
+    textures: Arc<RwLock<HashMap<TextureId, u32>>>,
 }
 
 impl TextureRegistry {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn register(&self, texture_id: TextureId, glid: u32) {
+        self.textures.write().insert(texture_id, glid);
     }
 
-    pub fn create_texture(&self, engine: &FlutterEngine, gl: Box<dyn GlTexture>) -> Texture {
-        let texture = ExternalTexture::new(engine.engine_ptr());
-        let texture_id = texture.id();
-        let texture = FlutterTexture::new(texture, gl);
-        self.textures.write().insert(texture_id, texture);
-
-        let textures = self.textures.clone();
-        engine.run_on_platform_thread(move |_engine| {
-            if let Some(texture) = textures.read().get(&texture_id) {
-                texture.register();
-            }
-        });
-
-        Texture {
-            texture_id,
-            registry: self.clone(),
-        }
-    }
-
-    pub(crate) fn get_texture_frame(
-        &self,
-        texture_id: TextureId,
-        _size: (usize, usize),
-    ) -> Option<ExternalTextureFrame> {
-        let mut textures = self.textures.write();
-        textures
-            .get_mut(&texture_id)
-            .map(|texture| texture.get_texture_frame())
-    }
-
-    fn mark_frame_available(&self, texture_id: TextureId) {
+    pub fn get_texture_frame(&self, texture_id: TextureId, _size: (usize, usize)) -> Option<ExternalTextureFrame> {
         let textures = self.textures.read();
-        if let Some(texture) = textures.get(&texture_id) {
-            texture.mark_frame_available();
+        if let Some(glid) = textures.get(&texture_id) {
+            log::trace!("returning external texture frame with glid {}", glid);
+            return Some(ExternalTextureFrame::new(gl::TEXTURE_2D, *glid, gl::RGBA8, || {}))
         }
-    }
-
-    fn drop_texture(&self, texture_id: TextureId) {
-        let mut textures = self.textures.write();
-        textures.remove(&texture_id);
+        None
     }
 }
 
-struct FlutterTexture {
+pub struct Texture {
+    engine: FlutterEngine,
     texture: ExternalTexture,
-    gl: Box<dyn GlTexture>,
+    glid: Arc<AtomicU32>,
 }
 
-impl FlutterTexture {
-    fn new(texture: ExternalTexture, gl: Box<dyn GlTexture>) -> Self {
-        Self { texture, gl }
-    }
+impl Texture {
+    pub(crate) fn new(engine: FlutterEngine) -> Self {
+        let texture = ExternalTexture::new(engine.engine_ptr());
+        let texture2 = texture.clone();
+        let glid = Arc::new(AtomicU32::new(0));
+        let glid2 = glid.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier2 = barrier.clone();
+        engine.run_on_render_thread(move |engine| {
+            let mut id: u32 = 0;
+            unsafe {
+                gl::GenTextures(1, &mut id as *mut _);
+            }
+            glid2.store(id, Ordering::SeqCst);
+            engine.inner.texture_registry.register(texture2.id(), id);
+            barrier2.wait();
 
-    fn register(&self) {
-        self.texture.register();
-    }
-
-    fn mark_frame_available(&self) {
-        self.texture.mark_frame_available();
-    }
-
-    fn get_texture_frame(&mut self) -> ExternalTextureFrame {
-        self.gl.get_texture_frame()
-    }
-}
-
-impl Drop for FlutterTexture {
-    fn drop(&mut self) {
-        log::trace!("dropping FlutterTexture");
-        self.texture.unregister();
-    }
-}
-
-pub trait GlTexture: Send + Sync {
-    fn get_texture_frame(&mut self) -> ExternalTextureFrame;
-}
-
-#[cfg(feature = "image")]
-#[derive(Clone)]
-pub struct RgbaTexture {
-    data: Arc<Mutex<Option<RgbaImage>>>,
-    id: u32,
-}
-
-#[cfg(feature = "image")]
-impl RgbaTexture {
-    pub fn new(img: RgbaImage) -> Self {
+            engine.run_on_platform_thread(move |_engine| {
+                texture2.register();
+            });
+        });
+        barrier.wait();
         Self {
-            data: Arc::new(Mutex::new(Some(img))),
-            id: 0,
+            engine, texture, glid
         }
     }
 
-    pub fn post_frame_rgba(&mut self, img: RgbaImage) {
-        *self.data.lock() = Some(img);
+    pub fn id(&self) -> TextureId {
+        self.texture.id()
     }
-}
 
-#[cfg(feature = "image")]
-impl GlTexture for RgbaTexture {
-    fn get_texture_frame(&mut self) -> ExternalTextureFrame {
-        if let Some(img) = self.data.lock().take() {
+    pub fn post_frame<F: FnOnce() + Send + 'static>(&self, render: F) {
+        let glid = self.glid.load(Ordering::SeqCst);
+        let texture = self.texture.clone();
+        self.engine.run_on_render_thread(move |engine| {
+            log::trace!("bound texture with glid {}", glid);
+            unsafe { gl::BindTexture(gl::TEXTURE_2D, glid) };
+            render();
+            engine.run_on_platform_thread(move |_engine| {
+                texture.mark_frame_available();
+            });
+        });
+    }
+
+    #[cfg(feature = "image")]
+    pub fn post_frame_rgba(&self, img: RgbaImage) {
+        self.post_frame(move || {
             let (width, height) = img.dimensions();
             unsafe {
-                gl::GenTextures(1, &mut self.id as *mut _);
-                gl::BindTexture(gl::TEXTURE_2D, self.id);
                 gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
@@ -160,18 +96,23 @@ impl GlTexture for RgbaTexture {
                     gl::UNSIGNED_BYTE,           // data type of the pixel data
                     (&img).as_ptr() as *const _, // pixel data
                 );
-                log::debug!("created gl texture with id {}", self.id);
             }
-        }
-        ExternalTextureFrame::new(gl::TEXTURE_2D, self.id, gl::RGBA8, || {})
+        });
     }
 }
 
-#[cfg(feature = "image")]
-impl Drop for RgbaTexture {
+impl Drop for Texture {
     fn drop(&mut self) {
-        unsafe {
-            gl::DeleteTextures(1, &self.id as *const _);
-        }
+        let id = self.glid.load(Ordering::SeqCst);
+        log::trace!("dropping Texture with id {}", id);
+        let texture = self.texture.clone();
+        self.engine.run_on_platform_thread(move |_engine| {
+            texture.unregister();
+        });
+        self.engine.run_on_render_thread(move |_engine| {
+             unsafe {
+                gl::DeleteTextures(1, &id as *const _);
+            }
+        });
     }
 }

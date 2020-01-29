@@ -18,7 +18,7 @@ use crate::ffi::{
 };
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
-use crate::texture_registry::{GlTexture, Texture, TextureRegistry};
+use crate::texture_registry::{Texture, TextureRegistry};
 use flutter_engine_sys::FlutterTask;
 use log::trace;
 use parking_lot::RwLock;
@@ -541,10 +541,8 @@ impl FlutterEngine {
         }
     }
 
-    pub fn create_texture<T: GlTexture + 'static>(&self, texture: T) -> Texture {
-        self.inner
-            .texture_registry
-            .create_texture(self, Box::new(texture))
+    pub fn create_texture(&self) -> Texture {
+        Texture::new(self.clone())
     }
 }
 

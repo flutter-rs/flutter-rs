@@ -4,7 +4,7 @@ use crate::keyboard::raw_key;
 use crate::pointer::Pointers;
 use flutter_engine::channel::Channel;
 use flutter_engine::plugins::Plugin;
-use flutter_engine::texture_registry::{GlTexture, Texture};
+use flutter_engine::texture_registry::Texture;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
@@ -124,8 +124,8 @@ impl FlutterWindow {
         self.resource_context.clone()
     }
 
-    pub fn create_texture<T: GlTexture + 'static>(&self, texture: T) -> Texture {
-        self.engine.create_texture(texture)
+    pub fn create_texture(&self) -> Texture {
+        self.engine.create_texture()
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self

@@ -117,7 +117,11 @@ fn post_frame_internal(
     frames: &Arc<Mutex<HashMap<TextureId, TextureFrame>>>,
     frame: TextureFrame,
 ) {
-    frames.lock().insert(texture_id, frame);
+    if let Some(old_frame) = frames.lock().insert(texture_id, frame) {
+        engine.run_on_render_thread(move |_| {
+            (old_frame.destruction_callback)();
+        });
+    }
 
     let texture_id = texture_id;
     engine.run_on_platform_thread(move |engine| {

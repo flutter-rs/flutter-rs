@@ -383,6 +383,10 @@ impl FlutterEngine {
     }
 
     pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         let event = flutter_engine_sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
             width,
@@ -407,6 +411,10 @@ impl FlutterEngine {
         device_kind: FlutterPointerDeviceKind,
         buttons: FlutterPointerMouseButtons,
     ) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
         let event = flutter_engine_sys::FlutterPointerEvent {
@@ -436,6 +444,7 @@ impl FlutterEngine {
         if !self.is_platform_thread() {
             panic!("Not on platform thread");
         }
+
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(
                 self.engine_ptr(),
@@ -453,6 +462,7 @@ impl FlutterEngine {
         if !self.is_platform_thread() {
             panic!("Not on platform thread");
         }
+
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
                 self.engine_ptr(),

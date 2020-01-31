@@ -22,7 +22,7 @@ extern "C" {}
 extern "C" {}
 
 #[cfg(target_os = "windows")]
-#[link(name = "flutter_engine.dll")]
+#[link(name = "flutter_engine")]
 extern "C" {}
 
 #[cfg(test)]
@@ -36,7 +36,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     const LIB: &str = "libflutter_engine.dylib";
     #[cfg(target_os = "windows")]
-    const LIB: &str = "flutter_engine.dll.lib";
+    const LIB: &str = "flutter_engine.lib";
 
     #[test]
     fn link() {

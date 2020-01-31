@@ -201,7 +201,7 @@ impl FlutterEngine {
 
     pub fn with_channel<F>(&self, channel_name: &str, f: F)
     where
-        F: FnMut(&dyn Channel),
+        F: FnOnce(&dyn Channel),
     {
         self.inner
             .plugins

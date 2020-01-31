@@ -47,9 +47,9 @@ impl ChannelRegistry {
         f(&mut registrar);
     }
 
-    pub fn with_channel<F>(&self, channel_name: &str, mut f: F)
+    pub fn with_channel<F>(&self, channel_name: &str, f: F)
     where
-        F: FnMut(&dyn Channel),
+        F: FnOnce(&dyn Channel),
     {
         if let Some(channel) = self.channels.get(channel_name) {
             f(&**channel);

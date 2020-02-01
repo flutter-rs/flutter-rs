@@ -3,6 +3,8 @@
 
 mod context;
 mod handler;
+mod keyboard;
+mod pointer;
 mod window;
 
 pub use window::FlutterWindow;

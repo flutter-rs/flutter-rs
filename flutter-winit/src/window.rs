@@ -1,12 +1,10 @@
 use crate::context::Context;
 use crate::handler::{WinitFlutterEngineHandler, WinitPlatformHandler, WinitWindowHandler};
+use crate::keyboard::raw_key;
+use crate::pointer::Pointers;
 use flutter_engine::channel::Channel;
-use flutter_engine::ffi::{
-    FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
-    FlutterPointerSignalKind,
-};
 use flutter_engine::plugins::Plugin;
-use flutter_engine::texture_registry::{ExternalTexture, TextureRegistry};
+use flutter_engine::texture_registry::Texture;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
@@ -20,19 +18,16 @@ use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
 use glutin::event::{
-    ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, Touch, TouchPhase,
-    VirtualKeyCode, WindowEvent,
+    ElementState, Event, KeyboardInput, MouseScrollDelta, Touch, VirtualKeyCode, WindowEvent,
 };
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::window::WindowBuilder;
 use glutin::ContextBuilder;
-use glutin::event::DeviceId;
 use parking_lot::Mutex;
 use std::error::Error;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::collections::HashSet;
 
 pub enum FlutterEvent {
     WakePlatformThread,
@@ -45,12 +40,11 @@ pub struct FlutterWindow {
     resource_context: Arc<Mutex<Context>>,
     engine: FlutterEngine,
     engine_handler: Arc<WinitFlutterEngineHandler>,
-    texture_registry: Arc<Mutex<TextureRegistry>>,
     close: Arc<AtomicBool>,
 }
 
 impl FlutterWindow {
-    pub fn new(window: WindowBuilder) -> Result<Self, Box<dyn Error>> {
+    pub fn new(window: WindowBuilder, assets_path: PathBuf) -> Result<Self, Box<dyn Error>> {
         let event_loop = EventLoop::with_user_event();
         let proxy = event_loop.create_proxy();
 
@@ -58,14 +52,12 @@ impl FlutterWindow {
         let context = Arc::new(Mutex::new(Context::from_context(context)));
         let resource_context = Arc::new(Mutex::new(Context::empty()));
 
-        let texture_registry = Arc::new(Mutex::new(TextureRegistry::new()));
         let engine_handler = Arc::new(WinitFlutterEngineHandler::new(
             proxy,
             context.clone(),
             resource_context.clone(),
-            texture_registry.clone(),
         ));
-        let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _);
+        let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _, assets_path);
 
         let proxy = event_loop.create_proxy();
         let isolate_cb = move || {
@@ -98,17 +90,22 @@ impl FlutterWindow {
             resource_context,
             engine,
             engine_handler,
-            texture_registry,
             close,
         })
     }
 
     pub fn with_resource_context(self) -> Result<Self, Box<dyn Error>> {
         {
+            let window = WindowBuilder::new().with_visible(false);
             let context = self.context.lock();
             let resource_context = ContextBuilder::new()
                 .with_shared_lists(context.context().unwrap())
-                .build_windowed(WindowBuilder::new(), &self.event_loop)?;
+                .build_windowed(window, &self.event_loop)?;
+
+            let resource_context = unsafe { resource_context.make_current().unwrap() };
+            gl::load_with(|s| resource_context.get_proc_address(s));
+            let resource_context = unsafe { resource_context.make_not_current().unwrap() };
+
             let mut guard = self.resource_context.lock();
             *guard = Context::from_context(resource_context);
         }
@@ -127,8 +124,8 @@ impl FlutterWindow {
         self.resource_context.clone()
     }
 
-    pub fn create_texture(&self) -> Arc<ExternalTexture> {
-        self.texture_registry.lock().create_texture(&self.engine)
+    pub fn create_texture(&self) -> Texture {
+        self.engine.create_texture()
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self
@@ -166,12 +163,8 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn start_engine(
-        &self,
-        assets_path: &Path,
-        arguments: &[String],
-    ) -> Result<(), Box<dyn Error>> {
-        self.engine.run(assets_path, arguments)?;
+    pub fn start_engine(&self, arguments: &[String]) -> Result<(), Box<dyn Error>> {
+        self.engine.run(arguments)?;
         Ok(())
     }
 
@@ -186,8 +179,7 @@ impl FlutterWindow {
             localization.send_locale(locale_config::Locale::current());
         });
 
-        let mut active_devices: HashSet<i32> = HashSet::new();
-        let mut cursor = (0.0, 0.0);
+        let mut pointers = Pointers::new(engine.clone());
         self.event_loop
             .run(move |event, _, control_flow| match event {
                 Event::WindowEvent { event, .. } => {
@@ -195,73 +187,28 @@ impl FlutterWindow {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(_) => resize(&engine, &context),
                         WindowEvent::HiDpiFactorChanged(_) => resize(&engine, &context),
-                        WindowEvent::CursorEntered { device_id, .. } => {
-                            let idx = device_id.get_index();
-                            if active_devices.contains(idx) {
-                                eprintln!("{:?} already exists", device);
-                            }
-                            else {
-                                active_devices.insert(idx);
-                            }
-                        }
-                        WindowEvent::CursorLeft { device_id, .. } => {
-                            let idx = device_id.get_index();
-                            if active_devices.contains(idx) {
-                                engine.send_pointer_event(
-                                    idx,
-                                    FlutterPointerPhase::Remove,
-                                    cursor,
-                                    FlutterPointerSignalKind::None,
-                                    (0.0, 0.0),
-                                    FlutterPointerDeviceKind::Mouse,
-                                    FlutterPointerMouseButtons::Primary,
-                                );
-                            }
-                            else {
-                                eprintln!("{:?} doesn't exist", device_id);
-                            }
-                        }
-                        WindowEvent::CursorMoved { device_id, position, .. } => {
+                        WindowEvent::CursorEntered { device_id } => pointers.enter(device_id),
+                        WindowEvent::CursorLeft { device_id } => pointers.leave(device_id),
+                        WindowEvent::CursorMoved {
+                            device_id,
+                            position,
+                            ..
+                        } => {
                             let dpi = { context.lock().hidpi_factor() };
-                            cursor = position.to_physical(dpi).into();
-
-                            let idx = device_id.get_index();
-                            engine.send_pointer_event(
-                                idx,
-                                // TODO Move
-                                FlutterPointerPhase::Hover,
-                                cursor,
-                                FlutterPointerSignalKind::None,
-                                (0.0, 0.0),
-                                FlutterPointerDeviceKind::Mouse,
-                                FlutterPointerMouseButtons::Primary,
-                            );
+                            let position = position.to_physical(dpi);
+                            pointers.moved(device_id, position.into());
                         }
-                        WindowEvent::MouseInput { device_id, state, button, .. } => {
-                            let phase = match state {
-                                ElementState::Pressed => FlutterPointerPhase::Down,
-                                ElementState::Released => FlutterPointerPhase::Up,
-                            };
-                            let button = match button {
-                                MouseButton::Left => FlutterPointerMouseButtons::Primary,
-                                MouseButton::Right => FlutterPointerMouseButtons::Secondary,
-                                MouseButton::Middle => FlutterPointerMouseButtons::Middle,
-                                MouseButton::Other(4) => FlutterPointerMouseButtons::Back,
-                                MouseButton::Other(5) => FlutterPointerMouseButtons::Forward,
-                                _ => FlutterPointerMouseButtons::Primary,
-                            };
-                            let idx = device_id.get_index();
-                            engine.send_pointer_event(
-                                idx,
-                                phase,
-                                cursor,
-                                FlutterPointerSignalKind::None,
-                                (0.0, 0.0),
-                                FlutterPointerDeviceKind::Mouse,
-                                button,
-                            );
+                        WindowEvent::MouseInput {
+                            device_id,
+                            state,
+                            button,
+                            ..
+                        } => {
+                            pointers.input(device_id, state, button);
                         }
-                        WindowEvent::MouseWheel { device_id, delta, .. } => {
+                        WindowEvent::MouseWheel {
+                            device_id, delta, ..
+                        } => {
                             let delta = match delta {
                                 MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
                                 MouseScrollDelta::PixelDelta(position) => {
@@ -270,43 +217,17 @@ impl FlutterWindow {
                                     (-dx, dy)
                                 }
                             };
-
-                            let idx = device_id.get_index();
-                            engine.send_pointer_event(
-                                idx,
-                                // TODO
-                                FlutterPointerPhase::Hover,
-                                cursor,
-                                FlutterPointerSignalKind::Scroll,
-                                delta,
-                                FlutterPointerDeviceKind::Mouse,
-                                FlutterPointerMouseButtons::Primary,
-                            );
+                            pointers.wheel(device_id, delta);
                         }
                         WindowEvent::Touch(Touch {
-                            device_id, phase, location, ..
+                            device_id,
+                            phase,
+                            location,
+                            ..
                         }) => {
                             let dpi = { context.lock().hidpi_factor() };
-                            cursor = location.to_physical(dpi).into();
-                            let phase = match phase {
-                                TouchPhase::Started => FlutterPointerPhase::Down,
-                                TouchPhase::Moved => FlutterPointerPhase::Move,
-                                TouchPhase::Ended => FlutterPointerPhase::Up,
-                                TouchPhase::Cancelled => FlutterPointerPhase::Cancel,
-                            };
-
-                            let idx = device_id.get_index();
-                            
-                            engine.send_pointer_event(
-                                idx,
-                                phase,
-                                cursor,
-                                FlutterPointerSignalKind::None,
-                                (0.0, 0.0),
-                                FlutterPointerDeviceKind::Touch,
-                                // TODO
-                                FlutterPointerMouseButtons::Primary,
-                            );
+                            let position = location.to_physical(dpi);
+                            pointers.touch(device_id, phase, position.into());
                         }
                         WindowEvent::ReceivedCharacter(ch) => {
                             if !ch.is_control() {
@@ -427,107 +348,4 @@ fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
     );
     context.resize(size);
     engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
-}
-
-// Emulates glfw key numbers
-// https://github.com/flutter/flutter/blob/master/packages/flutter/lib/src/services/keyboard_maps.dart
-fn raw_key(key: Option<VirtualKeyCode>) -> Option<u32> {
-    let key = if let Some(key) = key {
-        if key as u32 >= Key::A as u32 && key as u32 <= Key::Z as u32 {
-            return Some(key as u32 - Key::A as u32 + 65);
-        }
-
-        if key as u32 >= Key::Key1 as u32 && key as u32 <= Key::Key9 as u32 {
-            return Some(key as u32 - Key::Key1 as u32 + 49);
-        }
-
-        key
-    } else {
-        return None;
-    };
-
-    use VirtualKeyCode as Key;
-    let code = match key {
-        Key::Key0 => 48,
-        Key::Return => 257,
-        Key::Escape => 256,
-        Key::Back => 259,
-        Key::Tab => 258,
-        Key::Space => 32,
-        Key::LControl => 341,
-        Key::LShift => 340,
-        Key::LAlt => 342,
-        Key::LWin => 343,
-        Key::RControl => 345,
-        Key::RShift => 344,
-        Key::RAlt => 346,
-        Key::RWin => 347,
-        Key::Minus => 45,
-        Key::Equals => 61,
-        Key::LBracket => 91,
-        Key::RBracket => 93,
-        Key::Backslash => 92,
-        Key::Semicolon => 59,
-        Key::Apostrophe => 39,
-        //Key::Backquote => 96,
-        Key::Comma => 44,
-        Key::Period => 46,
-        Key::Slash => 47,
-        //Key::CapsLock => 280,
-        Key::Snapshot => 283,
-        Key::Pause => 284,
-        Key::Insert => 260,
-        Key::Home => 268,
-        Key::PageUp => 266,
-        Key::Delete => 261,
-        Key::End => 269,
-        Key::PageDown => 267,
-        Key::Right => 262,
-        Key::Left => 263,
-        Key::Down => 264,
-        Key::Up => 265,
-        Key::Numlock => 282,
-        //Key::NumpadDivide => 331,
-        //Key::NumpadMultiply => 332,
-        //Key::NumpadAdd => 334,
-        Key::NumpadEnter => 335,
-        Key::Numpad0 => 320,
-        Key::Numpad1 => 321,
-        Key::Numpad2 => 322,
-        Key::Numpad3 => 323,
-        Key::Numpad4 => 324,
-        Key::Numpad5 => 325,
-        Key::Numpad6 => 326,
-        Key::Numpad7 => 327,
-        Key::Numpad8 => 328,
-        Key::Numpad9 => 329,
-        //Key::NumpadDecimal => 330,
-        //Key::ContextMenu => 348,
-        Key::NumpadEquals => 336,
-        Key::F1 => 290,
-        Key::F2 => 291,
-        Key::F3 => 292,
-        Key::F4 => 293,
-        Key::F5 => 294,
-        Key::F6 => 295,
-        Key::F7 => 296,
-        Key::F8 => 297,
-        Key::F9 => 298,
-        Key::F10 => 299,
-        Key::F11 => 300,
-        Key::F12 => 301,
-        Key::F13 => 302,
-        Key::F14 => 303,
-        Key::F15 => 304,
-        Key::F16 => 305,
-        Key::F17 => 306,
-        Key::F18 => 307,
-        Key::F19 => 308,
-        Key::F20 => 309,
-        Key::F21 => 310,
-        Key::F22 => 311,
-        Key::F23 => 312,
-        _ => return None,
-    };
-    Some(code)
 }

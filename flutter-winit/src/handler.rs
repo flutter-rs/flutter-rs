@@ -2,8 +2,6 @@ use crate::context::Context;
 use crate::window::FlutterEvent;
 use async_std::task;
 use copypasta::{ClipboardContext, ClipboardProvider};
-use flutter_engine::ffi::ExternalTextureFrame;
-use flutter_engine::texture_registry::TextureRegistry;
 use flutter_engine::FlutterEngineHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
@@ -21,7 +19,6 @@ pub struct WinitFlutterEngineHandler {
     proxy: EventLoopProxy<FlutterEvent>,
     context: Arc<Mutex<Context>>,
     resource_context: Arc<Mutex<Context>>,
-    texture_registry: Arc<Mutex<TextureRegistry>>,
 }
 
 impl WinitFlutterEngineHandler {
@@ -29,13 +26,11 @@ impl WinitFlutterEngineHandler {
         proxy: EventLoopProxy<FlutterEvent>,
         context: Arc<Mutex<Context>>,
         resource_context: Arc<Mutex<Context>>,
-        texture_registry: Arc<Mutex<TextureRegistry>>,
     ) -> Self {
         Self {
             proxy,
             context,
             resource_context,
-            texture_registry,
         }
     }
 }
@@ -76,16 +71,6 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
 
     fn run_in_background(&self, future: Box<dyn Future<Output = ()> + Send + 'static>) {
         task::spawn(FutureObj::new(future));
-    }
-
-    fn get_texture_frame(
-        &self,
-        texture_id: i64,
-        (width, height): (usize, usize),
-    ) -> Option<ExternalTextureFrame> {
-        self.texture_registry
-            .lock()
-            .get_texture_frame(texture_id, (width as _, height as _))
     }
 }
 

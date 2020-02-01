@@ -8,26 +8,26 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
-#[cfg(feature = "texture-registry")]
 pub mod texture_registry;
 pub mod utils;
 
-use crate::channel::Channel;
+use crate::channel::{Channel, ChannelRegistrar};
 use crate::ffi::{
-    ExternalTexture, ExternalTextureFrame, FlutterPointerDeviceKind, FlutterPointerMouseButtons,
-    FlutterPointerPhase, FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+    FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
+    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
 };
 use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
+use crate::texture_registry::{Texture, TextureRegistry};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use flutter_engine_sys::FlutterTask;
 use log::trace;
 use parking_lot::RwLock;
 use std::ffi::CString;
 use std::future::Future;
 use std::os::raw::{c_char, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Weak};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{mem, ptr};
@@ -50,6 +50,8 @@ struct FlutterEngineInner {
     _platform_runner_handler: Arc<PlatformRunnerHandler>,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
+    texture_registry: TextureRegistry,
+    assets: PathBuf,
 }
 
 pub struct FlutterEngineWeakRef {
@@ -115,12 +117,6 @@ pub trait FlutterEngineHandler {
     fn wake_platform_thread(&self);
 
     fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
-
-    fn get_texture_frame(
-        &self,
-        texture_id: i64,
-        size: (usize, usize),
-    ) -> Option<ExternalTextureFrame>;
 }
 
 struct PlatformRunnerHandler {
@@ -135,24 +131,13 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
     }
 }
 
-pub struct FlutterAotSnapshot {
-    pub vm_snapshot_data: *const u8,
-    pub vm_snapshot_data_size: usize,
-    pub vm_snapshot_instructions: *const u8,
-    pub vm_snapshot_instructions_size: usize,
-    pub isolate_snapshot_data: *const u8,
-    pub isolate_snapshot_data_size: usize,
-    pub isolate_snapshot_instructions: *const u8,
-    pub isolate_snapshot_instructions_size: usize,
-}
-
 impl FlutterEngine {
-    pub fn new(handler: Weak<dyn FlutterEngineHandler>) -> Self {
+    pub fn new(handler: Weak<dyn FlutterEngineHandler>, assets: PathBuf) -> Self {
         let platform_handler = Arc::new(PlatformRunnerHandler {
             handler: handler.clone(),
         });
 
-        let (main_tx, main_rx) = mpsc::channel();
+        let (main_tx, main_rx) = unbounded();
 
         let engine = Self {
             inner: Arc::new(FlutterEngineInner {
@@ -165,6 +150,8 @@ impl FlutterEngine {
                 _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
+                texture_registry: TextureRegistry::new(),
+                assets,
             }),
         };
 
@@ -214,7 +201,7 @@ impl FlutterEngine {
 
     pub fn with_channel<F>(&self, channel_name: &str, f: F)
     where
-        F: FnMut(&dyn Channel),
+        F: FnOnce(&dyn Channel),
     {
         self.inner
             .plugins
@@ -223,13 +210,28 @@ impl FlutterEngine {
             .with_channel(channel_name, f)
     }
 
+    pub fn with_channel_registrar<F>(&self, plugin_name: &'static str, f: F)
+    where
+        F: FnOnce(&mut ChannelRegistrar),
+    {
+        self.inner
+            .plugins
+            .write()
+            .channel_registry
+            .with_channel_registrar(plugin_name, f)
+    }
+
     pub fn downgrade(&self) -> FlutterEngineWeakRef {
         FlutterEngineWeakRef {
             inner: Arc::downgrade(&self.inner),
         }
     }
 
-    pub fn run(&self, assets_path: &Path, arguments: &[String]) -> Result<(), RunError> {
+    pub fn assets(&self) -> &Path {
+        &self.inner.assets
+    }
+
+    pub fn run(&self, arguments: &[String]) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
         }
@@ -291,7 +293,7 @@ impl FlutterEngine {
 
         let project_args = flutter_engine_sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: path_to_cstring(assets_path).into_raw(),
+            assets_path: path_to_cstring(self.assets()).into_raw(),
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
             icu_data_path: std::ptr::null(),
@@ -381,6 +383,10 @@ impl FlutterEngine {
     }
 
     pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         let event = flutter_engine_sys::FlutterWindowMetricsEvent {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
             width,
@@ -394,9 +400,10 @@ impl FlutterEngine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_pointer_event(
         &self,
-        device_id: i32,
+        device: i32,
         phase: FlutterPointerPhase,
         (x, y): (f64, f64),
         signal_kind: FlutterPointerSignalKind,
@@ -404,6 +411,10 @@ impl FlutterEngine {
         device_kind: FlutterPointerDeviceKind,
         buttons: FlutterPointerMouseButtons,
     ) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
         let event = flutter_engine_sys::FlutterPointerEvent {
@@ -412,7 +423,7 @@ impl FlutterEngine {
             phase: phase.into(),
             x,
             y,
-            device: device_id,
+            device,
             signal_kind: signal_kind.into(),
             scroll_delta_x,
             scroll_delta_y,
@@ -430,6 +441,10 @@ impl FlutterEngine {
 
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
         trace!("Sending message on channel {}", message.channel);
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(
                 self.engine_ptr(),
@@ -444,6 +459,10 @@ impl FlutterEngine {
         bytes: &[u8],
     ) {
         trace!("Sending message response");
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
         unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessageResponse(
                 self.engine_ptr(),
@@ -532,15 +551,8 @@ impl FlutterEngine {
         }
     }
 
-    pub fn register_external_texture(&self, texture_id: i64) -> ExternalTexture {
-        trace!("registering new external texture with id {}", texture_id);
-        unsafe {
-            flutter_engine_sys::FlutterEngineRegisterExternalTexture(self.engine_ptr(), texture_id);
-        }
-        ExternalTexture {
-            engine_ptr: self.engine_ptr(),
-            texture_id,
-        }
+    pub fn create_texture(&self) -> Texture {
+        self.inner.texture_registry.create_texture(self.clone())
     }
 }
 

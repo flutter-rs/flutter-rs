@@ -54,7 +54,7 @@ impl Pointers {
         let device = self.index(device_id, false);
         let pointer = &self.pointers[device];
 
-        if cfg!(unix) {
+        if cfg!(target_os = "linux") {
             return
         }
 

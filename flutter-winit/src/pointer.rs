@@ -53,6 +53,11 @@ impl Pointers {
     pub fn enter(&mut self, device_id: DeviceId) {
         let device = self.index(device_id, false);
         let pointer = &self.pointers[device];
+
+        if cfg!(unix) {
+            return
+        }
+
         self.engine.send_pointer_event(
             device as i32 + 10,
             FlutterPointerPhase::Add,

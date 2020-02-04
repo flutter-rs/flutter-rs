@@ -1,7 +1,6 @@
 //#![deny(missing_docs)]
 #![deny(warnings)]
 
-mod context;
 mod handler;
 mod keyboard;
 mod pointer;

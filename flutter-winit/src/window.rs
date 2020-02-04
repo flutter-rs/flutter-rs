@@ -1,6 +1,5 @@
-use crate::context::Context;
 use crate::handler::{WinitFlutterEngineHandler, WinitPlatformHandler, WinitWindowHandler};
-use crate::keyboard::raw_key;
+use crate::keyboard::Keyboard;
 use crate::pointer::Pointers;
 use flutter_engine::channel::Channel;
 use flutter_engine::plugins::Plugin;
@@ -8,7 +7,7 @@ use flutter_engine::texture_registry::Texture;
 use flutter_engine::{FlutterEngine, FlutterEngineHandler};
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
-use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
+use flutter_plugins::keyevent::KeyEventPlugin;
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
@@ -17,43 +16,70 @@ use flutter_plugins::settings::SettingsPlugin;
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
-use glutin::event::{
-    ElementState, Event, KeyboardInput, MouseScrollDelta, Touch, VirtualKeyCode, WindowEvent,
-};
-use glutin::event_loop::{ControlFlow, EventLoop};
-use glutin::window::WindowBuilder;
-use glutin::ContextBuilder;
+use glutin::config::{Config, ConfigsFinder};
+use glutin::context::{Context, ContextBuilder};
+use glutin::surface::{Surface, Window as WindowMarker};
 use parking_lot::Mutex;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use winit::event::{DeviceEvent, Event, MouseScrollDelta, Touch, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
+#[derive(Debug)]
 pub enum FlutterEvent {
     WakePlatformThread,
     IsolateCreated,
 }
 
 pub struct FlutterWindow {
-    event_loop: EventLoop<FlutterEvent>,
-    context: Arc<Mutex<Context>>,
-    resource_context: Arc<Mutex<Context>>,
+    event_loop: Option<EventLoop<FlutterEvent>>,
+    config: Config,
+    context: Arc<Context>,
+    _resource_context: Option<Arc<Context>>,
+    window: Arc<Window>,
+    surface: Arc<Mutex<Option<Surface<WindowMarker>>>>,
     engine: FlutterEngine,
     engine_handler: Arc<WinitFlutterEngineHandler>,
     close: Arc<AtomicBool>,
 }
 
 impl FlutterWindow {
-    pub fn new(window: WindowBuilder, assets_path: PathBuf) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        wb: WindowBuilder,
+        assets_path: PathBuf,
+        resource_context: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let event_loop = EventLoop::with_user_event();
         let proxy = event_loop.create_proxy();
 
-        let context = ContextBuilder::new().build_windowed(window, &event_loop)?;
-        let context = Arc::new(Mutex::new(Context::from_context(context)));
-        let resource_context = Arc::new(Mutex::new(Context::empty()));
+        let confs = unsafe { ConfigsFinder::new().find(&*event_loop)? };
+        let config = confs.get(0).expect("found opengl conf").clone();
+        let context = unsafe { ContextBuilder::new().build(&config)? };
+        let window = unsafe { Surface::build_window(&config, &*event_loop, wb)? };
+        let resource_context = if resource_context {
+            let context = unsafe {
+                ContextBuilder::new()
+                    .with_sharing(Some(&context))
+                    .build(&config)?
+            };
+            unsafe { context.make_current_surfaceless()? };
+            gl::load_with(|s| context.get_proc_address(s).unwrap());
+            unsafe { context.make_not_current()? };
+            Some(Arc::new(context))
+        } else {
+            None
+        };
+
+        let context = Arc::new(context);
+        let window = Arc::new(window);
+        let surface = Arc::new(Mutex::new(None));
 
         let engine_handler = Arc::new(WinitFlutterEngineHandler::new(
             proxy,
+            surface.clone(),
             context.clone(),
             resource_context.clone(),
         ));
@@ -64,11 +90,11 @@ impl FlutterWindow {
             proxy.send_event(FlutterEvent::IsolateCreated).ok();
         };
         let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new(
-            context.clone(),
+            window.clone(),
         )?) as _));
         let close = Arc::new(AtomicBool::new(false));
         let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new(
-            context.clone(),
+            window.clone(),
             close.clone(),
         )));
 
@@ -85,43 +111,20 @@ impl FlutterWindow {
         engine.add_plugin(WindowPlugin::new(window_handler));
 
         Ok(Self {
-            event_loop,
+            event_loop: Some(event_loop),
+            config,
             context,
-            resource_context,
+            _resource_context: resource_context,
+            surface,
+            window,
             engine,
             engine_handler,
             close,
         })
     }
 
-    pub fn with_resource_context(self) -> Result<Self, Box<dyn Error>> {
-        {
-            let window = WindowBuilder::new().with_visible(false);
-            let context = self.context.lock();
-            let resource_context = ContextBuilder::new()
-                .with_shared_lists(context.context().unwrap())
-                .build_windowed(window, &self.event_loop)?;
-
-            let resource_context = unsafe { resource_context.make_current().unwrap() };
-            gl::load_with(|s| resource_context.get_proc_address(s));
-            let resource_context = unsafe { resource_context.make_not_current().unwrap() };
-
-            let mut guard = self.resource_context.lock();
-            *guard = Context::from_context(resource_context);
-        }
-        Ok(self)
-    }
-
     pub fn engine(&self) -> FlutterEngine {
         self.engine.clone()
-    }
-
-    pub fn context(&self) -> Arc<Mutex<Context>> {
-        self.context.clone()
-    }
-
-    pub fn resource_context(&self) -> Arc<Mutex<Context>> {
-        self.resource_context.clone()
     }
 
     pub fn create_texture(&self) -> Texture {
@@ -163,189 +166,110 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn start_engine(&self, arguments: &[String]) -> Result<(), Box<dyn Error>> {
-        self.engine.run(arguments)?;
-        Ok(())
+    fn resize(&self) {
+        let dpi = self.window.scale_factor();
+        let size = self.window.inner_size();
+        log::trace!(
+            "resize width: {} height: {} scale {}",
+            size.width,
+            size.height,
+            dpi
+        );
+        self.context.update_after_resize();
+        if let Some(surf) = self.surface.lock().as_ref() {
+            surf.update_after_resize(size);
+        }
+        self.engine
+            .send_window_metrics_event(size.width as usize, size.height as usize, dpi);
     }
 
-    pub fn run(self) -> ! {
-        let engine = self.engine.clone();
-        let context = self.context.clone();
-        let close = self.close.clone();
-
-        resize(&engine, &context);
-
-        engine.with_plugin(|localization: &LocalizationPlugin| {
-            localization.send_locale(locale_config::Locale::current());
+    pub fn run(mut self, arguments: Vec<String>) -> ! {
+        let event_loop = self.event_loop.take().unwrap();
+        let mut keyboard = Keyboard::new(self.engine.clone());
+        let mut pointers = Pointers::new(self.engine.clone());
+        event_loop.run(move |event, _, control_flow| match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(_) => self.resize(),
+                    WindowEvent::ScaleFactorChanged { .. } => self.resize(),
+                    WindowEvent::CursorEntered { device_id } => pointers.enter(device_id),
+                    WindowEvent::CursorLeft { device_id } => pointers.leave(device_id),
+                    WindowEvent::CursorMoved {
+                        device_id,
+                        position,
+                        ..
+                    } => pointers.moved(device_id, position.into()),
+                    WindowEvent::MouseInput {
+                        device_id,
+                        state,
+                        button,
+                        ..
+                    } => pointers.input(device_id, state, button),
+                    WindowEvent::MouseWheel {
+                        device_id, delta, ..
+                    } => {
+                        let delta = match delta {
+                            MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
+                            MouseScrollDelta::PixelDelta(position) => {
+                                let (dx, dy): (f64, f64) = position.into();
+                                (-dx, dy)
+                            }
+                        };
+                        pointers.wheel(device_id, delta);
+                    }
+                    WindowEvent::Touch(Touch {
+                        device_id,
+                        phase,
+                        location,
+                        ..
+                    }) => pointers.touch(device_id, phase, location.into()),
+                    WindowEvent::ReceivedCharacter(ch) => keyboard.character(ch),
+                    WindowEvent::KeyboardInput { input, .. } => keyboard.input(&input),
+                    _ => {}
+                }
+            }
+            Event::DeviceEvent { event, .. } => match event {
+                DeviceEvent::ModifiersChanged(modifiers) => keyboard.set_modifiers(modifiers),
+                _ => {}
+            },
+            Event::Resumed => {
+                let surface = unsafe {
+                    Surface::new_from_existing_window(&self.config, &*self.window).unwrap()
+                };
+                *self.surface.lock() = Some(surface);
+                self.engine.run(&arguments).unwrap();
+                self.engine
+                    .with_plugin(|localization: &LocalizationPlugin| {
+                        localization.send_locale(locale_config::Locale::current());
+                    });
+            }
+            Event::Suspended => {
+                self.engine.shutdown();
+                self.surface.lock().take();
+            }
+            Event::RedrawRequested(_) => {
+                self.resize();
+            }
+            Event::MainEventsCleared => {
+                self.window.request_redraw();
+            }
+            _ => {
+                if self.close.load(Ordering::Relaxed) {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+                let next_task_time = self.engine.execute_platform_tasks();
+                if let Some(next_task_time) = next_task_time {
+                    *control_flow = ControlFlow::WaitUntil(next_task_time)
+                } else {
+                    *control_flow = ControlFlow::Wait
+                }
+            }
         });
-
-        let mut pointers = Pointers::new(engine.clone());
-        self.event_loop
-            .run(move |event, _, control_flow| match event {
-                Event::WindowEvent { event, .. } => {
-                    match event {
-                        WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(_) => resize(&engine, &context),
-                        WindowEvent::HiDpiFactorChanged(_) => resize(&engine, &context),
-                        WindowEvent::CursorEntered { device_id } => pointers.enter(device_id),
-                        WindowEvent::CursorLeft { device_id } => pointers.leave(device_id),
-                        WindowEvent::CursorMoved {
-                            device_id,
-                            position,
-                            ..
-                        } => {
-                            let dpi = { context.lock().hidpi_factor() };
-                            let position = position.to_physical(dpi);
-                            pointers.moved(device_id, position.into());
-                        }
-                        WindowEvent::MouseInput {
-                            device_id,
-                            state,
-                            button,
-                            ..
-                        } => {
-                            pointers.input(device_id, state, button);
-                        }
-                        WindowEvent::MouseWheel {
-                            device_id, delta, ..
-                        } => {
-                            let delta = match delta {
-                                MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
-                                MouseScrollDelta::PixelDelta(position) => {
-                                    let dpi = { context.lock().hidpi_factor() };
-                                    let (dx, dy): (f64, f64) = position.to_physical(dpi).into();
-                                    (-dx, dy)
-                                }
-                            };
-                            pointers.wheel(device_id, delta);
-                        }
-                        WindowEvent::Touch(Touch {
-                            device_id,
-                            phase,
-                            location,
-                            ..
-                        }) => {
-                            let dpi = { context.lock().hidpi_factor() };
-                            let position = location.to_physical(dpi);
-                            pointers.touch(device_id, phase, position.into());
-                        }
-                        WindowEvent::ReceivedCharacter(ch) => {
-                            if !ch.is_control() {
-                                engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
-                                    text_input.with_state(|state| {
-                                        state.add_characters(&ch.to_string());
-                                    });
-                                    text_input.notify_changes();
-                                });
-                            }
-                        }
-                        WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state,
-                                    virtual_keycode,
-                                    modifiers,
-                                    scancode,
-                                },
-                            ..
-                        } => {
-                            let raw_key = if let Some(raw_key) = raw_key(virtual_keycode) {
-                                raw_key
-                            } else {
-                                return;
-                            };
-
-                            let shift = modifiers.shift as u32;
-                            let ctrl = modifiers.ctrl as u32;
-                            let alt = modifiers.alt as u32;
-                            let logo = modifiers.logo as u32;
-                            let raw_modifiers = shift | ctrl << 1 | alt << 2 | logo << 3;
-
-                            match state {
-                                ElementState::Pressed => {
-                                    if let Some(key) = virtual_keycode {
-                                        engine.with_plugin_mut(
-                                            |text_input: &mut TextInputPlugin| match key {
-                                                VirtualKeyCode::Return => {
-                                                    text_input.with_state(|state| {
-                                                        state.add_characters(&"\n");
-                                                    });
-                                                    text_input.notify_changes();
-                                                }
-                                                VirtualKeyCode::Back => {
-                                                    text_input.with_state(|state| {
-                                                        state.backspace();
-                                                    });
-                                                    text_input.notify_changes();
-                                                }
-                                                _ => {}
-                                            },
-                                        );
-                                    }
-
-                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
-                                        keyevent.key_action(KeyAction {
-                                            toolkit: "glfw".to_string(),
-                                            key_code: raw_key as _,
-                                            scan_code: scancode as _,
-                                            modifiers: raw_modifiers as _,
-                                            keymap: "linux".to_string(),
-                                            _type: KeyActionType::Keydown,
-                                        });
-                                    });
-                                }
-                                ElementState::Released => {
-                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
-                                        keyevent.key_action(KeyAction {
-                                            toolkit: "glfw".to_string(),
-                                            key_code: raw_key as _,
-                                            scan_code: scancode as _,
-                                            modifiers: raw_modifiers as _,
-                                            keymap: "linux".to_string(),
-                                            _type: KeyActionType::Keyup,
-                                        });
-                                    });
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::LoopDestroyed => {
-                    engine.shutdown();
-                }
-                _ => {
-                    if close.load(Ordering::Relaxed) {
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-
-                    let next_task_time = engine.execute_platform_tasks();
-
-                    if let Some(next_task_time) = next_task_time {
-                        *control_flow = ControlFlow::WaitUntil(next_task_time)
-                    } else {
-                        *control_flow = ControlFlow::Wait
-                    }
-                }
-            });
     }
 
     pub fn wake_platform_thread(&self) {
         self.engine_handler.wake_platform_thread();
     }
-}
-
-fn resize(engine: &FlutterEngine, context: &Arc<Mutex<Context>>) {
-    let mut context = context.lock();
-    let dpi = context.hidpi_factor();
-    let size = context.size().to_physical(dpi);
-    log::trace!(
-        "resize width: {} height: {} scale {}",
-        size.width,
-        size.height,
-        dpi
-    );
-    context.resize(size);
-    engine.send_window_metrics_event(size.width as usize, size.height as usize, dpi);
 }

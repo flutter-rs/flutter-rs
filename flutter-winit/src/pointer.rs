@@ -3,7 +3,7 @@ use flutter_engine::ffi::{
     FlutterPointerSignalKind,
 };
 use flutter_engine::FlutterEngine;
-use glutin::event::{DeviceId, ElementState, MouseButton, TouchPhase};
+use winit::event::{DeviceId, ElementState, MouseButton, TouchPhase};
 
 pub struct Pointer {
     device_id: DeviceId,

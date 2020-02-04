@@ -1,12 +1,13 @@
-use crate::context::Context;
 use crate::window::FlutterEvent;
 use async_std::task;
 use copypasta::{ClipboardContext, ClipboardProvider};
+use crossbeam::atomic::AtomicCell;
 use flutter_engine::FlutterEngineHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
-use glutin::event_loop::EventLoopProxy;
+use glutin::context::Context;
+use glutin::surface::{Surface, Window as WindowMarker};
 use parking_lot::Mutex;
 use std::error::Error;
 use std::ffi::CStr;
@@ -14,38 +15,81 @@ use std::future::Future;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use winit::event_loop::EventLoopProxy;
+use winit::window::Window;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Current {
+    Main,
+    Resource,
+    None,
+}
 
 pub struct WinitFlutterEngineHandler {
     proxy: EventLoopProxy<FlutterEvent>,
-    context: Arc<Mutex<Context>>,
-    resource_context: Arc<Mutex<Context>>,
+    surface: Arc<Mutex<Option<Surface<WindowMarker>>>>,
+    context: Arc<Context>,
+    resource_context: Option<Arc<Context>>,
+    current: AtomicCell<Current>,
 }
 
 impl WinitFlutterEngineHandler {
     pub fn new(
         proxy: EventLoopProxy<FlutterEvent>,
-        context: Arc<Mutex<Context>>,
-        resource_context: Arc<Mutex<Context>>,
+        surface: Arc<Mutex<Option<Surface<WindowMarker>>>>,
+        context: Arc<Context>,
+        resource_context: Option<Arc<Context>>,
     ) -> Self {
         Self {
             proxy,
+            surface,
             context,
             resource_context,
+            current: AtomicCell::new(Current::None),
         }
     }
 }
 
 impl FlutterEngineHandler for WinitFlutterEngineHandler {
     fn swap_buffers(&self) -> bool {
-        self.context.lock().present()
+        if let Some(surf) = self.surface.lock().as_ref() {
+            surf.swap_buffers().is_ok()
+        } else {
+            log::error!("swap_buffers: no surface");
+            false
+        }
     }
 
     fn make_current(&self) -> bool {
-        unsafe { self.context.lock().make_current() }
+        let res = if let Some(surf) = self.surface.lock().as_ref() {
+            unsafe { self.context.make_current(surf) }
+        } else {
+            log::error!("make_current: no surface");
+            return false;
+        };
+        match res {
+            Ok(()) => {
+                self.current.store(Current::Main);
+                true
+            }
+            Err(err) => {
+                log::error!("{}", err);
+                false
+            }
+        }
     }
 
     fn clear_current(&self) -> bool {
-        unsafe { self.context.lock().make_not_current() }
+        match unsafe { self.context.make_not_current() } {
+            Ok(()) => {
+                self.current.store(Current::None);
+                true
+            }
+            Err(err) => {
+                log::error!("{}", err);
+                false
+            }
+        }
     }
 
     fn fbo_callback(&self) -> u32 {
@@ -53,16 +97,39 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
     }
 
     fn make_resource_current(&self) -> bool {
-        unsafe { self.resource_context.lock().make_current() }
+        if let Some(context) = &self.resource_context {
+            match unsafe { context.make_current_surfaceless() } {
+                Ok(()) => {
+                    self.current.store(Current::Resource);
+                    true
+                }
+                Err(err) => {
+                    log::error!("{}", err);
+                    false
+                }
+            }
+        } else {
+            false
+        }
     }
 
     fn gl_proc_resolver(&self, proc: *const c_char) -> *mut c_void {
         unsafe {
             if let Ok(proc) = CStr::from_ptr(proc).to_str() {
-                return self.context.lock().get_proc_address(proc) as _;
+                let context = match self.current.load() {
+                    Current::Main => &self.context,
+                    Current::Resource => self.resource_context.as_ref().unwrap(),
+                    Current::None => {
+                        log::error!("no context is current");
+                        return std::ptr::null_mut();
+                    }
+                };
+                if let Ok(ptr) = context.get_proc_address(proc) {
+                    return ptr as _;
+                }
             }
-            std::ptr::null_mut()
         }
+        std::ptr::null_mut()
     }
 
     fn wake_platform_thread(&self) {
@@ -76,21 +143,21 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
 
 pub struct WinitPlatformHandler {
     clipboard: ClipboardContext,
-    context: Arc<Mutex<Context>>,
+    window: Arc<Window>,
 }
 
 impl WinitPlatformHandler {
-    pub fn new(context: Arc<Mutex<Context>>) -> Result<Self, Box<dyn Error>> {
+    pub fn new(window: Arc<Window>) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             clipboard: ClipboardContext::new()?,
-            context,
+            window,
         })
     }
 }
 
 impl PlatformHandler for WinitPlatformHandler {
     fn set_application_switcher_description(&mut self, description: AppSwitcherDescription) {
-        self.context.lock().window().set_title(&description.label);
+        self.window.set_title(&description.label);
     }
 
     fn set_clipboard_data(&mut self, text: String) {
@@ -112,16 +179,16 @@ impl PlatformHandler for WinitPlatformHandler {
 }
 
 pub struct WinitWindowHandler {
-    context: Arc<Mutex<Context>>,
+    window: Arc<Window>,
     maximized: bool,
     visible: bool,
     close: Arc<AtomicBool>,
 }
 
 impl WinitWindowHandler {
-    pub fn new(context: Arc<Mutex<Context>>, close: Arc<AtomicBool>) -> Self {
+    pub fn new(window: Arc<Window>, close: Arc<AtomicBool>) -> Self {
         Self {
-            context,
+            window,
             maximized: false,
             visible: false,
             close,
@@ -136,12 +203,12 @@ impl WindowHandler for WinitWindowHandler {
 
     fn show(&mut self) {
         self.visible = true;
-        self.context.lock().window().set_visible(self.visible);
+        self.window.set_visible(self.visible);
     }
 
     fn hide(&mut self) {
         self.visible = false;
-        self.context.lock().window().set_visible(self.visible);
+        self.window.set_visible(self.visible);
     }
 
     fn is_visible(&mut self) -> bool {
@@ -150,12 +217,12 @@ impl WindowHandler for WinitWindowHandler {
 
     fn maximize(&mut self) {
         self.maximized = true;
-        self.context.lock().window().set_maximized(self.maximized);
+        self.window.set_maximized(self.maximized);
     }
 
     fn restore(&mut self) {
         self.maximized = false;
-        self.context.lock().window().set_maximized(self.maximized);
+        self.window.set_maximized(self.maximized);
     }
 
     fn is_maximized(&mut self) -> bool {

@@ -6,8 +6,16 @@
 include!(concat!(env!("OUT_DIR"), "/flutter-engine-sys.rs"));
 
 #[cfg(target_os = "android")]
-#[link(name = "flutter_engine")]
-extern "C" {}
+mod android {
+    #[link(name = "flutter_engine")]
+    extern "C" {}
+
+    #[link(name = "EGL")]
+    extern "C" {}
+
+    #[link(name = "GLESv2")]
+    extern "C" {}
+}
 
 #[cfg(target_os = "ios")]
 #[link(name = "flutter_engine")]

@@ -63,11 +63,15 @@ unsafe impl Send for FlutterEngineWeakRef {}
 unsafe impl Sync for FlutterEngineWeakRef {}
 
 impl FlutterEngineWeakRef {
-    fn upgrade(&self) -> Option<FlutterEngine> {
+    pub fn upgrade(&self) -> Option<FlutterEngine> {
         match self.inner.upgrade() {
             None => None,
             Some(arc) => Some(FlutterEngine { inner: arc }),
         }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.upgrade().is_some()
     }
 }
 

@@ -1,5 +1,7 @@
 use crate::context::Context;
-use crate::handler::{WinitFlutterEngineHandler, WinitPlatformHandler, WinitWindowHandler};
+use crate::handler::{
+    WinitFlutterEngineHandler, WinitPlatformHandler, WinitTextInputHandler, WinitWindowHandler,
+};
 use crate::keyboard::raw_key;
 use crate::pointer::Pointers;
 use flutter_engine::channel::Channel;
@@ -63,14 +65,13 @@ impl FlutterWindow {
         let isolate_cb = move || {
             proxy.send_event(FlutterEvent::IsolateCreated).ok();
         };
-        let platform_handler = Arc::new(Mutex::new(Box::new(WinitPlatformHandler::new(
-            context.clone(),
-        )?) as _));
+        let platform_handler = Arc::new(Mutex::new(WinitPlatformHandler::new(context.clone())?));
         let close = Arc::new(AtomicBool::new(false));
         let window_handler = Arc::new(Mutex::new(WinitWindowHandler::new(
             context.clone(),
             close.clone(),
         )));
+        let textinput_handler = Arc::new(Mutex::new(WinitTextInputHandler::default()));
 
         engine.add_plugin(DialogPlugin::default());
         engine.add_plugin(IsolatePlugin::new(isolate_cb));
@@ -81,7 +82,7 @@ impl FlutterWindow {
         engine.add_plugin(PlatformPlugin::new(platform_handler));
         engine.add_plugin(SettingsPlugin::default());
         engine.add_plugin(SystemPlugin::default());
-        engine.add_plugin(TextInputPlugin::default());
+        engine.add_plugin(TextInputPlugin::new(textinput_handler));
         engine.add_plugin(WindowPlugin::new(window_handler));
 
         Ok(Self {

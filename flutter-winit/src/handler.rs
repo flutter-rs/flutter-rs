@@ -4,6 +4,7 @@ use async_std::task;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use flutter_engine::FlutterEngineHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
+use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use futures_task::FutureObj;
 use glutin::event_loop::EventLoopProxy;
@@ -177,4 +178,18 @@ impl WindowHandler for WinitWindowHandler {
     fn start_drag(&mut self) {}
 
     fn end_drag(&mut self) {}
+}
+
+pub struct WinitTextInputHandler {}
+
+impl Default for WinitTextInputHandler {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+impl TextInputHandler for WinitTextInputHandler {
+    fn show(&mut self) {}
+
+    fn hide(&mut self) {}
 }

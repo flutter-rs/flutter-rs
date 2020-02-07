@@ -32,7 +32,7 @@ pub struct PlatformPlugin {
 }
 
 impl PlatformPlugin {
-    pub fn new(handler: Arc<Mutex<Box<dyn PlatformHandler + Send>>>) -> Self {
+    pub fn new(handler: Arc<Mutex<dyn PlatformHandler + Send>>) -> Self {
         Self {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler { handler })),
@@ -53,7 +53,7 @@ impl Plugin for PlatformPlugin {
 }
 
 struct Handler {
-    handler: Arc<Mutex<Box<dyn PlatformHandler + Send>>>,
+    handler: Arc<Mutex<dyn PlatformHandler + Send>>,
 }
 
 impl MethodCallHandler for Handler {

@@ -6,11 +6,18 @@ use log::debug;
 use super::prelude::*;
 
 use self::text_editing_state::TextEditingState;
+use parking_lot::Mutex;
 
 mod text_editing_state;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/textinput";
+
+pub trait TextInputHandler {
+    fn show(&mut self);
+
+    fn hide(&mut self);
+}
 
 pub struct TextInputPlugin {
     channel: Weak<JsonMethodChannel>,
@@ -20,6 +27,7 @@ pub struct TextInputPlugin {
 
 struct Handler {
     data: Arc<RwLock<Data>>,
+    handler: Arc<Mutex<dyn TextInputHandler + Send>>,
 }
 
 struct Data {
@@ -39,8 +47,8 @@ impl Plugin for TextInputPlugin {
     }
 }
 
-impl Default for TextInputPlugin {
-    fn default() -> Self {
+impl TextInputPlugin {
+    pub fn new(handler: Arc<Mutex<dyn TextInputHandler + Send>>) -> Self {
         let data = Arc::new(RwLock::new(Data {
             client_id: None,
             editing_state: None,
@@ -49,13 +57,12 @@ impl Default for TextInputPlugin {
             channel: Weak::new(),
             handler: Arc::new(RwLock::new(Handler {
                 data: Arc::clone(&data),
+                handler,
             })),
             data,
         }
     }
-}
 
-impl TextInputPlugin {
     fn with_channel<F>(&self, f: F)
     where
         F: FnOnce(&dyn MethodChannel),
@@ -122,8 +129,14 @@ impl MethodCallHandler for Handler {
                 data.editing_state.replace(state);
                 Ok(Value::Null)
             }
-            "TextInput.show" => Ok(Value::Null),
-            "TextInput.hide" => Ok(Value::Null),
+            "TextInput.show" => {
+                self.handler.lock().show();
+                Ok(Value::Null)
+            }
+            "TextInput.hide" => {
+                self.handler.lock().hide();
+                Ok(Value::Null)
+            }
             _ => Err(MethodCallError::NotImplemented),
         }
     }

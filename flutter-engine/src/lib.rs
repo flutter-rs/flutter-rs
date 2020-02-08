@@ -73,6 +73,10 @@ impl FlutterEngineWeakRef {
     pub fn is_valid(&self) -> bool {
         self.upgrade().is_some()
     }
+
+    pub fn ptr_equal(&self, other: Self) -> bool {
+        self.inner.ptr_eq(&other.inner)
+    }
 }
 
 impl Default for FlutterEngineWeakRef {

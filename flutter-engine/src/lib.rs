@@ -1,6 +1,7 @@
 #[macro_use]
 mod macros;
 
+pub mod builder;
 pub mod channel;
 pub mod codec;
 pub mod error;
@@ -52,6 +53,7 @@ struct FlutterEngineInner {
     platform_sender: Sender<MainThreadCallback>,
     texture_registry: TextureRegistry,
     assets: PathBuf,
+    arguments: Vec<String>,
 }
 
 pub struct FlutterEngineWeakRef {
@@ -140,7 +142,11 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
 }
 
 impl FlutterEngine {
-    pub fn new(handler: Weak<dyn FlutterEngineHandler>, assets: PathBuf) -> Self {
+    pub(crate) fn new(
+        handler: Weak<dyn FlutterEngineHandler>,
+        assets: PathBuf,
+        arguments: Vec<String>,
+    ) -> Self {
         let platform_handler = Arc::new(PlatformRunnerHandler {
             handler: handler.clone(),
         });
@@ -160,6 +166,7 @@ impl FlutterEngine {
                 platform_sender: main_tx,
                 texture_registry: TextureRegistry::new(),
                 assets,
+                arguments,
             }),
         };
 
@@ -239,19 +246,23 @@ impl FlutterEngine {
         &self.inner.assets
     }
 
-    pub fn run(&self, arguments: &[String]) -> Result<(), RunError> {
+    pub fn arguments(&self) -> &Vec<String> {
+        &self.inner.arguments
+    }
+
+    pub fn run(&self) -> Result<(), RunError> {
         if !self.is_platform_thread() {
             return Err(RunError::NotPlatformThread);
         }
 
-        let mut args = Vec::with_capacity(arguments.len() + 2);
+        let mut args = Vec::with_capacity(self.inner.arguments.len() + 2);
         args.push(CString::new("flutter-rs").unwrap().into_raw());
         args.push(
             CString::new("--icu-symbol-prefix=gIcudtl")
                 .unwrap()
                 .into_raw(),
         );
-        for arg in arguments.iter() {
+        for arg in self.inner.arguments.iter() {
             args.push(CString::new(arg.as_str()).unwrap().into_raw());
         }
 

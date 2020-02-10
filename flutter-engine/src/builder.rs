@@ -9,6 +9,7 @@ pub struct FlutterEngineBuilder {
 }
 
 impl FlutterEngineBuilder {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             handler: None,

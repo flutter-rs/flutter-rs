@@ -157,7 +157,7 @@ impl FlutterEngine {
 
         // Extract handler
         let handler = builder.handler.expect("No handler set");
-        if !handler.upgrade().is_some() {
+        if handler.upgrade().is_none() {
             return Err(CreateError::NoHandler);
         }
 

@@ -1,6 +1,7 @@
 #[macro_use]
 mod macros;
 
+pub mod builder;
 pub mod channel;
 pub mod codec;
 pub mod error;
@@ -11,6 +12,7 @@ pub mod tasks;
 pub mod texture_registry;
 pub mod utils;
 
+use crate::builder::FlutterEngineBuilder;
 use crate::channel::{Channel, ChannelRegistrar};
 use crate::ffi::{
     FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
@@ -20,14 +22,13 @@ use crate::plugins::{Plugin, PluginRegistrar};
 use crate::tasks::{TaskRunner, TaskRunnerHandler};
 use crate::texture_registry::{Texture, TextureRegistry};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use flutter_engine_sys::FlutterTask;
+use flutter_engine_sys::{FlutterEngineResult, FlutterTask};
 use log::trace;
 use parking_lot::RwLock;
 use std::ffi::CString;
 use std::future::Future;
 use std::os::raw::{c_char, c_void};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{mem, ptr};
@@ -44,7 +45,7 @@ pub(crate) enum MainThreadCallback {
 
 struct FlutterEngineInner {
     handler: Weak<dyn FlutterEngineHandler>,
-    engine_ptr: AtomicPtr<flutter_engine_sys::_FlutterEngine>,
+    engine_ptr: flutter_engine_sys::FlutterEngine,
     plugins: RwLock<PluginRegistrar>,
     platform_runner: TaskRunner,
     _platform_runner_handler: Arc<PlatformRunnerHandler>,
@@ -52,6 +53,7 @@ struct FlutterEngineInner {
     platform_sender: Sender<MainThreadCallback>,
     texture_registry: TextureRegistry,
     assets: PathBuf,
+    arguments: Vec<String>,
 }
 
 pub struct FlutterEngineWeakRef {
@@ -140,7 +142,25 @@ impl TaskRunnerHandler for PlatformRunnerHandler {
 }
 
 impl FlutterEngine {
-    pub fn new(handler: Weak<dyn FlutterEngineHandler>, assets: PathBuf) -> Self {
+    pub(crate) fn new(builder: FlutterEngineBuilder) -> Result<Self, CreateError> {
+        // Convert arguments into flutter compatible
+        let mut args = Vec::with_capacity(builder.args.len() + 2);
+        args.push(CString::new("flutter-rs").unwrap().into_raw());
+        args.push(
+            CString::new("--icu-symbol-prefix=gIcudtl")
+                .unwrap()
+                .into_raw(),
+        );
+        for arg in builder.args.iter() {
+            args.push(CString::new(arg.as_str()).unwrap().into_raw());
+        }
+
+        // Extract handler
+        let handler = builder.handler.expect("No handler set");
+        if handler.upgrade().is_none() {
+            return Err(CreateError::NoHandler);
+        }
+
         let platform_handler = Arc::new(PlatformRunnerHandler {
             handler: handler.clone(),
         });
@@ -150,7 +170,7 @@ impl FlutterEngine {
         let engine = Self {
             inner: Arc::new(FlutterEngineInner {
                 handler,
-                engine_ptr: AtomicPtr::new(ptr::null_mut()),
+                engine_ptr: ptr::null_mut(),
                 plugins: RwLock::new(PluginRegistrar::new()),
                 platform_runner: TaskRunner::new(
                     Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>
@@ -159,7 +179,8 @@ impl FlutterEngine {
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
                 texture_registry: TextureRegistry::new(),
-                assets,
+                assets: builder.assets,
+                arguments: builder.args,
             }),
         };
 
@@ -167,12 +188,108 @@ impl FlutterEngine {
         inner.plugins.write().init(engine.downgrade());
         inner.platform_runner.init(engine.downgrade());
 
-        engine
+        // Configure renderer
+        let renderer_config = flutter_engine_sys::FlutterRendererConfig {
+            type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
+            __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
+                open_gl: flutter_engine_sys::FlutterOpenGLRendererConfig {
+                    struct_size: std::mem::size_of::<flutter_engine_sys::FlutterOpenGLRendererConfig>(
+                    ),
+                    make_current: Some(flutter_callbacks::make_current),
+                    clear_current: Some(flutter_callbacks::clear_current),
+                    present: Some(flutter_callbacks::present),
+                    fbo_callback: Some(flutter_callbacks::fbo_callback),
+                    make_resource_current: Some(flutter_callbacks::make_resource_current),
+                    fbo_reset_after_present: false,
+                    surface_transformation: None,
+                    gl_proc_resolver: Some(flutter_callbacks::gl_proc_resolver),
+                    gl_external_texture_frame_callback: Some(
+                        flutter_callbacks::gl_external_texture_frame,
+                    ),
+                },
+            },
+        };
+
+        // Configure engine threads
+        // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
+        let runner_ptr = {
+            let arc = inner.platform_runner.clone().inner;
+            Arc::into_raw(arc) as *mut std::ffi::c_void
+        };
+
+        let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
+            user_data: runner_ptr,
+            runs_task_on_current_thread_callback: Some(
+                flutter_callbacks::runs_task_on_current_thread,
+            ),
+            post_task_callback: Some(flutter_callbacks::post_task),
+            identifier: 0,
+        };
+        let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
+            platform_task_runner: &platform_task_runner
+                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
+            render_task_runner: &platform_task_runner
+                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
+        };
+
+        // Configure engine
+        let project_args = flutter_engine_sys::FlutterProjectArgs {
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
+            assets_path: path_to_cstring(&inner.assets).into_raw(),
+            main_path__unused__: std::ptr::null(),
+            packages_path__unused__: std::ptr::null(),
+            icu_data_path: std::ptr::null(),
+            command_line_argc: args.len() as i32,
+            command_line_argv: args.as_mut_ptr() as _,
+            platform_message_callback: Some(flutter_callbacks::platform_message_callback),
+            vm_snapshot_data: std::ptr::null(),
+            vm_snapshot_data_size: 0,
+            vm_snapshot_instructions: std::ptr::null(),
+            vm_snapshot_instructions_size: 0,
+            isolate_snapshot_data: std::ptr::null(),
+            isolate_snapshot_data_size: 0,
+            isolate_snapshot_instructions: std::ptr::null(),
+            isolate_snapshot_instructions_size: 0,
+            root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
+            update_semantics_node_callback: None,
+            update_semantics_custom_action_callback: None,
+            persistent_cache_path: std::ptr::null(),
+            is_persistent_cache_read_only: false,
+            vsync_callback: None,
+            custom_dart_entrypoint: std::ptr::null(),
+            custom_task_runners: &custom_task_runners
+                as *const flutter_engine_sys::FlutterCustomTaskRunners,
+            shutdown_dart_vm_when_done: true,
+            compositor: std::ptr::null(),
+        };
+
+        // Initialise engine
+        unsafe {
+            // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
+            let inner_ptr = Arc::into_raw(inner.clone()) as *mut std::ffi::c_void;
+
+            if flutter_engine_sys::FlutterEngineInitialize(
+                1,
+                &renderer_config,
+                &project_args,
+                inner_ptr,
+                &inner.engine_ptr as *const flutter_engine_sys::FlutterEngine
+                    as *mut flutter_engine_sys::FlutterEngine,
+            ) != flutter_engine_sys::FlutterEngineResult::kSuccess
+                || inner.engine_ptr.is_null()
+            {
+                Err(CreateError::EnginePtrNull)
+            } else {
+                Ok(engine)
+            }
+        }
     }
 
     #[inline]
     pub fn engine_ptr(&self) -> flutter_engine_sys::FlutterEngine {
-        self.inner.engine_ptr.load(Ordering::Relaxed)
+        self.inner.engine_ptr
     }
 
     pub fn add_plugin<P>(&self, plugin: P) -> &Self
@@ -239,115 +356,20 @@ impl FlutterEngine {
         &self.inner.assets
     }
 
-    pub fn run(&self, arguments: &[String]) -> Result<(), RunError> {
+    pub fn arguments(&self) -> &Vec<String> {
+        &self.inner.arguments
+    }
+
+    pub fn run(&self) -> Result<(), ()> {
         if !self.is_platform_thread() {
-            return Err(RunError::NotPlatformThread);
+            panic!("Not on platform thread");
         }
 
-        let mut args = Vec::with_capacity(arguments.len() + 2);
-        args.push(CString::new("flutter-rs").unwrap().into_raw());
-        args.push(
-            CString::new("--icu-symbol-prefix=gIcudtl")
-                .unwrap()
-                .into_raw(),
-        );
-        for arg in arguments.iter() {
-            args.push(CString::new(arg.as_str()).unwrap().into_raw());
-        }
-
-        let renderer_config = flutter_engine_sys::FlutterRendererConfig {
-            type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
-            __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
-                open_gl: flutter_engine_sys::FlutterOpenGLRendererConfig {
-                    struct_size: std::mem::size_of::<flutter_engine_sys::FlutterOpenGLRendererConfig>(
-                    ),
-                    make_current: Some(flutter_callbacks::make_current),
-                    clear_current: Some(flutter_callbacks::clear_current),
-                    present: Some(flutter_callbacks::present),
-                    fbo_callback: Some(flutter_callbacks::fbo_callback),
-                    make_resource_current: Some(flutter_callbacks::make_resource_current),
-                    fbo_reset_after_present: false,
-                    surface_transformation: None,
-                    gl_proc_resolver: Some(flutter_callbacks::gl_proc_resolver),
-                    gl_external_texture_frame_callback: Some(
-                        flutter_callbacks::gl_external_texture_frame,
-                    ),
-                },
-            },
-        };
-
-        // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
-        let runner_ptr = {
-            let arc = self.inner.platform_runner.clone().inner;
-            Arc::into_raw(arc) as *mut std::ffi::c_void
-        };
-
-        let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
-            user_data: runner_ptr,
-            runs_task_on_current_thread_callback: Some(
-                flutter_callbacks::runs_task_on_current_thread,
-            ),
-            post_task_callback: Some(flutter_callbacks::post_task),
-            identifier: 0,
-        };
-        let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
-            platform_task_runner: &platform_task_runner
-                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
-            render_task_runner: &platform_task_runner
-                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
-        };
-
-        let project_args = flutter_engine_sys::FlutterProjectArgs {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: path_to_cstring(self.assets()).into_raw(),
-            main_path__unused__: std::ptr::null(),
-            packages_path__unused__: std::ptr::null(),
-            icu_data_path: std::ptr::null(),
-            command_line_argc: args.len() as i32,
-            command_line_argv: args.as_mut_ptr() as _,
-            platform_message_callback: Some(flutter_callbacks::platform_message_callback),
-            vm_snapshot_data: std::ptr::null(),
-            vm_snapshot_data_size: 0,
-            vm_snapshot_instructions: std::ptr::null(),
-            vm_snapshot_instructions_size: 0,
-            isolate_snapshot_data: std::ptr::null(),
-            isolate_snapshot_data_size: 0,
-            isolate_snapshot_instructions: std::ptr::null(),
-            isolate_snapshot_instructions_size: 0,
-            root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
-            update_semantics_node_callback: None,
-            update_semantics_custom_action_callback: None,
-            persistent_cache_path: std::ptr::null(),
-            is_persistent_cache_read_only: false,
-            vsync_callback: None,
-            custom_dart_entrypoint: std::ptr::null(),
-            custom_task_runners: &custom_task_runners
-                as *const flutter_engine_sys::FlutterCustomTaskRunners,
-            shutdown_dart_vm_when_done: true,
-            compositor: std::ptr::null(),
-        };
-
+        // TODO: Safeguard, process results
         unsafe {
-            // TODO: Should be downgraded to a weak once weak::into_raw lands in stable
-            let inner_ptr = Arc::into_raw(self.inner.clone()) as *mut std::ffi::c_void;
-
-            let engine_ptr: flutter_engine_sys::FlutterEngine = std::ptr::null_mut();
-            if flutter_engine_sys::FlutterEngineRun(
-                1,
-                &renderer_config,
-                &project_args,
-                inner_ptr,
-                &engine_ptr as *const flutter_engine_sys::FlutterEngine
-                    as *mut flutter_engine_sys::FlutterEngine,
-            ) != flutter_engine_sys::FlutterEngineResult::kSuccess
-                || engine_ptr.is_null()
-            {
-                Err(RunError::EnginePtrNull)
-            } else {
-                self.inner.engine_ptr.store(engine_ptr, Ordering::Relaxed);
-                Ok(())
+            match flutter_engine_sys::FlutterEngineRunInitialized(self.engine_ptr()) {
+                FlutterEngineResult::kSuccess => Ok(()),
+                _ => Err(()),
             }
         }
     }
@@ -576,19 +598,19 @@ fn path_to_cstring(path: &Path) -> CString {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum RunError {
-    NotPlatformThread,
+pub enum CreateError {
+    NoHandler,
     EnginePtrNull,
 }
 
-impl core::fmt::Display for RunError {
+impl core::fmt::Display for CreateError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         let msg = match self {
-            RunError::NotPlatformThread => "Not on platform thread.",
-            RunError::EnginePtrNull => "Engine ptr is null.",
+            CreateError::NoHandler => "No handler set.",
+            CreateError::EnginePtrNull => "Engine ptr is null.",
         };
         writeln!(f, "{}", msg)
     }
 }
 
-impl std::error::Error for RunError {}
+impl std::error::Error for CreateError {}

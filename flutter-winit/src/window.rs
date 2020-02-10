@@ -4,6 +4,7 @@ use crate::handler::{
 };
 use crate::keyboard::raw_key;
 use crate::pointer::Pointers;
+use flutter_engine::builder::FlutterEngineBuilder;
 use flutter_engine::channel::Channel;
 use flutter_engine::plugins::Plugin;
 use flutter_engine::texture_registry::Texture;
@@ -46,7 +47,11 @@ pub struct FlutterWindow {
 }
 
 impl FlutterWindow {
-    pub fn new(window: WindowBuilder, assets_path: PathBuf) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        window: WindowBuilder,
+        assets_path: PathBuf,
+        arguments: Vec<String>,
+    ) -> Result<Self, Box<dyn Error>> {
         let event_loop = EventLoop::with_user_event();
         let proxy = event_loop.create_proxy();
 
@@ -59,7 +64,13 @@ impl FlutterWindow {
             context.clone(),
             resource_context.clone(),
         ));
-        let engine = FlutterEngine::new(Arc::downgrade(&engine_handler) as _, assets_path);
+
+        let engine = FlutterEngineBuilder::new()
+            .with_handler(Arc::downgrade(&engine_handler) as _)
+            .with_asset_path(assets_path)
+            .with_args(arguments)
+            .build()
+            .expect("Failed to create engine");
 
         let proxy = event_loop.create_proxy();
         let isolate_cb = move || {
@@ -164,9 +175,8 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn start_engine(&self, arguments: &[String]) -> Result<(), Box<dyn Error>> {
-        self.engine.run(arguments)?;
-        Ok(())
+    pub fn start_engine(&self) -> Result<(), ()> {
+        self.engine.run()
     }
 
     pub fn run(self) -> ! {

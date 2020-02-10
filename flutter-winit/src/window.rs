@@ -69,7 +69,8 @@ impl FlutterWindow {
             .with_handler(Arc::downgrade(&engine_handler) as _)
             .with_asset_path(assets_path)
             .with_args(arguments)
-            .build();
+            .build()
+            .expect("Failed to create engine");
 
         let proxy = event_loop.create_proxy();
         let isolate_cb = move || {
@@ -174,9 +175,8 @@ impl FlutterWindow {
         self.engine.with_channel(channel_name, f)
     }
 
-    pub fn start_engine(&self) -> Result<(), Box<dyn Error>> {
-        self.engine.run()?;
-        Ok(())
+    pub fn start_engine(&self) -> Result<(), ()> {
+        self.engine.run()
     }
 
     pub fn run(self) -> ! {

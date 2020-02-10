@@ -1,11 +1,11 @@
-use crate::{FlutterEngine, FlutterEngineHandler};
+use crate::{CreateError, FlutterEngine, FlutterEngineHandler};
 use std::path::PathBuf;
 use std::sync::Weak;
 
 pub struct FlutterEngineBuilder {
-    handler: Option<Weak<dyn FlutterEngineHandler>>,
-    assets: PathBuf,
-    args: Vec<String>,
+    pub(crate) handler: Option<Weak<dyn FlutterEngineHandler>>,
+    pub(crate) assets: PathBuf,
+    pub(crate) args: Vec<String>,
 }
 
 impl FlutterEngineBuilder {
@@ -39,12 +39,7 @@ impl FlutterEngineBuilder {
         self
     }
 
-    pub fn build(self) -> FlutterEngine {
-        let handler = self.handler.expect("No handler set");
-        if !handler.upgrade().is_some() {
-            panic!("Handler is not valid")
-        }
-
-        FlutterEngine::new(handler, self.assets, self.args)
+    pub fn build(self) -> Result<FlutterEngine, CreateError> {
+        FlutterEngine::new(self)
     }
 }

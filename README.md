@@ -18,12 +18,16 @@ Build flutter desktop app in dart & rust.
 - [flutter sdk](https://flutter.io)
 
 ## Develop
-- To create a new project
+- install the `cargo` `flutter` command
+
+    `cargo install cargo-flutter`
+    
+- create your new project from the template
 
     `git clone https://github.com/flutter-rs/flutter-app-template`
 
 - To develop with cli hot-reloading:
-
+    `cd flutter-app-template`
     `cargo flutter run`
 
 ## Distribute

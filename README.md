@@ -27,7 +27,9 @@ Build flutter desktop app in dart & rust.
     `git clone https://github.com/flutter-rs/flutter-app-template`
 
 - To develop with cli hot-reloading:
+
     `cd flutter-app-template`
+    
     `cargo flutter run`
 
 ## Distribute

@@ -230,8 +230,9 @@ impl FlutterEngine {
             struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
             platform_task_runner: &platform_task_runner
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
-            render_task_runner: &platform_task_runner
-                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
+            render_task_runner: std::ptr::null(),
+            // render_task_runner: &platform_task_runner
+            //     as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
 
         // Configure engine

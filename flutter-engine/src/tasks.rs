@@ -6,7 +6,7 @@ use priority_queue::PriorityQueue;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::thread;
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
@@ -17,7 +17,7 @@ pub trait TaskRunnerHandler {
 
 pub(crate) struct TaskRunnerInner {
     engine: FlutterEngineWeakRef,
-    pub(crate) handler: Weak<dyn TaskRunnerHandler>,
+    pub(crate) handler: Arc<dyn TaskRunnerHandler + Send + Sync>,
     thread_id: ThreadId,
     tasks: PriorityQueue<Task, TaskPriority>,
 }
@@ -41,7 +41,7 @@ impl TaskRunnerInner {
 }
 
 impl TaskRunner {
-    pub fn new(handler: Weak<dyn TaskRunnerHandler>) -> Self {
+    pub fn new(handler: Arc<dyn TaskRunnerHandler + Send + Sync>) -> Self {
         let thread_id = thread::current().id();
         debug!("task runner created on thread {:?}", thread_id);
         Self {
@@ -117,7 +117,7 @@ impl TaskRunner {
         let tasks = &mut guard.tasks;
         tasks.push(task, task_priority);
 
-        let handler = guard.handler.upgrade().unwrap();
+        let handler = guard.handler.clone();
 
         // make sure to unlock the mutex before posting an event because the event handler may read the queue
         MutexGuard::unlocked(guard, move || {
@@ -130,10 +130,8 @@ impl TaskRunner {
     }
 
     pub(crate) fn wake(&self) {
-        let handler = { self.inner.lock().handler.upgrade() };
-        if let Some(handler) = handler {
-            handler.wake();
-        }
+        let handler = { self.inner.lock().handler.clone() };
+        handler.wake();
     }
 }
 

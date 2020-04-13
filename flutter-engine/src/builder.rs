@@ -1,9 +1,11 @@
-use crate::{CreateError, FlutterEngine, FlutterEngineHandler};
+use crate::tasks::TaskRunnerHandler;
+use crate::{CreateError, FlutterEngine, FlutterOpenGLHandler};
 use std::path::PathBuf;
-use std::sync::Weak;
+use std::sync::Arc;
 
 pub struct FlutterEngineBuilder {
-    pub(crate) handler: Option<Weak<dyn FlutterEngineHandler>>,
+    pub(crate) platform_handler: Option<Arc<dyn TaskRunnerHandler + Send + Sync>>,
+    pub(crate) opengl_handler: Option<Box<dyn FlutterOpenGLHandler + Send>>,
     pub(crate) assets: PathBuf,
     pub(crate) args: Vec<String>,
 }
@@ -12,14 +14,26 @@ impl FlutterEngineBuilder {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            handler: None,
+            platform_handler: None,
+            opengl_handler: None,
             assets: Default::default(),
             args: vec![],
         }
     }
 
-    pub fn with_handler(mut self, handler: Weak<dyn FlutterEngineHandler>) -> Self {
-        self.handler = Some(handler);
+    pub fn with_platform_handler(
+        mut self,
+        handler: Arc<dyn TaskRunnerHandler + Send + Sync>,
+    ) -> Self {
+        self.platform_handler = Some(handler);
+        self
+    }
+
+    pub fn with_opengl<H>(mut self, handler: H) -> Self
+    where
+        H: FlutterOpenGLHandler + Send + 'static,
+    {
+        self.opengl_handler = Some(Box::new(handler));
         self
     }
 

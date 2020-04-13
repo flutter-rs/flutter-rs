@@ -1,42 +1,56 @@
 use crate::context::Context;
 use crate::window::FlutterEvent;
-use async_std::task;
 use copypasta::{ClipboardContext, ClipboardProvider};
-use flutter_engine::FlutterEngineHandler;
+use flutter_engine::tasks::TaskRunnerHandler;
+use flutter_engine::FlutterOpenGLHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
-use futures_task::FutureObj;
 use glutin::event_loop::EventLoopProxy;
 use parking_lot::Mutex;
 use std::error::Error;
 use std::ffi::CStr;
-use std::future::Future;
 use std::os::raw::{c_char, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-pub struct WinitFlutterEngineHandler {
-    proxy: EventLoopProxy<FlutterEvent>,
+// TODO: Investigate removing mutex
+pub struct WinitPlatformTaskHandler {
+    proxy: Mutex<EventLoopProxy<FlutterEvent>>,
+}
+
+impl WinitPlatformTaskHandler {
+    pub fn new(proxy: EventLoopProxy<FlutterEvent>) -> Self {
+        Self {
+            proxy: Mutex::new(proxy),
+        }
+    }
+}
+
+impl TaskRunnerHandler for WinitPlatformTaskHandler {
+    fn wake(&self) {
+        self.proxy
+            .lock()
+            .send_event(FlutterEvent::WakePlatformThread)
+            .ok();
+    }
+}
+
+pub struct WinitOpenGLHandler {
     context: Arc<Mutex<Context>>,
     resource_context: Arc<Mutex<Context>>,
 }
 
-impl WinitFlutterEngineHandler {
-    pub fn new(
-        proxy: EventLoopProxy<FlutterEvent>,
-        context: Arc<Mutex<Context>>,
-        resource_context: Arc<Mutex<Context>>,
-    ) -> Self {
+impl WinitOpenGLHandler {
+    pub fn new(context: Arc<Mutex<Context>>, resource_context: Arc<Mutex<Context>>) -> Self {
         Self {
-            proxy,
             context,
             resource_context,
         }
     }
 }
 
-impl FlutterEngineHandler for WinitFlutterEngineHandler {
+impl FlutterOpenGLHandler for WinitOpenGLHandler {
     fn swap_buffers(&self) -> bool {
         self.context.lock().present()
     }
@@ -64,14 +78,6 @@ impl FlutterEngineHandler for WinitFlutterEngineHandler {
             }
             std::ptr::null_mut()
         }
-    }
-
-    fn wake_platform_thread(&self) {
-        self.proxy.send_event(FlutterEvent::WakePlatformThread).ok();
-    }
-
-    fn run_in_background(&self, future: Box<dyn Future<Output = ()> + Send + 'static>) {
-        task::spawn(FutureObj::new(future));
     }
 }
 

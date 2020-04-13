@@ -9,6 +9,9 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
+
+use futures_task::FutureObj;
+
 pub mod texture_registry;
 pub mod utils;
 
@@ -19,8 +22,9 @@ use crate::ffi::{
     FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
 };
 use crate::plugins::{Plugin, PluginRegistrar};
-use crate::tasks::{TaskRunner, TaskRunnerHandler};
+use crate::tasks::TaskRunner;
 use crate::texture_registry::{Texture, TextureRegistry};
+use async_std::task;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use flutter_engine_sys::{FlutterEngineResult, FlutterTask};
 use log::trace;
@@ -44,11 +48,10 @@ pub(crate) enum MainThreadCallback {
 }
 
 struct FlutterEngineInner {
-    handler: Weak<dyn FlutterEngineHandler>,
+    opengl_handler: Box<dyn FlutterOpenGLHandler + Send>,
     engine_ptr: flutter_engine_sys::FlutterEngine,
     plugins: RwLock<PluginRegistrar>,
     platform_runner: TaskRunner,
-    _platform_runner_handler: Arc<PlatformRunnerHandler>,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
     texture_registry: TextureRegistry,
@@ -111,7 +114,7 @@ impl Clone for FlutterEngine {
     }
 }
 
-pub trait FlutterEngineHandler {
+pub trait FlutterOpenGLHandler {
     fn swap_buffers(&self) -> bool;
 
     fn make_current(&self) -> bool;
@@ -123,22 +126,6 @@ pub trait FlutterEngineHandler {
     fn make_resource_current(&self) -> bool;
 
     fn gl_proc_resolver(&self, proc: *const c_char) -> *mut c_void;
-
-    fn wake_platform_thread(&self);
-
-    fn run_in_background(&self, func: Box<dyn Future<Output = ()> + Send + 'static>);
-}
-
-struct PlatformRunnerHandler {
-    handler: Weak<dyn FlutterEngineHandler>,
-}
-
-impl TaskRunnerHandler for PlatformRunnerHandler {
-    fn wake(&self) {
-        if let Some(handler) = self.handler.upgrade() {
-            handler.wake_platform_thread();
-        }
-    }
 }
 
 impl FlutterEngine {
@@ -155,27 +142,18 @@ impl FlutterEngine {
             args.push(CString::new(arg.as_str()).unwrap().into_raw());
         }
 
-        // Extract handler
-        let handler = builder.handler.expect("No handler set");
-        if handler.upgrade().is_none() {
-            return Err(CreateError::NoHandler);
-        }
-
-        let platform_handler = Arc::new(PlatformRunnerHandler {
-            handler: handler.clone(),
-        });
-
         let (main_tx, main_rx) = unbounded();
 
         let engine = Self {
             inner: Arc::new(FlutterEngineInner {
-                handler,
+                opengl_handler: builder
+                    .opengl_handler
+                    .expect("Only opengl is supported (for now)"),
                 engine_ptr: ptr::null_mut(),
                 plugins: RwLock::new(PluginRegistrar::new()),
                 platform_runner: TaskRunner::new(
-                    Arc::downgrade(&platform_handler) as Weak<dyn TaskRunnerHandler>
+                    builder.platform_handler.expect("No platform runner set"),
                 ),
-                _platform_runner_handler: platform_handler,
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
                 texture_registry: TextureRegistry::new(),
@@ -400,17 +378,17 @@ impl FlutterEngine {
     where
         F: FnOnce(&FlutterEngine) -> () + 'static + Send,
     {
-        if self.is_platform_thread() {
-            f(self);
-        } else {
-            self.post_platform_callback(MainThreadCallback::RenderThread(Box::new(f)));
-        }
+        // TODO: Reimplement render thread
+        // if self.is_platform_thread() {
+        //     f(self);
+        // } else {
+        self.post_platform_callback(MainThreadCallback::RenderThread(Box::new(f)));
+        // }
     }
 
+    #[deprecated(note = "Soon to be removed: Unclear use cases")]
     pub fn run_in_background(&self, future: impl Future<Output = ()> + Send + 'static) {
-        if let Some(handler) = self.inner.handler.upgrade() {
-            handler.run_in_background(Box::new(future));
-        }
+        task::spawn(FutureObj::new(Box::new(future)));
     }
 
     pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {

@@ -4,4 +4,5 @@ members = [
     "flutter-engine-sys",
     "flutter-plugins",
     "flutter-winit",
+    "flutter-glfw",
 ]

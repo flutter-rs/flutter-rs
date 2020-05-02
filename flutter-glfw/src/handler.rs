@@ -5,6 +5,7 @@ use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use glfw::Context;
 use parking_lot::Mutex;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::sync::Arc;
 
@@ -25,35 +26,27 @@ impl TaskRunnerHandler for GlfwPlatformTaskHandler {
 }
 
 pub(crate) struct GlfwOpenGLHandler {
-    pub(crate) glfw: glfw::Glfw,
-    pub(crate) window: Arc<Mutex<glfw::Window>>,
-    pub(crate) resource_window: Arc<Mutex<glfw::Window>>,
+    render_ctx: RefCell<glfw::RenderContext>,
+    resource_ctx: RefCell<glfw::RenderContext>,
 }
 
-unsafe impl Send for GlfwOpenGLHandler {}
-
 impl GlfwOpenGLHandler {
-    pub fn new(
-        glfw: glfw::Glfw,
-        window: Arc<Mutex<glfw::Window>>,
-        resource_window: Arc<Mutex<glfw::Window>>,
-    ) -> Self {
+    pub fn new(render_ctx: glfw::RenderContext, resource_ctx: glfw::RenderContext) -> Self {
         Self {
-            glfw,
-            window,
-            resource_window,
+            render_ctx: RefCell::new(render_ctx),
+            resource_ctx: RefCell::new(resource_ctx),
         }
     }
 }
 
 impl FlutterOpenGLHandler for GlfwOpenGLHandler {
     fn swap_buffers(&self) -> bool {
-        self.window.lock().swap_buffers();
+        self.render_ctx.borrow_mut().swap_buffers();
         true
     }
 
     fn make_current(&self) -> bool {
-        self.window.lock().make_current();
+        self.render_ctx.borrow_mut().make_current();
         true
     }
 
@@ -67,15 +60,12 @@ impl FlutterOpenGLHandler for GlfwOpenGLHandler {
     }
 
     fn make_resource_current(&self) -> bool {
-        self.resource_window.lock().make_current();
+        self.resource_ctx.borrow_mut().make_current();
         true
     }
 
     fn gl_proc_resolver(&self, proc: *const i8) -> *mut c_void {
-        unsafe {
-            self.glfw
-                .get_proc_address_raw(&glfw::string_from_c_str(proc)) as *mut c_void
-        }
+        unsafe { glfw::ffi::glfwGetProcAddress(proc as _) as _ }
     }
 }
 

@@ -13,9 +13,8 @@ copypasta = "0.6.2"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 flutter-engine = { path = "../flutter-engine" }
 flutter-plugins = { path = "../flutter-plugins" }
-gl = "0.14.0"
 locale_config = "0.3.0"
 log = "0.4.8"
 parking_lot = "0.10.0"
-glfw = "0.34.0"
+glfw = "0.37.0"
 lazy_static = "1.4.0"

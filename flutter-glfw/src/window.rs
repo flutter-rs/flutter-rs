@@ -1,4 +1,3 @@
-use crate::draw;
 use crate::handler::{
     GlfwOpenGLHandler, GlfwPlatformHandler, GlfwPlatformTaskHandler, GlfwTextInputHandler,
     GlfwWindowHandler,
@@ -10,6 +9,8 @@ use flutter_engine::ffi::{
     FlutterPointerSignalKind,
 };
 use flutter_engine::plugins::Plugin;
+use flutter_engine::tasks::TaskRunnerHandler;
+use flutter_engine::texture_registry::Texture;
 use flutter_engine::FlutterEngine;
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
@@ -25,16 +26,13 @@ use flutter_plugins::window::WindowPlugin;
 use glfw::Context;
 use lazy_static::lazy_static;
 use log::{debug, info};
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
-use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
-use flutter_engine::texture_registry::Texture;
-use flutter_engine::tasks::TaskRunnerHandler;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
@@ -57,18 +55,12 @@ pub enum CreateError {
 
 impl std::fmt::Display for CreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use std::error::Error;
-        f.write_str(self.description())
-    }
-}
-
-impl std::error::Error for CreateError {
-    fn description(&self) -> &str {
-        match *self {
+        let msg = match *self {
             CreateError::WindowCreationFailed => "Failed to create a window",
             CreateError::WindowAlreadyCreated => "Window was already created",
             CreateError::MonitorNotFound => "No monitor with the specified index found",
-        }
+        };
+        f.write_str(msg)
     }
 }
 
@@ -83,7 +75,6 @@ pub struct WindowArgs<'a> {
     pub height: i32,
     pub title: &'a str,
     pub mode: WindowMode,
-    pub bg_color: (u8, u8, u8),
 }
 
 /// Wrap glfw::Window, so that it could be used in a lazy_static HashMap
@@ -111,7 +102,7 @@ pub struct FlutterWindow {
     glfw: glfw::Glfw,
     window: Arc<Mutex<glfw::Window>>,
     window_receiver: Receiver<(f64, glfw::WindowEvent)>,
-    resource_window: Arc<Mutex<glfw::Window>>,
+    _resource_window: glfw::Window,
     _resource_window_receiver: Receiver<(f64, glfw::WindowEvent)>,
     engine: FlutterEngine,
     pointer_currently_added: AtomicBool,
@@ -132,8 +123,17 @@ impl FlutterWindow {
         assets_path: PathBuf,
         arguments: Vec<String>,
     ) -> Result<Self, CreateError> {
+        glfw.window_hint(glfw::WindowHint::ContextVersion(3, 2));
+        glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
+        glfw.window_hint(glfw::WindowHint::OpenGlProfile(
+            glfw::OpenGlProfileHint::Core,
+        ));
+        glfw.window_hint(glfw::WindowHint::ContextCreationApi(
+            glfw::ContextCreationApi::Egl,
+        ));
+
         // Create window
-        let (window, receiver) = match window_args.mode {
+        let (mut window, receiver) = match window_args.mode {
             WindowMode::Windowed => glfw
                 .create_window(
                     window_args.width as u32,
@@ -169,29 +169,19 @@ impl FlutterWindow {
         // Create invisible resource window
         glfw.window_hint(glfw::WindowHint::Decorated(false));
         glfw.window_hint(glfw::WindowHint::Visible(false));
-        let (res_window, res_window_recv) = window
+        let (mut res_window, res_window_recv) = window
             .create_shared(1, 1, "", glfw::WindowMode::Windowed)
             .ok_or(CreateError::WindowCreationFailed)?;
         glfw.default_window_hints();
 
+        let render_ctx = window.render_context();
+
         // Wrap
         let window = Arc::new(Mutex::new(window));
-        let res_window = Arc::new(Mutex::new(res_window));
-
-        // draw initial screen to avoid blinking
-        {
-            let mut window = window.lock();
-            window.make_current();
-            let mut window = MutexGuard::deref_mut(&mut window);
-            draw::init_gl(&mut window);
-            draw::draw_bg(&mut window, window_args.bg_color);
-            glfw::make_context_current(None);
-        }
 
         // Create engine
         let platform_task_handler = Arc::new(GlfwPlatformTaskHandler::new());
-        let opengl_handler =
-            GlfwOpenGLHandler::new(glfw.clone(), window.clone(), res_window.clone());
+        let opengl_handler = GlfwOpenGLHandler::new(render_ctx, res_window.render_context());
 
         let engine = FlutterEngineBuilder::new()
             .with_platform_handler(platform_task_handler.clone())
@@ -244,7 +234,7 @@ impl FlutterWindow {
             glfw: glfw.clone(),
             window,
             window_receiver: receiver,
-            resource_window: res_window,
+            _resource_window: res_window,
             _resource_window_receiver: res_window_recv,
             engine,
             pointer_currently_added: AtomicBool::new(false),
@@ -265,10 +255,6 @@ impl FlutterWindow {
 
     pub fn window(&self) -> Arc<Mutex<glfw::Window>> {
         self.window.clone()
-    }
-
-    pub fn resource_window(&self) -> Arc<Mutex<glfw::Window>> {
-        self.resource_window.clone()
     }
 
     pub fn create_texture(&self) -> Texture {

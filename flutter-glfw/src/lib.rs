@@ -2,7 +2,6 @@ use crate::window::{CreateError, FlutterWindow, WindowArgs};
 use log::error;
 use std::path::PathBuf;
 
-mod draw;
 mod handler;
 pub mod window;
 

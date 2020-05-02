@@ -502,12 +502,10 @@ dependencies = [
 name = "flutter-glfw"
 version = "0.4.0"
 dependencies = [
- "copypasta 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "flutter-engine 0.4.0",
  "flutter-engine-sys 0.4.0",
  "flutter-plugins 0.4.0",
  "glfw 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "locale_config 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",

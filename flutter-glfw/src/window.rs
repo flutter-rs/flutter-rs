@@ -23,8 +23,6 @@ use flutter_plugins::settings::SettingsPlugin;
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
-use glfw::Context;
-use lazy_static::lazy_static;
 use log::{debug, info};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -84,15 +82,6 @@ struct WindowSafe(*mut glfw::ffi::GLFWwindow);
 unsafe impl Send for WindowSafe {}
 
 unsafe impl Sync for WindowSafe {}
-
-// This HashMap is used to look up FlutterEngine using glfw Window
-lazy_static! {
-    static ref ENGINES: Mutex<HashMap<WindowSafe, FlutterEngine>> = Mutex::new(HashMap::new());
-}
-
-pub fn get_engine(window: *mut glfw::ffi::GLFWwindow) -> Option<FlutterEngine> {
-    ENGINES.lock().get(&WindowSafe(window)).cloned()
-}
 
 pub(crate) type MainTheadFn = Box<dyn FnMut(&FlutterWindow) + Send>;
 pub type WindowEventHandler = dyn FnMut(&FlutterWindow, glfw::WindowEvent) -> bool;
@@ -190,13 +179,6 @@ impl FlutterWindow {
             .with_args(arguments)
             .build()
             .expect("Failed to create engine");
-
-        // register window and engine globally
-        {
-            ENGINES
-                .lock()
-                .insert(WindowSafe(window.lock().window_ptr()), engine.clone());
-        }
 
         // Main thread callbacks
         let (main_tx, main_rx) = mpsc::channel();
@@ -319,13 +301,7 @@ impl FlutterWindow {
             window.set_scroll_polling(true);
             window.set_size_polling(true);
             window.set_content_scale_polling(true);
-
-            unsafe {
-                glfw::ffi::glfwSetWindowRefreshCallback(
-                    window.window_ptr(),
-                    Some(window_refreshed),
-                );
-            }
+            window.set_refresh_polling(true);
         }
 
         self.with_plugin(
@@ -400,10 +376,6 @@ impl FlutterWindow {
     }
 
     pub fn shutdown(self) {
-        ENGINES
-            .lock()
-            .remove(&WindowSafe(self.window.lock().window_ptr()));
-
         self.engine.shutdown();
     }
 
@@ -490,6 +462,30 @@ impl FlutterWindow {
         }
 
         match event {
+            glfw::WindowEvent::Refresh => {
+                let window = self.window.lock();
+
+                // let window_size = window.get_size();
+                let framebuffer_size = window.get_framebuffer_size();
+                let scale = window.get_content_scale();
+
+                // probably dont need this, since after resize a framebuffer size
+                // change event is sent and set this regardless
+                // self.window_pixels_per_screen_coordinate =
+                //     f64::from(framebuffer_size.0) / f64::from(window_size.0);
+
+                log::debug!(
+                    "Setting framebuffer size to {:?}, scale to {}",
+                    framebuffer_size,
+                    scale.0
+                );
+
+                self.engine.send_window_metrics_event(
+                    framebuffer_size.0 as _,
+                    framebuffer_size.1 as _,
+                    f64::from(scale.0),
+                );
+            }
             glfw::WindowEvent::CursorEnter(entered) => {
                 let cursor_pos = self.window.lock().get_cursor_pos();
                 self.send_pointer_event(
@@ -780,40 +776,5 @@ impl FlutterWindow {
             }
             _ => {}
         }
-    }
-}
-
-extern "C" fn window_refreshed(window: *mut glfw::ffi::GLFWwindow) {
-    if let Some(engine) = get_engine(window) {
-        let mut window_size: (i32, i32) = (0, 0);
-        let mut framebuffer_size: (i32, i32) = (0, 0);
-        let mut scale: (f32, f32) = (0.0, 0.0);
-
-        unsafe {
-            glfw::ffi::glfwGetWindowSize(window, &mut window_size.0, &mut window_size.1);
-            glfw::ffi::glfwGetFramebufferSize(
-                window,
-                &mut framebuffer_size.0,
-                &mut framebuffer_size.1,
-            );
-            glfw::ffi::glfwGetWindowContentScale(window, &mut scale.0, &mut scale.1);
-        }
-
-        // probably dont need this, since after resize a framebuffer size
-        // change event is sent and set this regardless
-        // self.window_pixels_per_screen_coordinate =
-        //     f64::from(framebuffer_size.0) / f64::from(window_size.0);
-
-        log::debug!(
-            "Setting framebuffer size to {:?}, scale to {}",
-            framebuffer_size,
-            scale.0
-        );
-
-        engine.send_window_metrics_event(
-            framebuffer_size.0 as _,
-            framebuffer_size.1 as _,
-            f64::from(scale.0),
-        );
     }
 }

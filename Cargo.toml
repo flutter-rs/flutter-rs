@@ -3,6 +3,7 @@ members = [
     "flutter-engine",
     "flutter-engine-sys",
     "flutter-plugins",
-    "flutter-winit",
+#    "flutter-winit",
     "flutter-glfw",
+    "flutter-tools"
 ]

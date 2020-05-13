@@ -4,16 +4,26 @@
 use std::collections::HashMap;
 
 use log::debug;
+use std::sync::Weak;
+
 use serde::{Deserialize, Serialize};
 
-use super::prelude::*;
+use flutter_engine::{
+    channel::{MessageChannel, MessageHandler},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use flutter_engine::channel::Message;
+use flutter_engine::codec::value::to_value;
+use flutter_engine::codec::Value;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/settings";
 
 pub struct SettingsPlugin {
-    channel: Weak<BasicMessageChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MessageChannel>,
 }
 
 pub struct SettingsMessage<'a> {
@@ -32,7 +42,6 @@ impl Default for SettingsPlugin {
     fn default() -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -42,13 +51,9 @@ impl Plugin for SettingsPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let handler = Arc::downgrade(&self.handler);
-        self.channel = registrar.register_channel(BasicMessageChannel::new(
-            CHANNEL_NAME,
-            handler,
-            &json_codec::CODEC,
-        ));
+    fn init(&mut self, engine: &FlutterEngine) {
+        self.channel =
+            engine.register_channel(MessageChannel::new(CHANNEL_NAME, Handler, &JSON_CODEC));
     }
 }
 
@@ -69,14 +74,14 @@ impl SettingsMessage<'_> {
 
     pub fn set_platform_brightness(mut self, brightness: PlatformBrightness) -> Self {
         self.settings
-            .insert("platformBrightness".into(), json_value!(brightness));
+            .insert("platformBrightness".into(), to_value(brightness).unwrap());
         self
     }
 
     pub fn send(self) {
         if let Some(channel) = self.plugin.channel.upgrade() {
             debug!("Sending settings: {:?}", self.settings);
-            channel.send(&Value::Map(self.settings));
+            channel.send(self.settings);
         }
     }
 }
@@ -94,7 +99,7 @@ impl SettingsPlugin {
 struct Handler;
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
-        Ok(Value::Null)
+    fn on_message(&mut self, msg: Message) {
+        msg.respond(Value::Null)
     }
 }

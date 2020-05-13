@@ -59,7 +59,10 @@ pub extern "C" fn platform_message_callback(
     trace!("platform_message_callback");
     unsafe {
         let engine = &*(user_data as *const FlutterEngineInner);
-        engine.plugins.write().handle((*platform_message).into());
+        engine
+            .channel_registry
+            .read()
+            .handle((*platform_message).into());
     }
 }
 

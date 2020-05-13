@@ -1,23 +1,31 @@
 //! Plugin to work with locales.
 //! It handles flutter/localization type message.
+use std::sync::Weak;
 
-use super::prelude::*;
+use serde::{Deserialize, Serialize};
 
+use flutter_engine::{
+    channel::{MessageChannel, MessageHandler},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use flutter_engine::channel::Message;
+use flutter_engine::codec::Value;
 use log::{error, info};
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/system";
 
 pub struct SystemPlugin {
-    channel: Weak<BasicMessageChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MessageChannel>,
 }
 
 impl Default for SystemPlugin {
     fn default() -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -27,13 +35,9 @@ impl Plugin for SystemPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let handler = Arc::downgrade(&self.handler);
-        self.channel = registrar.register_channel(BasicMessageChannel::new(
-            CHANNEL_NAME,
-            handler,
-            &json_codec::CODEC,
-        ));
+    fn init(&mut self, engine: &FlutterEngine) {
+        self.channel =
+            engine.register_channel(MessageChannel::new(CHANNEL_NAME, Handler, &JSON_CODEC));
     }
 }
 
@@ -41,17 +45,24 @@ impl SystemPlugin {
     pub fn send_memory_pressure_warning(&self) {
         info!("Sending memory pressure warning");
         if let Some(channel) = self.channel.upgrade() {
-            channel.send(&json_value!({ "type": "memoryPressure"}));
+            channel.send(SystemMsg {
+                r#type: "memoryPressure".to_string(),
+            });
         } else {
             error!("Failed to upgrade channel to send memory pressure warning");
         }
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct SystemMsg {
+    r#type: String,
+}
+
 struct Handler;
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
-        Ok(Value::Null)
+    fn on_message(&mut self, msg: Message) {
+        msg.respond(Value::Null)
     }
 }

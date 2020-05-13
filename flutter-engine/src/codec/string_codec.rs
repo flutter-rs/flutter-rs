@@ -4,7 +4,7 @@ use super::{MessageCodec, Value};
 
 pub struct StringCodec;
 
-pub const CODEC: StringCodec = StringCodec {};
+pub const STRING_CODEC: StringCodec = StringCodec {};
 
 impl MessageCodec for StringCodec {
     fn encode_message(&self, v: &Value) -> Vec<u8> {

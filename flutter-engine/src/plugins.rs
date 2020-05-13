@@ -7,15 +7,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{
-    channel::{ChannelRegistrar, ChannelRegistry},
-    FlutterEngineWeakRef, PlatformMessage,
-};
+use crate::FlutterEngine;
 
 #[derive(Default)]
 pub struct PluginRegistrar {
     plugins: HashMap<String, Arc<RwLock<dyn Any>>>,
-    pub channel_registry: ChannelRegistry,
 }
 
 impl PluginRegistrar {
@@ -23,28 +19,17 @@ impl PluginRegistrar {
         Default::default()
     }
 
-    pub fn init(&mut self, engine: FlutterEngineWeakRef) {
-        self.channel_registry.init(engine);
-    }
-
-    pub fn add_plugin<P>(&mut self, plugin: P) -> &mut Self
+    pub fn add_plugin<P>(&mut self, engine: &FlutterEngine, plugin: P) -> &mut Self
     where
         P: Plugin + 'static,
     {
         let arc = Arc::new(RwLock::new(plugin));
         {
             let mut plugin = arc.write().unwrap();
-            self.channel_registry
-                .with_channel_registrar(P::plugin_name(), |registrar| {
-                    plugin.init_channels(registrar);
-                });
+            plugin.init(engine);
         }
         self.plugins.insert(P::plugin_name().to_owned(), arc);
         self
-    }
-
-    pub fn handle(&mut self, message: PlatformMessage) {
-        self.channel_registry.handle(message);
     }
 
     pub fn with_plugin<F, P>(&self, f: F)
@@ -74,5 +59,5 @@ impl PluginRegistrar {
 
 pub trait Plugin {
     fn plugin_name() -> &'static str;
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar);
+    fn init(&mut self, engine: &FlutterEngine);
 }

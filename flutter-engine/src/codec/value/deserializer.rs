@@ -25,6 +25,13 @@ where
     T::deserialize(&mut Deserializer::new(value))
 }
 
+pub fn from_value_owned<T>(value: &Value) -> Result<T>
+where
+    T: de::DeserializeOwned,
+{
+    T::deserialize(&mut Deserializer::new(value))
+}
+
 impl<'a, 'de> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     type Error = ValueError;
 

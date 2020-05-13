@@ -2,15 +2,22 @@
 //! It handles flutter/navigation type messages.
 
 use log::debug;
+use std::sync::Weak;
 
-use super::prelude::*;
+use flutter_engine::channel::MethodCall;
+use flutter_engine::codec::Value;
+use flutter_engine::{
+    channel::{MethodCallHandler, MethodChannel},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/navigation";
 
 pub struct NavigationPlugin {
-    channel: Weak<JsonMethodChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MethodChannel>,
 }
 
 impl Plugin for NavigationPlugin {
@@ -18,10 +25,9 @@ impl Plugin for NavigationPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
+    fn init(&mut self, engine: &FlutterEngine) {
         self.channel =
-            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+            engine.register_channel(MethodChannel::new(CHANNEL_NAME, Handler, &JSON_CODEC));
     }
 }
 
@@ -29,7 +35,6 @@ impl Default for NavigationPlugin {
     fn default() -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler)),
         }
     }
 }
@@ -37,7 +42,7 @@ impl Default for NavigationPlugin {
 impl NavigationPlugin {
     fn with_channel<F>(&self, f: F)
     where
-        F: FnOnce(&dyn MethodChannel),
+        F: FnOnce(&MethodChannel),
     {
         if let Some(channel) = self.channel.upgrade() {
             f(&*channel);
@@ -46,41 +51,28 @@ impl NavigationPlugin {
 
     pub fn set_initial_route(&self, initial_route: &str) {
         self.with_channel(|channel| {
-            channel.invoke_method(MethodCall {
-                method: String::from("setInitialRoute"),
-                args: Value::String(initial_route.into()),
-            })
+            channel.invoke_method("setInitialRoute", initial_route.to_string())
         });
     }
 
     pub fn push_route(&self, route: &str) {
-        self.with_channel(|channel| {
-            channel.invoke_method(MethodCall {
-                method: String::from("pushRoute"),
-                args: Value::String(route.into()),
-            })
-        });
+        self.with_channel(|channel| channel.invoke_method("pushRoute", route.to_string()));
     }
 
     pub fn pop_route(&self) {
-        self.with_channel(|channel| {
-            channel.invoke_method(MethodCall {
-                method: String::from("popRoute"),
-                args: Value::Null,
-            })
-        });
+        self.with_channel(|channel| channel.invoke_method("popRoute", Value::Null));
     }
 }
 
 struct Handler;
 
 impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        call: MethodCall,
-        _: FlutterEngine,
-    ) -> Result<Value, MethodCallError> {
-        debug!("got method call {} with args {:?}", call.method, call.args);
-        Err(MethodCallError::NotImplemented)
+    fn on_method_call(&mut self, call: MethodCall) {
+        debug!(
+            "got method call {} with args {:?}",
+            call.method(),
+            call.raw_args()
+        );
+        call.not_implemented()
     }
 }

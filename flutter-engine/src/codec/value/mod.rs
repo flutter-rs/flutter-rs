@@ -4,9 +4,24 @@ use std::convert::{TryFrom, TryInto};
 
 use serde::{de, ser, Deserialize, Serialize};
 
-pub use self::deserializer::{from_value, Deserializer};
+pub use self::deserializer::{from_value, from_value_owned, Deserializer};
 
 mod deserializer;
+
+pub trait VecExt {
+    fn push_as_value<T>(&mut self, value: T)
+    where
+        T: Serialize;
+}
+
+impl VecExt for Vec<Value> {
+    fn push_as_value<T>(&mut self, value: T)
+    where
+        T: Serialize,
+    {
+        self.push(to_value(value).unwrap())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {

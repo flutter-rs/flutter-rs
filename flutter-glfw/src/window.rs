@@ -8,7 +8,7 @@ use flutter_engine::ffi::{
     FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
     FlutterPointerSignalKind,
 };
-use flutter_engine::plugins::Plugin;
+use flutter_engine::plugins::{Plugin, PluginRegistrar};
 use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_engine::texture_registry::Texture;
 use flutter_engine::FlutterEngine;
@@ -24,12 +24,12 @@ use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
 use log::{debug, info};
-use parking_lot::Mutex;
-use std::collections::{HashMap, VecDeque};
+use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SendError, Sender};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Weak};
 use std::time::Instant;
 
 // seems to be about 2.5 lines of text
@@ -98,11 +98,10 @@ pub struct FlutterWindow {
     window_pixels_per_screen_coordinate: AtomicU64,
     main_thread_receiver: Receiver<MainTheadFn>,
     main_thread_sender: Sender<MainTheadFn>,
-    isolate_created: AtomicBool,
-    defered_events: Mutex<VecDeque<glfw::WindowEvent>>,
     mouse_tracker: Mutex<HashMap<glfw::MouseButton, glfw::Action>>,
     window_handler: Arc<Mutex<GlfwWindowHandler>>,
     platform_task_handler: Arc<GlfwPlatformTaskHandler>,
+    plugins: RwLock<PluginRegistrar>,
 }
 
 impl FlutterWindow {
@@ -184,15 +183,6 @@ impl FlutterWindow {
         let (main_tx, main_rx) = mpsc::channel();
 
         // Register plugins
-        let isolate_tx: Sender<MainTheadFn> = main_tx.clone();
-        let isolate_cb = move || {
-            isolate_tx
-                .send(Box::new(move |window| {
-                    window.set_isolate_created();
-                }))
-                .unwrap();
-        };
-
         let platform_handler = Arc::new(Mutex::new(GlfwPlatformHandler {
             window: window.clone(),
         }));
@@ -200,17 +190,18 @@ impl FlutterWindow {
             Arc::new(Mutex::new(GlfwWindowHandler::new(window.clone())));
         let textinput_handler = Arc::new(Mutex::new(GlfwTextInputHandler::default()));
 
-        engine.add_plugin(DialogPlugin::default());
-        engine.add_plugin(IsolatePlugin::new(isolate_cb));
-        engine.add_plugin(KeyEventPlugin::default());
-        engine.add_plugin(LifecyclePlugin::default());
-        engine.add_plugin(LocalizationPlugin::default());
-        engine.add_plugin(NavigationPlugin::default());
-        engine.add_plugin(PlatformPlugin::new(platform_handler));
-        engine.add_plugin(SettingsPlugin::default());
-        engine.add_plugin(SystemPlugin::default());
-        engine.add_plugin(TextInputPlugin::new(textinput_handler));
-        engine.add_plugin(WindowPlugin::new(window_handler.clone()));
+        let mut plugins = PluginRegistrar::new();
+        plugins.add_plugin(&engine, DialogPlugin::default());
+        plugins.add_plugin(&engine, IsolatePlugin::new_stub());
+        plugins.add_plugin(&engine, KeyEventPlugin::default());
+        plugins.add_plugin(&engine, LifecyclePlugin::default());
+        plugins.add_plugin(&engine, LocalizationPlugin::default());
+        plugins.add_plugin(&engine, NavigationPlugin::default());
+        plugins.add_plugin(&engine, PlatformPlugin::new(platform_handler));
+        plugins.add_plugin(&engine, SettingsPlugin::default());
+        plugins.add_plugin(&engine, SystemPlugin::default());
+        plugins.add_plugin(&engine, TextInputPlugin::new(textinput_handler));
+        plugins.add_plugin(&engine, WindowPlugin::new(window_handler.clone()));
 
         Ok(Self {
             glfw: glfw.clone(),
@@ -223,11 +214,10 @@ impl FlutterWindow {
             window_pixels_per_screen_coordinate: AtomicU64::new(0.0_f64.to_bits()),
             main_thread_receiver: main_rx,
             main_thread_sender: main_tx,
-            isolate_created: AtomicBool::new(false),
-            defered_events: Mutex::new(Default::default()),
             mouse_tracker: Mutex::new(Default::default()),
             window_handler,
             platform_task_handler,
+            plugins: RwLock::new(plugins),
         })
     }
 
@@ -247,7 +237,7 @@ impl FlutterWindow {
     where
         P: Plugin + 'static,
     {
-        self.engine.add_plugin(plugin);
+        self.plugins.write().add_plugin(&self.engine, plugin);
         self
     }
 
@@ -256,7 +246,7 @@ impl FlutterWindow {
         F: FnOnce(&P),
         P: Plugin + 'static,
     {
-        self.engine.with_plugin(f)
+        self.plugins.read().with_plugin(f)
     }
 
     pub fn with_plugin_mut<F, P>(&self, f: F)
@@ -264,7 +254,14 @@ impl FlutterWindow {
         F: FnOnce(&mut P),
         P: Plugin + 'static,
     {
-        self.engine.with_plugin_mut(f)
+        self.plugins.write().with_plugin_mut(f)
+    }
+
+    pub fn register_channel<C>(&self, channel: C) -> Weak<C>
+    where
+        C: Channel + 'static,
+    {
+        self.engine.register_channel(channel)
     }
 
     pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
@@ -367,14 +364,6 @@ impl FlutterWindow {
         Ok(())
     }
 
-    pub fn set_isolate_created(&self) {
-        self.isolate_created.store(true, Ordering::Relaxed);
-
-        while let Some(evt) = self.defered_events.lock().pop_front() {
-            self.handle_glfw_event(evt);
-        }
-    }
-
     pub fn shutdown(self) {
         self.engine.shutdown();
     }
@@ -456,11 +445,6 @@ impl FlutterWindow {
     }
 
     pub fn handle_glfw_event(&self, event: glfw::WindowEvent) {
-        if !self.isolate_created.load(Ordering::Relaxed) {
-            self.defered_events.lock().push_back(event);
-            return;
-        }
-
         match event {
             glfw::WindowEvent::Refresh => {
                 let window = self.window.lock();

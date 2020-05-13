@@ -1,6 +1,18 @@
 //! Plugin to work with clipboard and various system related functions.
 //! It handles flutter/platform type message.
-use crate::prelude::*;
+use std::sync::{Arc, Weak};
+
+use flutter_engine::{
+    channel::{MethodCallHandler, MethodChannel},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use serde::{Deserialize, Serialize};
+
+use flutter_engine::channel::MethodCall;
+use flutter_engine::codec::Value;
 use log::debug;
 use parking_lot::Mutex;
 
@@ -27,15 +39,15 @@ pub trait PlatformHandler {
 }
 
 pub struct PlatformPlugin {
-    channel: Weak<JsonMethodChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MethodChannel>,
+    handler: Arc<Mutex<dyn PlatformHandler + Send>>,
 }
 
 impl PlatformPlugin {
     pub fn new(handler: Arc<Mutex<dyn PlatformHandler + Send>>) -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler { handler })),
+            handler,
         }
     }
 }
@@ -45,10 +57,14 @@ impl Plugin for PlatformPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
-        self.channel =
-            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+    fn init(&mut self, engine: &FlutterEngine) {
+        self.channel = engine.register_channel(MethodChannel::new(
+            CHANNEL_NAME,
+            Handler {
+                handler: self.handler.clone(),
+            },
+            &JSON_CODEC,
+        ));
     }
 }
 
@@ -57,45 +73,50 @@ struct Handler {
 }
 
 impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        call: MethodCall,
-        _: FlutterEngine,
-    ) -> Result<Value, MethodCallError> {
-        debug!("got method call {} with args {:?}", call.method, call.args);
-        match call.method.as_str() {
+    fn on_method_call(&mut self, call: MethodCall) {
+        debug!(
+            "got method call {} with args {:?}",
+            call.method(),
+            call.raw_args()
+        );
+        match call.method().as_str() {
             "SystemChrome.setApplicationSwitcherDescription" => {
-                let args: AppSwitcherDescription = from_value(&call.args)?;
+                let args: AppSwitcherDescription = call.args();
                 self.handler
                     .lock()
                     .set_application_switcher_description(args);
-                Ok(Value::Null)
+                call.success_empty()
             }
             "Clipboard.setData" => {
-                if let Value::Map(v) = &call.args {
+                if let Value::Map(v) = &call.args() {
                     if let Some(v) = &v.get("text") {
                         if let Value::String(text) = v {
                             let text = text.clone();
                             self.handler.lock().set_clipboard_data(text);
-                            return Ok(Value::Null);
+                            return call.success_empty();
                         }
                     }
                 }
-                Err(MethodCallError::UnspecifiedError)
+                call.error("unknown-data", "Unknown data type", Value::Null)
             }
             "Clipboard.getData" => {
-                if let Value::String(mime) = &call.args {
-                    match self.handler.lock().get_clipboard_data(mime) {
-                        Ok(text) => Ok(json_value!({ "text": text })),
-                        Err(_) => Err(MethodCallError::UnspecifiedError),
+                if let Value::String(mime) = call.raw_args() {
+                    match self.handler.lock().get_clipboard_data(&mime) {
+                        Ok(text) => call.success(ClipboardData { text }),
+                        Err(_) => call.error("unknown-data", "Unknown data type", Value::Null),
                     }
                 } else {
-                    Err(MethodCallError::UnspecifiedError)
+                    call.error("unknown-data", "Unknown data type", Value::Null)
                 }
             }
-            _ => Err(MethodCallError::NotImplemented),
+            _ => call.not_implemented(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct ClipboardData {
+    text: String,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -1,17 +1,26 @@
 //! Plugin to work with locales.
 //! It handles flutter/localization type message.
+use std::sync::{Arc, Weak};
 
-use super::prelude::*;
+use flutter_engine::{
+    channel::{MessageChannel, MessageHandler},
+    codec::STRING_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use flutter_engine::channel::Message;
+use flutter_engine::codec::Value;
 use parking_lot::Mutex;
 
 pub const PLUGIN_NAME: &str = module_path!();
 pub const CHANNEL_NAME: &str = "flutter/isolate";
 
-pub type IsolateCallbackFn = Mutex<Option<Box<dyn FnOnce() + Send>>>;
+pub type IsolateCallbackFn = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
 
 pub struct IsolatePlugin {
-    channel: Weak<BasicMessageChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MessageChannel>,
+    callback: IsolateCallbackFn,
 }
 
 impl IsolatePlugin {
@@ -21,9 +30,14 @@ impl IsolatePlugin {
     {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler {
-                callback: Mutex::new(Some(Box::new(callback))),
-            })),
+            callback: Arc::new(Mutex::new(Some(Box::new(callback)))),
+        }
+    }
+
+    pub fn new_stub() -> Self {
+        Self {
+            channel: Weak::new(),
+            callback: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -33,12 +47,13 @@ impl Plugin for IsolatePlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let handler = Arc::downgrade(&self.handler);
-        self.channel = registrar.register_channel(BasicMessageChannel::new(
+    fn init(&mut self, engine: &FlutterEngine) {
+        self.channel = engine.register_channel(MessageChannel::new(
             CHANNEL_NAME,
-            handler,
-            &string_codec::CODEC,
+            Handler {
+                callback: self.callback.clone(),
+            },
+            &STRING_CODEC,
         ));
     }
 }
@@ -48,10 +63,10 @@ struct Handler {
 }
 
 impl MessageHandler for Handler {
-    fn on_message(&mut self, _: Value, _: FlutterEngine) -> Result<Value, MessageError> {
+    fn on_message(&mut self, msg: Message) {
         if let Some(callback) = self.callback.lock().take() {
             (callback)();
         }
-        Ok(Value::Null)
+        msg.respond(Value::Null)
     }
 }

@@ -5,7 +5,7 @@ use super::{MessageCodec, MethodCall, MethodCallResult, MethodCodec, Value};
 
 pub struct JsonMethodCodec;
 
-pub const CODEC: JsonMethodCodec = JsonMethodCodec {};
+pub const JSON_CODEC: JsonMethodCodec = JsonMethodCodec {};
 
 impl MethodCodec for JsonMethodCodec {
     fn decode_method_call(&self, buf: &[u8]) -> Option<MethodCall> {

@@ -28,7 +28,7 @@ enum DecodeError {
 
 pub struct StandardMethodCodec;
 
-pub const CODEC: StandardMethodCodec = StandardMethodCodec {};
+pub const STANDARD_CODEC: StandardMethodCodec = StandardMethodCodec {};
 
 impl StandardMethodCodec {
     fn read_value(reader: &mut Reader) -> Result<Value, DecodeError> {

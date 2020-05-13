@@ -1,6 +1,3 @@
-#[macro_use]
-mod macros;
-
 pub mod builder;
 pub mod channel;
 pub mod codec;
@@ -13,15 +10,15 @@ pub mod tasks;
 use futures_task::FutureObj;
 
 pub mod texture_registry;
-pub mod utils;
 
 use crate::builder::FlutterEngineBuilder;
-use crate::channel::{Channel, ChannelRegistrar};
+use crate::channel::{Channel, ChannelRegistry};
 use crate::ffi::{
     FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
-    FlutterPointerSignalKind, PlatformMessage, PlatformMessageResponseHandle,
+    FlutterPointerSignalKind,
 };
-use crate::plugins::{Plugin, PluginRegistrar};
+
+use crate::channel::platform_message::{PlatformMessage, PlatformMessageResponseHandle};
 use crate::tasks::TaskRunner;
 use crate::texture_registry::{Texture, TextureRegistry};
 use async_std::task;
@@ -38,19 +35,17 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{mem, ptr};
 
 pub(crate) type MainThreadEngineFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
-pub(crate) type MainThreadChannelFn = (String, Box<dyn FnMut(&dyn Channel) + Send>);
 pub(crate) type MainThreadRenderThreadFn = Box<dyn FnOnce(&FlutterEngine) + Send>;
 
 pub(crate) enum MainThreadCallback {
     Engine(MainThreadEngineFn),
-    Channel(MainThreadChannelFn),
     RenderThread(MainThreadRenderThreadFn),
 }
 
 struct FlutterEngineInner {
     opengl_handler: Box<dyn FlutterOpenGLHandler + Send>,
     engine_ptr: flutter_engine_sys::FlutterEngine,
-    plugins: RwLock<PluginRegistrar>,
+    channel_registry: RwLock<ChannelRegistry>,
     platform_runner: TaskRunner,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
@@ -150,7 +145,7 @@ impl FlutterEngine {
                     .opengl_handler
                     .expect("Only opengl is supported (for now)"),
                 engine_ptr: ptr::null_mut(),
-                plugins: RwLock::new(PluginRegistrar::new()),
+                channel_registry: RwLock::new(ChannelRegistry::new()),
                 platform_runner: TaskRunner::new(
                     builder.platform_handler.expect("No platform runner set"),
                 ),
@@ -163,7 +158,7 @@ impl FlutterEngine {
         };
 
         let inner = &engine.inner;
-        inner.plugins.write().init(engine.downgrade());
+        inner.channel_registry.write().init(engine.downgrade());
         inner.platform_runner.init(engine.downgrade());
 
         // Configure renderer
@@ -209,8 +204,6 @@ impl FlutterEngine {
             platform_task_runner: &platform_task_runner
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
             render_task_runner: std::ptr::null(),
-            // render_task_runner: &platform_task_runner
-            //     as *const flutter_engine_sys::FlutterTaskRunnerDescription,
         };
 
         // Configure engine
@@ -271,35 +264,20 @@ impl FlutterEngine {
         self.inner.engine_ptr
     }
 
-    pub fn add_plugin<P>(&self, plugin: P) -> &Self
+    pub fn register_channel<C>(&self, channel: C) -> Weak<C>
     where
-        P: Plugin + 'static,
+        C: Channel + 'static,
     {
-        self.inner.plugins.write().add_plugin(plugin);
-        self
-    }
-
-    pub fn with_plugin<F, P>(&self, f: F)
-    where
-        F: FnOnce(&P),
-        P: Plugin + 'static,
-    {
-        self.inner.plugins.read().with_plugin(f)
-    }
-
-    pub fn with_plugin_mut<F, P>(&self, f: F)
-    where
-        F: FnOnce(&mut P),
-        P: Plugin + 'static,
-    {
-        self.inner.plugins.write().with_plugin_mut(f)
+        self.inner
+            .channel_registry
+            .write()
+            .register_channel(channel)
     }
 
     pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
         self.inner
-            .plugins
-            .write()
             .channel_registry
+            .write()
             .remove_channel(channel_name)
     }
 
@@ -308,21 +286,9 @@ impl FlutterEngine {
         F: FnOnce(&dyn Channel),
     {
         self.inner
-            .plugins
+            .channel_registry
             .read()
-            .channel_registry
             .with_channel(channel_name, f)
-    }
-
-    pub fn with_channel_registrar<F>(&self, plugin_name: &'static str, f: F)
-    where
-        F: FnOnce(&mut ChannelRegistrar),
-    {
-        self.inner
-            .plugins
-            .write()
-            .channel_registry
-            .with_channel_registrar(plugin_name, f)
     }
 
     pub fn downgrade(&self) -> FlutterEngineWeakRef {
@@ -504,15 +470,6 @@ impl FlutterEngine {
         for cb in callbacks {
             match cb {
                 MainThreadCallback::Engine(func) => func(self),
-                MainThreadCallback::Channel((name, mut f)) => {
-                    self.inner
-                        .plugins
-                        .write()
-                        .channel_registry
-                        .with_channel(&name, |channel| {
-                            f(channel);
-                        });
-                }
                 MainThreadCallback::RenderThread(f) => render_thread_fns.push(f),
             }
         }

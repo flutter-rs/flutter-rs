@@ -1,6 +1,17 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
-use super::prelude::*;
+use std::sync::{Arc, Weak};
+
+use serde::{Deserialize, Serialize};
+
+use flutter_engine::{
+    channel::{MethodCallHandler, MethodChannel},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use flutter_engine::channel::MethodCall;
 use parking_lot::Mutex;
 
 const PLUGIN_NAME: &str = module_path!();
@@ -35,15 +46,15 @@ pub trait WindowHandler {
 }
 
 pub struct WindowPlugin {
-    channel: Weak<JsonMethodChannel>,
-    handler: Arc<RwLock<Handler>>,
+    channel: Weak<MethodChannel>,
+    handler: Arc<Mutex<dyn WindowHandler + Send>>,
 }
 
 impl WindowPlugin {
     pub fn new(handler: Arc<Mutex<dyn WindowHandler + Send>>) -> Self {
         Self {
             channel: Weak::new(),
-            handler: Arc::new(RwLock::new(Handler { handler })),
+            handler,
         }
     }
 }
@@ -53,10 +64,14 @@ impl Plugin for WindowPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
-        self.channel =
-            registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+    fn init(&mut self, engine: &FlutterEngine) {
+        self.channel = engine.register_channel(MethodChannel::new(
+            CHANNEL_NAME,
+            Handler {
+                handler: self.handler.clone(),
+            },
+            &JSON_CODEC,
+        ));
     }
 }
 
@@ -65,54 +80,50 @@ struct Handler {
 }
 
 impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        call: MethodCall,
-        _: FlutterEngine,
-    ) -> Result<Value, MethodCallError> {
-        match call.method.as_str() {
+    fn on_method_call(&mut self, call: MethodCall) {
+        match call.method().as_str() {
             "maximize" => {
                 self.handler.lock().maximize();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "iconify" => {
                 self.handler.lock().iconify();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "restore" => {
                 self.handler.lock().restore();
-                Ok(Value::Null)
+                call.success_empty()
             }
-            "isMaximized" => Ok(Value::Boolean(self.handler.lock().is_maximized())),
-            "isIconified" => Ok(Value::Boolean(self.handler.lock().is_iconified())),
-            "isVisible" => Ok(Value::Boolean(self.handler.lock().is_visible())),
+            "isMaximized" => call.success(self.handler.lock().is_maximized()),
+            "isIconified" => call.success(self.handler.lock().is_iconified()),
+            "isVisible" => call.success(self.handler.lock().is_visible()),
             "show" => {
                 self.handler.lock().show();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "hide" => {
                 self.handler.lock().hide();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "close" => {
                 self.handler.lock().close();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "set_pos" => {
-                let args: PositionParams = from_value(&call.args)?;
+                let args: PositionParams = call.args();
                 self.handler.lock().set_pos(args);
-                Ok(Value::Null)
+                call.success_empty()
             }
-            "get_pos" => Ok(json_value!(self.handler.lock().get_pos())),
+            "get_pos" => call.success(self.handler.lock().get_pos()),
             "start_drag" => {
                 self.handler.lock().start_drag();
-                Ok(Value::Null)
+                call.success_empty()
             }
             "end_drag" => {
                 self.handler.lock().end_drag();
-                Ok(Value::Null)
+                call.success_empty()
             }
-            _ => Err(MethodCallError::NotImplemented),
+            _ => call.not_implemented(),
         }
     }
 }

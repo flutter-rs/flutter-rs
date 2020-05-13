@@ -8,6 +8,12 @@ use crate::{
     error::MethodCallError,
     FlutterEngine, FlutterEngineWeakRef,
 };
+use crate::channel::method_channel::MethodCallHandler;
+
+pub trait EventHandler {
+    fn on_listen(&mut self, args: Value, engine: FlutterEngine) -> Result<Value, MethodCallError>;
+    fn on_cancel(&mut self, engine: FlutterEngine) -> Result<Value, MethodCallError>;
+}
 
 pub struct EventChannel {
     name: String,
@@ -31,6 +37,23 @@ impl EventChannel {
             method_handler: Arc::new(RwLock::new(EventChannelMethodCallHandler::new(handler))),
             plugin_name: None,
         }
+    }
+
+
+    /// When flutter listen to a stream of events using EventChannel.
+    /// This method send back a success event.
+    /// It can be call multiple times to simulate stream.
+    pub fn send_success_event(&self, data: &Value) {
+        let buf = self.codec().encode_success_envelope(data);
+        self.send_buffer(&buf);
+    }
+
+    /// When flutter listen to a stream of events using EventChannel.
+    /// This method send back a error event.
+    /// It can be call multiple times to simulate stream.
+    pub fn send_error_event(&self, code: &str, message: &str, data: &Value) {
+        let buf = self.codec().encode_error_envelope(code, message, data);
+        self.send_buffer(&buf);
     }
 }
 
@@ -92,5 +115,3 @@ impl MethodCallHandler for EventChannelMethodCallHandler {
         }
     }
 }
-
-method_channel!(EventChannel);

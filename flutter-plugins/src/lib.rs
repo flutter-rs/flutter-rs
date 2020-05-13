@@ -5,7 +5,6 @@ pub mod lifecycle;
 pub mod localization;
 pub mod navigation;
 pub mod platform;
-pub mod prelude;
 pub mod settings;
 pub mod system;
 pub mod textinput;

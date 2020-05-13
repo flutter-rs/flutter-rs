@@ -1,22 +1,27 @@
 //! Plugin to handle system dialogs.
 //! It handles flutter-rs/dialog type message.
 
-use super::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use flutter_engine::{
+    channel::{MethodCallHandler, MethodChannel},
+    codec::JSON_CODEC,
+    plugins::Plugin,
+    FlutterEngine,
+};
+
+use flutter_engine::channel::MethodCall;
 
 const PLUGIN_NAME: &str = module_path!();
 const CHANNEL_NAME: &str = "flutter-rs/dialog";
 
-pub struct DialogPlugin {
-    handler: Arc<RwLock<Handler>>,
-}
+pub struct DialogPlugin {}
 
 struct Handler;
 
 impl Default for DialogPlugin {
     fn default() -> Self {
-        Self {
-            handler: Arc::new(RwLock::new(Handler)),
-        }
+        Self {}
     }
 }
 
@@ -25,26 +30,20 @@ impl Plugin for DialogPlugin {
         PLUGIN_NAME
     }
 
-    fn init_channels(&mut self, registrar: &mut ChannelRegistrar) {
-        let method_handler = Arc::downgrade(&self.handler);
-        registrar.register_channel(JsonMethodChannel::new(CHANNEL_NAME, method_handler));
+    fn init(&mut self, engine: &FlutterEngine) {
+        engine.register_channel(MethodChannel::new(CHANNEL_NAME, Handler, &JSON_CODEC));
     }
 }
 
 impl MethodCallHandler for Handler {
-    fn on_method_call(
-        &mut self,
-        call: MethodCall,
-        _: FlutterEngine,
-    ) -> Result<Value, MethodCallError> {
-        match call.method.as_str() {
+    fn on_method_call(&mut self, call: MethodCall) {
+        match call.method().as_str() {
             "open_file_dialog" => {
-                let params = from_value::<OpenFileDialogParams>(&call.args)?;
                 let OpenFileDialogParams {
                     title,
                     path,
                     filter,
-                } = params;
+                } = call.args::<OpenFileDialogParams>();
 
                 // Oh, these borrow stuff sux
                 let filter2 = filter.as_ref().map(|(p, n)| {
@@ -57,19 +56,17 @@ impl MethodCallHandler for Handler {
                     filter2.as_ref().map(|(p, n)| (p.as_slice(), n.as_str())),
                 );
 
-                let s = match &path {
+                call.success(match &path {
                     Some(p) => p,
                     None => "",
-                };
-                Ok(json_value!(s))
+                })
             }
             "message_box_ok" => {
-                let params = from_value::<MessageBoxOkParams>(&call.args)?;
                 let MessageBoxOkParams {
                     title,
                     message,
                     icon,
-                } = params;
+                } = call.args::<MessageBoxOkParams>();
 
                 let icon = match icon.unwrap_or(MessageBoxIcon::Info) {
                     MessageBoxIcon::Info => tinyfiledialogs::MessageBoxIcon::Info,
@@ -78,9 +75,9 @@ impl MethodCallHandler for Handler {
                     MessageBoxIcon::Warning => tinyfiledialogs::MessageBoxIcon::Warning,
                 };
                 tinyfiledialogs::message_box_ok(title.as_str(), message.as_str(), icon);
-                Ok(Value::Null)
+                call.success_empty()
             }
-            _ => Err(MethodCallError::NotImplemented),
+            _ => call.not_implemented(),
         }
     }
 }

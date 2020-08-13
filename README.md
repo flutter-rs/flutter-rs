@@ -2,7 +2,7 @@
 
 [![Crates.io][crates-badge]][crates-url]
 [![flutter version][flutter-badge]][flutter-url]
-[![Gitter chat][gitter-badge]][gitter-url]
+[![Discord chat][discord-badge]][discord-url]
 [![MIT licensed][mit-badge]][mit-url]
 
 Build flutter desktop app in dart & rust.
@@ -45,8 +45,8 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [flutter-rs logo]: https://raw.githubusercontent.com/flutter-rs/flutter-rs/master/www/images/logo.svg
 [flutter-badge]: https://img.shields.io/badge/flutter-v1.9.1-blueviolet.svg
 [flutter-url]: https://flutter.dev/
-[gitter-badge]: https://badges.gitter.im/flutter-rs/community.svg
-[gitter-url]: https://gitter.im/flutter-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
+[discord-badge]: https://img.shields.io/discord/743549843632423053?label=discord
+[discord-url]: https://discord.gg/WwdAE6p
 [crates-badge]: https://img.shields.io/crates/v/flutter-engine.svg
 [crates-url]: https://crates.io/crates/flutter-engine
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg

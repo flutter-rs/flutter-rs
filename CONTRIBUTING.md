@@ -11,6 +11,7 @@ that could use some help.
 - Documentation.
 
 ## Structure
+
 This project is cargo workspace with multiple targets.
 
 - `flutter-winit` creates an event loop and a window and interfaces with the
@@ -29,5 +30,6 @@ This project is cargo workspace with multiple targets.
   generates bindings using bindgen.
 
 ## Reference
+
 - [Custom-Flutter-Engine-Embedders](https://github.com/flutter/flutter/wiki/Custom-Flutter-Engine-Embedders)
 - [Desktop Embedding for Flutter](https://github.com/google/flutter-desktop-embedding)

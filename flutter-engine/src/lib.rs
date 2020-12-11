@@ -167,7 +167,7 @@ impl FlutterEngine {
             __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
                 open_gl: flutter_engine_sys::FlutterOpenGLRendererConfig {
                     struct_size: std::mem::size_of::<flutter_engine_sys::FlutterOpenGLRendererConfig>(
-                    ),
+                    ) as u64,
                     make_current: Some(flutter_callbacks::make_current),
                     clear_current: Some(flutter_callbacks::clear_current),
                     present: Some(flutter_callbacks::present),
@@ -191,7 +191,8 @@ impl FlutterEngine {
         };
 
         let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>()
+                as u64,
             user_data: runner_ptr,
             runs_task_on_current_thread_callback: Some(
                 flutter_callbacks::runs_task_on_current_thread,
@@ -200,7 +201,7 @@ impl FlutterEngine {
             identifier: 0,
         };
         let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>() as u64,
             platform_task_runner: &platform_task_runner
                 as *const flutter_engine_sys::FlutterTaskRunnerDescription,
             render_task_runner: std::ptr::null(),
@@ -208,7 +209,7 @@ impl FlutterEngine {
 
         // Configure engine
         let project_args = flutter_engine_sys::FlutterProjectArgs {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>() as u64,
             assets_path: path_to_cstring(&inner.assets).into_raw(),
             main_path__unused__: std::ptr::null(),
             packages_path__unused__: std::ptr::null(),
@@ -363,9 +364,10 @@ impl FlutterEngine {
         }
 
         let event = flutter_engine_sys::FlutterWindowMetricsEvent {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
-            width,
-            height,
+            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>()
+                as u64,
+            width: width as u64,
+            height: height as u64,
             pixel_ratio,
             #[cfg(all(target_arch = "arm", target_os = "android"))]
             __bindgen_padding_0: 0,
@@ -393,8 +395,8 @@ impl FlutterEngine {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
         let event = flutter_engine_sys::FlutterPointerEvent {
-            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
-            timestamp: timestamp.as_micros() as usize,
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>() as u64,
+            timestamp: timestamp.as_micros() as u64,
             phase: phase.into(),
             x,
             y,
@@ -443,7 +445,7 @@ impl FlutterEngine {
                 self.engine_ptr(),
                 response_handle.into(),
                 bytes.as_ptr(),
-                bytes.len(),
+                bytes.len() as u64,
             );
         }
     }

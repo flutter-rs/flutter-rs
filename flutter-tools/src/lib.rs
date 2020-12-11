@@ -284,7 +284,7 @@ fn unzip(archive: &Path, dir: &Path) -> Result<(), Error> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = dir.join(file.sanitized_name());
+        let outpath = dir.join(file.mangled_name());
 
         pb.inc(1);
 

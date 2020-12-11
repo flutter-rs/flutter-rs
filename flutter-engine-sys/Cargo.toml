@@ -9,8 +9,8 @@ repository = "https://github.com/flutter-rs/flutter-rs"
 license = "MIT"
 
 [build-dependencies]
-bindgen = "0.52.0"
-dirs = "2.0.2"
+bindgen = "0.56.0"
+dirs = "3.0.1"
 
 [dev-dependencies]
-libloading = "0.5.2"
+libloading = "0.6.6"

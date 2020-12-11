@@ -9,17 +9,17 @@ repository = "https://github.com/flutter-rs/flutter-rs"
 license = "MIT"
 
 [dependencies]
-crossbeam-channel = "0.4.0"
+crossbeam-channel = "0.5.0"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 gl = { version = "0.14.0", optional = true }
-image = { version = "0.22.4", optional = true, default_features = false }
-log = "0.4.8"
-parking_lot = "0.10.0"
-priority-queue = "0.7.0"
-serde = { version = "1.0.106", features = ["derive"] }
-serde_json = "1.0.44"
-async-std = "1.2"
-futures-task = "0.3.1"
+image = { version = "0.23.12", optional = true, default_features = false }
+log = "0.4.11"
+parking_lot = "0.11.1"
+priority-queue = "1.0.3"
+serde = { version = "1.0.118", features = ["derive"] }
+serde_json = "1.0.60"
+async-std = "1.8.0"
+futures-task = "0.3.8"
 
 [features]
 gl-helpers = ["gl", "image"]

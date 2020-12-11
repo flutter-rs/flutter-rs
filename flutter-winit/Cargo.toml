@@ -1,20 +1,21 @@
 [package]
-name = "flutter-winit"
-version = "0.4.0"
 authors = ["David Craven <david@craven.ch>"]
-edition = "2018"
 description = "Flutter engine embedder using winit."
+edition = "2018"
 keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
 license = "MIT"
+name = "flutter-winit"
+repository = "https://github.com/flutter-rs/flutter-rs"
+version = "0.4.0"
 
 [dependencies]
-copypasta = "0.6.2"
-flutter-engine-sys = { path = "../flutter-engine-sys" }
-flutter-engine = { path = "../flutter-engine" }
-flutter-plugins = { path = "../flutter-plugins" }
+copypasta = "0.7.1"
+flutter-engine = {path = "../flutter-engine"}
+flutter-engine-sys = {path = "../flutter-engine-sys"}
+flutter-plugins = {path = "../flutter-plugins"}
 gl = "0.14.0"
-glutin = { git = "https://github.com/dvc94ch/glutin", branch = "android" }
+glutin = "0.26.0"
 locale_config = "0.3.0"
-log = "0.4.8"
-parking_lot = "0.10.0"
+log = "0.4.11"
+parking_lot = "0.11.1"
+thiserror = "1.0.22"

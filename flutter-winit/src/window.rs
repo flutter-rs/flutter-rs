@@ -8,6 +8,7 @@ use crate::pointer::Pointers;
 use flutter_engine::builder::FlutterEngineBuilder;
 use flutter_engine::channel::Channel;
 use flutter_engine::plugins::Plugin;
+use flutter_engine::plugins::PluginRegistrar;
 use flutter_engine::texture_registry::Texture;
 use flutter_engine::FlutterEngine;
 use flutter_plugins::dialog::DialogPlugin;
@@ -44,6 +45,7 @@ pub struct FlutterWindow {
     resource_context: Arc<Mutex<Context>>,
     engine: FlutterEngine,
     close: Arc<AtomicBool>,
+    plugin_registrar: PluginRegistrar,
 }
 
 impl FlutterWindow {
@@ -83,17 +85,19 @@ impl FlutterWindow {
         )));
         let textinput_handler = Arc::new(Mutex::new(WinitTextInputHandler::default()));
 
-        engine.add_plugin(DialogPlugin::default());
-        engine.add_plugin(IsolatePlugin::new(isolate_cb));
-        engine.add_plugin(KeyEventPlugin::default());
-        engine.add_plugin(LifecyclePlugin::default());
-        engine.add_plugin(LocalizationPlugin::default());
-        engine.add_plugin(NavigationPlugin::default());
-        engine.add_plugin(PlatformPlugin::new(platform_handler));
-        engine.add_plugin(SettingsPlugin::default());
-        engine.add_plugin(SystemPlugin::default());
-        engine.add_plugin(TextInputPlugin::new(textinput_handler));
-        engine.add_plugin(WindowPlugin::new(window_handler));
+        let mut plugin_registrar = PluginRegistrar::new();
+
+        plugin_registrar.add_plugin(&engine, DialogPlugin::default());
+        plugin_registrar.add_plugin(&engine, IsolatePlugin::new(isolate_cb));
+        plugin_registrar.add_plugin(&engine, KeyEventPlugin::default());
+        plugin_registrar.add_plugin(&engine, LifecyclePlugin::default());
+        plugin_registrar.add_plugin(&engine, LocalizationPlugin::default());
+        plugin_registrar.add_plugin(&engine, NavigationPlugin::default());
+        plugin_registrar.add_plugin(&engine, PlatformPlugin::new(platform_handler));
+        plugin_registrar.add_plugin(&engine, SettingsPlugin::default());
+        plugin_registrar.add_plugin(&engine, SystemPlugin::default());
+        plugin_registrar.add_plugin(&engine, TextInputPlugin::new(textinput_handler));
+        plugin_registrar.add_plugin(&engine, WindowPlugin::new(window_handler));
 
         Ok(Self {
             event_loop,
@@ -101,6 +105,7 @@ impl FlutterWindow {
             resource_context,
             engine,
             close,
+            plugin_registrar,
         })
     }
 
@@ -138,11 +143,11 @@ impl FlutterWindow {
         self.engine.create_texture()
     }
 
-    pub fn add_plugin<P>(&self, plugin: P) -> &Self
+    pub fn add_plugin<P>(&mut self, plugin: P) -> &Self
     where
         P: Plugin + 'static,
     {
-        self.engine.add_plugin(plugin);
+        self.plugin_registrar.add_plugin(&self.engine, plugin);
         self
     }
 
@@ -151,15 +156,15 @@ impl FlutterWindow {
         F: FnOnce(&P),
         P: Plugin + 'static,
     {
-        self.engine.with_plugin(f)
+        self.plugin_registrar.with_plugin(f)
     }
 
-    pub fn with_plugin_mut<F, P>(&self, f: F)
+    pub fn with_plugin_mut<F, P>(&mut self, f: F)
     where
         F: FnOnce(&mut P),
         P: Plugin + 'static,
     {
-        self.engine.with_plugin_mut(f)
+        self.plugin_registrar.with_plugin_mut(f)
     }
 
     pub fn remove_channel(&self, channel_name: &str) -> Option<Arc<dyn Channel>> {
@@ -179,12 +184,13 @@ impl FlutterWindow {
 
     pub fn run(self) -> ! {
         let engine = self.engine.clone();
+        let mut plugin_registrar = self.plugin_registrar;
         let context = self.context.clone();
         let close = self.close.clone();
 
         resize(&engine, &context);
 
-        engine.with_plugin(|localization: &LocalizationPlugin| {
+        plugin_registrar.with_plugin(|localization: &LocalizationPlugin| {
             localization.send_locale(locale_config::Locale::current());
         });
 
@@ -195,7 +201,7 @@ impl FlutterWindow {
                     match event {
                         WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(_) => resize(&engine, &context),
-                        WindowEvent::HiDpiFactorChanged(_) => resize(&engine, &context),
+                        WindowEvent::ScaleFactorChanged { .. } => resize(&engine, &context),
                         WindowEvent::CursorEntered { device_id } => pointers.enter(device_id),
                         WindowEvent::CursorLeft { device_id } => pointers.leave(device_id),
                         WindowEvent::CursorMoved {
@@ -204,7 +210,8 @@ impl FlutterWindow {
                             ..
                         } => {
                             let dpi = { context.lock().hidpi_factor() };
-                            let position = position.to_physical(dpi);
+                            let position: glutin::dpi::LogicalPosition<f64> =
+                                position.to_logical(dpi);
                             pointers.moved(device_id, position.into());
                         }
                         WindowEvent::MouseInput {
@@ -221,8 +228,10 @@ impl FlutterWindow {
                             let delta = match delta {
                                 MouseScrollDelta::LineDelta(_, _) => (0.0, 0.0), // TODO
                                 MouseScrollDelta::PixelDelta(position) => {
-                                    let dpi = { context.lock().hidpi_factor() };
-                                    let (dx, dy): (f64, f64) = position.to_physical(dpi).into();
+                                    let dpi: f64 = { context.lock().hidpi_factor() };
+                                    let (dx, dy): (f64, f64) = (position.to_logical(dpi)
+                                        as glutin::dpi::LogicalPosition<f64>)
+                                        .into();
                                     (-dx, dy)
                                 }
                             };
@@ -235,17 +244,20 @@ impl FlutterWindow {
                             ..
                         }) => {
                             let dpi = { context.lock().hidpi_factor() };
-                            let position = location.to_physical(dpi);
+                            let position: glutin::dpi::LogicalPosition<f64> =
+                                location.to_logical(dpi);
                             pointers.touch(device_id, phase, position.into());
                         }
                         WindowEvent::ReceivedCharacter(ch) => {
                             if !ch.is_control() {
-                                engine.with_plugin_mut(|text_input: &mut TextInputPlugin| {
-                                    text_input.with_state(|state| {
-                                        state.add_characters(&ch.to_string());
-                                    });
-                                    text_input.notify_changes();
-                                });
+                                plugin_registrar.with_plugin_mut(
+                                    |text_input: &mut TextInputPlugin| {
+                                        text_input.with_state(|state| {
+                                            state.add_characters(&ch.to_string());
+                                        });
+                                        text_input.notify_changes();
+                                    },
+                                );
                             }
                         }
                         WindowEvent::KeyboardInput {
@@ -264,16 +276,16 @@ impl FlutterWindow {
                                 return;
                             };
 
-                            let shift = modifiers.shift as u32;
-                            let ctrl = modifiers.ctrl as u32;
-                            let alt = modifiers.alt as u32;
-                            let logo = modifiers.logo as u32;
+                            let shift = modifiers.shift() as u32;
+                            let ctrl = modifiers.ctrl() as u32;
+                            let alt = modifiers.alt() as u32;
+                            let logo = modifiers.logo() as u32;
                             let raw_modifiers = shift | ctrl << 1 | alt << 2 | logo << 3;
 
                             match state {
                                 ElementState::Pressed => {
                                     if let Some(key) = virtual_keycode {
-                                        engine.with_plugin_mut(
+                                        plugin_registrar.with_plugin_mut(
                                             |text_input: &mut TextInputPlugin| match key {
                                                 VirtualKeyCode::Return => {
                                                     text_input.with_state(|state| {
@@ -292,28 +304,32 @@ impl FlutterWindow {
                                         );
                                     }
 
-                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
-                                        keyevent.key_action(KeyAction {
-                                            toolkit: "glfw".to_string(),
-                                            key_code: raw_key as _,
-                                            scan_code: scancode as _,
-                                            modifiers: raw_modifiers as _,
-                                            keymap: "linux".to_string(),
-                                            _type: KeyActionType::Keydown,
-                                        });
-                                    });
+                                    plugin_registrar.with_plugin_mut(
+                                        |keyevent: &mut KeyEventPlugin| {
+                                            keyevent.key_action(KeyAction {
+                                                toolkit: "glfw".to_string(),
+                                                key_code: raw_key as _,
+                                                scan_code: scancode as _,
+                                                modifiers: raw_modifiers as _,
+                                                keymap: "linux".to_string(),
+                                                _type: KeyActionType::Keydown,
+                                            });
+                                        },
+                                    );
                                 }
                                 ElementState::Released => {
-                                    engine.with_plugin_mut(|keyevent: &mut KeyEventPlugin| {
-                                        keyevent.key_action(KeyAction {
-                                            toolkit: "glfw".to_string(),
-                                            key_code: raw_key as _,
-                                            scan_code: scancode as _,
-                                            modifiers: raw_modifiers as _,
-                                            keymap: "linux".to_string(),
-                                            _type: KeyActionType::Keyup,
-                                        });
-                                    });
+                                    plugin_registrar.with_plugin_mut(
+                                        |keyevent: &mut KeyEventPlugin| {
+                                            keyevent.key_action(KeyAction {
+                                                toolkit: "glfw".to_string(),
+                                                key_code: raw_key as _,
+                                                scan_code: scancode as _,
+                                                modifiers: raw_modifiers as _,
+                                                keymap: "linux".to_string(),
+                                                _type: KeyActionType::Keyup,
+                                            });
+                                        },
+                                    );
                                 }
                             }
                         }

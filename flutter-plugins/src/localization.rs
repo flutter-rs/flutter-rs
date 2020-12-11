@@ -55,9 +55,13 @@ impl LocalizationPlugin {
                     languages.push(loc.id.language.to_string());
                     if let Some(region) = loc.id.region {
                         languages.push(region.to_string());
+                    } else {
+                        languages.push(String::new());
                     }
                     if let Some(script) = loc.id.script {
                         languages.push(script.to_string());
+                    } else {
+                        languages.push(String::new());
                     }
                     languages.push(
                         loc.id

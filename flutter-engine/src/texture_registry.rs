@@ -44,7 +44,7 @@ impl TextureRegistry {
     pub fn get_texture_frame(
         &self,
         texture_id: TextureId,
-        _size: (usize, usize),
+        _size: (u64, u64),
     ) -> Option<TextureFrame> {
         self.frames.lock().remove(&texture_id)
     }

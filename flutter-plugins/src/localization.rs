@@ -52,10 +52,24 @@ impl LocalizationPlugin {
                 // the current locale and then use `unic-locale` to parse it.
                 if let Ok(loc) = unic_locale::parser::parse_locale(language.as_ref()) {
                     info!("Available locale: {}", loc);
-                    languages.push(loc.get_language().to_owned());
-                    languages.push(loc.get_region().unwrap_or_default().to_owned());
-                    languages.push(loc.get_script().unwrap_or_default().to_owned());
-                    languages.push(loc.get_variants().next().map_or("", |v| v).to_owned());
+                    languages.push(loc.id.language.to_string());
+                    if let Some(region) = loc.id.region {
+                        languages.push(region.to_string());
+                    } else {
+                        languages.push(String::new());
+                    }
+                    if let Some(script) = loc.id.script {
+                        languages.push(script.to_string());
+                    } else {
+                        languages.push(String::new());
+                    }
+                    languages.push(
+                        loc.id
+                            .variants()
+                            .next()
+                            .map_or(String::new(), |v| v.to_string())
+                            .to_owned(),
+                    );
                 } else {
                     warn!("Failed to parse language range: {}", language);
                 }

@@ -37,13 +37,9 @@ impl PlatformMessageResponseHandle {
 
 type ResponseType = Box<dyn FnOnce(&[u8]) + Send>;
 
-unsafe extern "C" fn response_handle_callback(
-    data: *const u8,
-    size: usize,
-    user_data: *mut c_void,
-) {
+unsafe extern "C" fn response_handle_callback(data: *const u8, size: u64, user_data: *mut c_void) {
     log::trace!("response_handle_callback");
-    let message = std::slice::from_raw_parts(data, size);
+    let message = std::slice::from_raw_parts(data, size as usize);
 
     let user_data = user_data as *mut ResponseType;
     let user_data = Box::from_raw(user_data);
@@ -82,10 +78,10 @@ pub struct PlatformMessage<'a, 'b> {
 impl<'a, 'b> Into<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
     fn into(mut self) -> FlutterPlatformMessage {
         FlutterPlatformMessage {
-            struct_size: mem::size_of::<FlutterPlatformMessage>(),
+            struct_size: mem::size_of::<FlutterPlatformMessage>() as u64,
             channel: CString::new(&*self.channel).unwrap().into_raw(),
             message: self.message.as_ptr(),
-            message_size: self.message.len(),
+            message_size: self.message.len() as u64,
             response_handle: self.response_handle.take().map_or(ptr::null(), Into::into),
         }
     }
@@ -95,12 +91,14 @@ impl<'a, 'b> From<FlutterPlatformMessage> for PlatformMessage<'a, 'b> {
     fn from(platform_message: FlutterPlatformMessage) -> Self {
         debug_assert_eq!(
             platform_message.struct_size,
-            mem::size_of::<FlutterPlatformMessage>()
+            mem::size_of::<FlutterPlatformMessage>() as u64
         );
         unsafe {
             let channel = CStr::from_ptr(platform_message.channel).to_string_lossy();
-            let message =
-                std::slice::from_raw_parts(platform_message.message, platform_message.message_size);
+            let message = std::slice::from_raw_parts(
+                platform_message.message,
+                platform_message.message_size as usize,
+            );
             let response_handle = if platform_message.response_handle.is_null() {
                 None
             } else {

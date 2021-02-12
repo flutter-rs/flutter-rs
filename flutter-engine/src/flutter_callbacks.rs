@@ -101,8 +101,8 @@ pub extern "C" fn post_task(
 pub extern "C" fn gl_external_texture_frame(
     user_data: *mut c_void,
     texture_id: i64,
-    width: usize,
-    height: usize,
+    width: u64,
+    height: u64,
     texture: *mut flutter_engine_sys::FlutterOpenGLTexture,
 ) -> bool {
     trace!("gl_external_texture_frame");
@@ -110,7 +110,7 @@ pub extern "C" fn gl_external_texture_frame(
         let engine = &*(user_data as *const FlutterEngineInner);
         if let Some(frame) = engine
             .texture_registry
-            .get_texture_frame(texture_id, (width, height))
+            .get_texture_frame(texture_id, (width as u64, height as u64))
         {
             frame.into_ffi(&mut *texture);
             return true;

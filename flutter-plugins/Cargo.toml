@@ -11,9 +11,9 @@ license = "MIT"
 [dependencies]
 flutter-engine = { path = "../flutter-engine" }
 locale_config = "0.3.0"
-log = "0.4.8"
-parking_lot = "0.10.0"
-serde = { version = "1.0.104", features = ["derive"] }
-serde_json = "1.0.44"
-tinyfiledialogs = "3.3.9"
-unic-locale = "0.7.1"
+log = "0.4.11"
+parking_lot = "0.11.1"
+serde = { version = "1.0.118", features = ["derive"] }
+serde_json = "1.0.60"
+tinyfiledialogs = "3.3.10"
+unic-locale = "0.9.0"

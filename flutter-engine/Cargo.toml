@@ -12,7 +12,7 @@ license = "MIT"
 crossbeam-channel = "0.4.0"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 gl = { version = "0.14.0", optional = true }
-image = { version = "0.22.4", optional = true, default_features = false }
+image = { version = "0.23.12", optional = true, default_features = false }
 log = "0.4.8"
 parking_lot = "0.10.0"
 priority-queue = "0.7.0"

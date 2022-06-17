@@ -19,7 +19,7 @@ priority-queue = "0.7.0"
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0.44"
 async-std = "1.2"
-futures-task = "0.3.1"
+futures-task = "0.3.6"
 
 [features]
 gl-helpers = ["gl", "image"]

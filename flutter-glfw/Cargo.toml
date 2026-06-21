@@ -2,7 +2,7 @@
 name = "flutter-glfw"
 version = "0.4.0"
 authors = ["juju <gliheng@gmail.com>", "Sophie Tauchert <sophie@999eagle.moe>", "Chandler Newman <chandler2newman@hotmail.co.uk>"]
-edition = "2018"
+edition = "2021"
 description = "Flutter engine embedder using glfw."
 keywords = ["flutter", "GUI"]
 repository = "https://github.com/flutter-rs/flutter-rs"
@@ -12,7 +12,7 @@ license = "MIT"
 flutter-engine-sys = { path = "../flutter-engine-sys" }
 flutter-engine = { path = "../flutter-engine" }
 flutter-plugins = { path = "../flutter-plugins" }
-locale_config = "0.3.0"
-log = "0.4.8"
-parking_lot = "0.10.0"
-glfw = "0.37.0"
+locale_config = "0.3"
+log = "0.4"
+parking_lot = "0.12"
+glfw = "0.59"

@@ -89,10 +89,10 @@ pub type PerFrameCallback = dyn FnMut(&FlutterWindow);
 
 pub struct FlutterWindow {
     glfw: glfw::Glfw,
-    window: Arc<Mutex<glfw::Window>>,
-    window_receiver: Receiver<(f64, glfw::WindowEvent)>,
-    _resource_window: glfw::Window,
-    _resource_window_receiver: Receiver<(f64, glfw::WindowEvent)>,
+    window: Arc<Mutex<glfw::PWindow>>,
+    window_receiver: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
+    _resource_window: glfw::PWindow,
+    _resource_window_receiver: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
     engine: FlutterEngine,
     pointer_currently_added: AtomicBool,
     window_pixels_per_screen_coordinate: AtomicU64,
@@ -109,6 +109,7 @@ impl FlutterWindow {
         glfw: &mut glfw::Glfw,
         window_args: &WindowArgs,
         assets_path: PathBuf,
+        icu_data_path: Option<PathBuf>,
         arguments: Vec<String>,
     ) -> Result<Self, CreateError> {
         glfw.window_hint(glfw::WindowHint::ContextVersion(3, 2));
@@ -147,7 +148,7 @@ impl FlutterWindow {
                         window_args.width as u32,
                         window_args.height as u32,
                         window_args.title,
-                        glfw::WindowMode::FullScreen(monitor),
+                        glfw::WindowMode::FullScreen(&**monitor),
                     )
                     .ok_or(CreateError::WindowCreationFailed)
                 })?
@@ -171,13 +172,15 @@ impl FlutterWindow {
         let platform_task_handler = Arc::new(GlfwPlatformTaskHandler::new());
         let opengl_handler = GlfwOpenGLHandler::new(render_ctx, res_window.render_context());
 
-        let engine = FlutterEngineBuilder::new()
+        let mut engine_builder = FlutterEngineBuilder::new()
             .with_platform_handler(platform_task_handler.clone())
             .with_opengl(opengl_handler)
             .with_asset_path(assets_path)
-            .with_args(arguments)
-            .build()
-            .expect("Failed to create engine");
+            .with_args(arguments);
+        if let Some(icu_data_path) = icu_data_path {
+            engine_builder = engine_builder.with_icu_data_path(icu_data_path);
+        }
+        let engine = engine_builder.build().expect("Failed to create engine");
 
         // Main thread callbacks
         let (main_tx, main_rx) = mpsc::channel();
@@ -225,7 +228,7 @@ impl FlutterWindow {
         self.engine.clone()
     }
 
-    pub fn window(&self) -> Arc<Mutex<glfw::Window>> {
+    pub fn window(&self) -> Arc<Mutex<glfw::PWindow>> {
         self.window.clone()
     }
 

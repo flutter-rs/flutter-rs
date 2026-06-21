@@ -26,12 +26,12 @@ impl TaskRunnerHandler for GlfwPlatformTaskHandler {
 }
 
 pub(crate) struct GlfwOpenGLHandler {
-    render_ctx: RefCell<glfw::RenderContext>,
-    resource_ctx: RefCell<glfw::RenderContext>,
+    render_ctx: RefCell<glfw::PRenderContext>,
+    resource_ctx: RefCell<glfw::PRenderContext>,
 }
 
 impl GlfwOpenGLHandler {
-    pub fn new(render_ctx: glfw::RenderContext, resource_ctx: glfw::RenderContext) -> Self {
+    pub fn new(render_ctx: glfw::PRenderContext, resource_ctx: glfw::PRenderContext) -> Self {
         Self {
             render_ctx: RefCell::new(render_ctx),
             resource_ctx: RefCell::new(resource_ctx),
@@ -70,7 +70,7 @@ impl FlutterOpenGLHandler for GlfwOpenGLHandler {
 }
 
 pub struct GlfwPlatformHandler {
-    pub window: Arc<Mutex<glfw::Window>>,
+    pub window: Arc<Mutex<glfw::PWindow>>,
 }
 
 unsafe impl Send for GlfwPlatformHandler {}
@@ -96,13 +96,13 @@ impl PlatformHandler for GlfwPlatformHandler {
 }
 
 pub struct GlfwWindowHandler {
-    window: Arc<Mutex<glfw::Window>>,
+    window: Arc<Mutex<glfw::PWindow>>,
     dragging: bool,
     start_cursor_pos: (f64, f64),
 }
 
 impl GlfwWindowHandler {
-    pub fn new(window: Arc<Mutex<glfw::Window>>) -> Self {
+    pub fn new(window: Arc<Mutex<glfw::PWindow>>) -> Self {
         Self {
             window,
             dragging: false,

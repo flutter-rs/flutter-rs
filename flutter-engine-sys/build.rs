@@ -32,6 +32,10 @@ fn main() {
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
         })
+        // The embedder header ships extensive doc comments containing fenced
+        // code and backticks; carrying them over makes rustdoc try to compile
+        // them as doctests and fail, so drop comments from the bindings.
+        .generate_comments(false)
         .clang_args(&clang_args)
         .generate()
         .expect("Unable to generate bindings");

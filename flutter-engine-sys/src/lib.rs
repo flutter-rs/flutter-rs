@@ -40,11 +40,13 @@ mod tests {
 
     #[test]
     fn link() {
-        let lib = Library::new(LIB).unwrap();
+        let lib = unsafe { Library::new(LIB) }.unwrap();
         unsafe {
-            lib.get::<*const ()>(b"gIcudtlData\0").unwrap();
-            lib.get::<*const ()>(b"gIcudtlEnd\0").unwrap();
-            lib.get::<*const ()>(b"gIcudtlSize\0").unwrap();
+            // Official engine builds no longer expose the linked-in `gIcudtl`
+            // symbols, so probe for core embedder entry points instead.
+            lib.get::<*const ()>(b"FlutterEngineInitialize\0").unwrap();
+            lib.get::<*const ()>(b"FlutterEngineRunInitialized\0").unwrap();
+            lib.get::<*const ()>(b"FlutterEngineGetCurrentTime\0").unwrap();
         }
     }
 }

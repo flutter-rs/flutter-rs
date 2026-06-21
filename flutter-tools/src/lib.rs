@@ -121,6 +121,25 @@ impl Flutter {
             .join("engine.version");
         Ok(std::fs::read_to_string(path).map(|v| v.trim().to_owned())?)
     }
+
+    /// Locate `icudtl.dat` inside the SDK's host engine cache.
+    ///
+    /// Official engine builds no longer link the ICU data into
+    /// `libflutter_engine`, so the embedder must point `icu_data_path` at this
+    /// file (see `FlutterEngineBuilder::with_icu_data_path`).
+    pub fn icudtl_path(&self) -> Result<PathBuf, Error> {
+        let engine = self
+            .root_path
+            .join("bin")
+            .join("cache")
+            .join("artifacts")
+            .join("engine");
+        std::fs::read_dir(&engine)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path().join("icudtl.dat"))
+            .find(|path| path.exists())
+            .ok_or(Error::DownloadNotFound)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -156,38 +175,42 @@ impl Engine {
         }
     }
 
+    /// The platform directory used by Flutter's official artifact storage,
+    /// e.g. `linux-x64`. Desktop embedder builds are published per engine
+    /// version under these directories.
+    fn artifact_platform(&self) -> &'static str {
+        match self.target.as_str() {
+            "x86_64-unknown-linux-gnu" => "linux-x64",
+            "aarch64-unknown-linux-gnu" => "linux-arm64",
+            "x86_64-apple-darwin" | "aarch64-apple-darwin" => "darwin-x64",
+            "x86_64-pc-windows-msvc" | "x86_64-pc-windows-gnu" => "windows-x64",
+            _ => panic!("unsupported platform: {}", self.target),
+        }
+    }
+
     pub fn download_url(&self) -> String {
-        let build = self.build.build();
-        let platform = match self.target.as_str() {
-            "x86_64-unknown-linux-gnu" => format!("linux_x64-host_{}", build),
-            "armv7-linux-androideabi" => format!("linux_x64-android_{}", build),
-            "aarch64-linux-android" => format!("linux_x64-android_{}_arm64", build),
-            "i686-linux-android" => format!("linux_x64-android_{}_x64", build),
-            "x86_64-linux-android" => format!("linux_x64-android_{}_x86", build),
-            "x86_64-apple-darwin" => format!("macosx_x64-host_{}", build),
-            "armv7-apple-ios" => format!("macosx_x64-ios_{}_arm", build),
-            "aarch64-apple-ios" => format!("macosx_x64-ios_{}", build),
-            "x86_64-pc-windows-msvc" => format!("windows_x64-host_{}", build),
-            _ => panic!("unsupported platform"),
+        // The flutter-rs/engine-builds repository is no longer maintained, so we
+        // download the embedder library straight from Flutter's official engine
+        // artifact storage. The same library is used for every build mode; the
+        // debug/release distinction lives in the app's Dart snapshot, not here.
+        let platform = self.artifact_platform();
+        let archive = if platform == "darwin-x64" {
+            "FlutterEmbedder.framework.zip".to_owned()
+        } else {
+            format!("{}-embedder.zip", platform)
         };
         format!(
-            "https://github.com/flutter-rs/engine-builds/releases/download/f-{0}/{1}.zip",
-            &self.version, platform
+            "https://storage.googleapis.com/flutter_infra_release/flutter/{version}/{platform}/{archive}",
+            version = self.version,
         )
     }
 
     pub fn library_name(&self) -> &'static str {
         match self.target.as_str() {
-            "x86_64-unknown-linux-gnu" => "libflutter_engine.so",
-            "armv7-linux-androideabi" => "libflutter_engine.so",
-            "aarch64-linux-android" => "libflutter_engine.so",
-            "i686-linux-android" => "libflutter_engine.so",
-            "x86_64-linux-android" => "libflutter_engine.so",
-            "x86_64-apple-darwin" => "libflutter_engine.dylib",
-            "armv7-apple-ios" => "libflutter_engine.dylib",
-            "aarch64-apple-ios" => "libflutter_engine.dylib",
-            "x86_64-pc-windows-msvc" => "flutter_engine.dll",
-            _ => panic!("unsupported platform"),
+            "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu" => "libflutter_engine.so",
+            "x86_64-apple-darwin" | "aarch64-apple-darwin" => "FlutterEmbedder.framework",
+            "x86_64-pc-windows-msvc" | "x86_64-pc-windows-gnu" => "flutter_engine.dll",
+            _ => panic!("unsupported platform: {}", self.target),
         }
     }
 
@@ -240,6 +263,7 @@ fn download(url: &str, target: &Path) -> Result<(), Error> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
         .progress_chars("#>-"));
 
     let pb = Arc::new(pb);
@@ -279,24 +303,24 @@ fn unzip(archive: &Path, dir: &Path) -> Result<(), Error> {
     pb.set_style(
         ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {wide_msg}")
+            .unwrap()
             .progress_chars("#>-"),
     );
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = dir.join(file.sanitized_name());
+        let outpath = match file.enclosed_name() {
+            Some(path) => dir.join(path),
+            None => continue,
+        };
 
         pb.inc(1);
 
-        if (&*file.name()).ends_with('/') {
-            pb.set_message(&format!(
-                "File {} extracted to \"{}\"",
-                i,
-                outpath.display()
-            ));
+        if file.name().ends_with('/') {
+            pb.set_message(format!("File {} extracted to \"{}\"", i, outpath.display()));
             std::fs::create_dir_all(&outpath)?;
         } else {
-            pb.set_message(&format!(
+            pb.set_message(format!(
                 "File {} extracted to \"{}\" ({} bytes)",
                 i,
                 outpath.display(),

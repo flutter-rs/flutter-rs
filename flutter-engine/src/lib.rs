@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 pub mod builder;
 pub mod channel;
 pub mod codec;
@@ -128,14 +131,25 @@ impl FlutterEngine {
         // Convert arguments into flutter compatible
         let mut args = Vec::with_capacity(builder.args.len() + 2);
         args.push(CString::new("flutter-rs").unwrap().into_raw());
-        args.push(
-            CString::new("--icu-symbol-prefix=gIcudtl")
-                .unwrap()
-                .into_raw(),
-        );
+        // Legacy custom engine builds linked the ICU data into the engine
+        // library under the `gIcudtl` symbol prefix. Official builds ship
+        // `icudtl.dat` separately, in which case `icu_data_path` is set below
+        // and this argument must be omitted.
+        if builder.icu_data.is_none() {
+            args.push(
+                CString::new("--icu-symbol-prefix=gIcudtl")
+                    .unwrap()
+                    .into_raw(),
+            );
+        }
         for arg in builder.args.iter() {
             args.push(CString::new(arg.as_str()).unwrap().into_raw());
         }
+
+        // Keep the icu data path alive for the duration of the engine; the
+        // raw pointer is handed to the engine in `FlutterProjectArgs` below.
+        let icu_data_path: Option<CString> =
+            builder.icu_data.as_deref().map(path_to_cstring);
 
         let (main_tx, main_rx) = unbounded();
 
@@ -161,25 +175,26 @@ impl FlutterEngine {
         inner.channel_registry.write().init(engine.downgrade());
         inner.platform_runner.init(engine.downgrade());
 
-        // Configure renderer
+        // Configure renderer. The embedder API uses `struct_size` for forward
+        // compatibility, so zero-initialise and only set the fields we use.
+        let mut open_gl: flutter_engine_sys::FlutterOpenGLRendererConfig =
+            unsafe { mem::zeroed() };
+        open_gl.struct_size =
+            mem::size_of::<flutter_engine_sys::FlutterOpenGLRendererConfig>();
+        open_gl.make_current = Some(flutter_callbacks::make_current);
+        open_gl.clear_current = Some(flutter_callbacks::clear_current);
+        open_gl.present = Some(flutter_callbacks::present);
+        open_gl.fbo_callback = Some(flutter_callbacks::fbo_callback);
+        open_gl.make_resource_current = Some(flutter_callbacks::make_resource_current);
+        open_gl.fbo_reset_after_present = false;
+        open_gl.gl_proc_resolver = Some(flutter_callbacks::gl_proc_resolver);
+        open_gl.gl_external_texture_frame_callback =
+            Some(flutter_callbacks::gl_external_texture_frame);
+
         let renderer_config = flutter_engine_sys::FlutterRendererConfig {
             type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
             __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
-                open_gl: flutter_engine_sys::FlutterOpenGLRendererConfig {
-                    struct_size: std::mem::size_of::<flutter_engine_sys::FlutterOpenGLRendererConfig>(
-                    ),
-                    make_current: Some(flutter_callbacks::make_current),
-                    clear_current: Some(flutter_callbacks::clear_current),
-                    present: Some(flutter_callbacks::present),
-                    fbo_callback: Some(flutter_callbacks::fbo_callback),
-                    make_resource_current: Some(flutter_callbacks::make_resource_current),
-                    fbo_reset_after_present: false,
-                    surface_transformation: None,
-                    gl_proc_resolver: Some(flutter_callbacks::gl_proc_resolver),
-                    gl_external_texture_frame_callback: Some(
-                        flutter_callbacks::gl_external_texture_frame,
-                    ),
-                },
+                open_gl,
             },
         };
 
@@ -190,52 +205,39 @@ impl FlutterEngine {
             Arc::into_raw(arc) as *mut std::ffi::c_void
         };
 
-        let platform_task_runner = flutter_engine_sys::FlutterTaskRunnerDescription {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>(),
-            user_data: runner_ptr,
-            runs_task_on_current_thread_callback: Some(
-                flutter_callbacks::runs_task_on_current_thread,
-            ),
-            post_task_callback: Some(flutter_callbacks::post_task),
-            identifier: 0,
-        };
-        let custom_task_runners = flutter_engine_sys::FlutterCustomTaskRunners {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>(),
-            platform_task_runner: &platform_task_runner
-                as *const flutter_engine_sys::FlutterTaskRunnerDescription,
-            render_task_runner: std::ptr::null(),
-        };
+        let mut platform_task_runner: flutter_engine_sys::FlutterTaskRunnerDescription =
+            unsafe { mem::zeroed() };
+        platform_task_runner.struct_size =
+            mem::size_of::<flutter_engine_sys::FlutterTaskRunnerDescription>();
+        platform_task_runner.user_data = runner_ptr;
+        platform_task_runner.runs_task_on_current_thread_callback =
+            Some(flutter_callbacks::runs_task_on_current_thread);
+        platform_task_runner.post_task_callback = Some(flutter_callbacks::post_task);
+        platform_task_runner.identifier = 0;
+
+        let mut custom_task_runners: flutter_engine_sys::FlutterCustomTaskRunners =
+            unsafe { mem::zeroed() };
+        custom_task_runners.struct_size =
+            mem::size_of::<flutter_engine_sys::FlutterCustomTaskRunners>();
+        custom_task_runners.platform_task_runner = &platform_task_runner;
 
         // Configure engine
-        let project_args = flutter_engine_sys::FlutterProjectArgs {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterProjectArgs>(),
-            assets_path: path_to_cstring(&inner.assets).into_raw(),
-            main_path__unused__: std::ptr::null(),
-            packages_path__unused__: std::ptr::null(),
-            icu_data_path: std::ptr::null(),
-            command_line_argc: args.len() as i32,
-            command_line_argv: args.as_mut_ptr() as _,
-            platform_message_callback: Some(flutter_callbacks::platform_message_callback),
-            vm_snapshot_data: std::ptr::null(),
-            vm_snapshot_data_size: 0,
-            vm_snapshot_instructions: std::ptr::null(),
-            vm_snapshot_instructions_size: 0,
-            isolate_snapshot_data: std::ptr::null(),
-            isolate_snapshot_data_size: 0,
-            isolate_snapshot_instructions: std::ptr::null(),
-            isolate_snapshot_instructions_size: 0,
-            root_isolate_create_callback: Some(flutter_callbacks::root_isolate_create_callback),
-            update_semantics_node_callback: None,
-            update_semantics_custom_action_callback: None,
-            persistent_cache_path: std::ptr::null(),
-            is_persistent_cache_read_only: false,
-            vsync_callback: None,
-            custom_dart_entrypoint: std::ptr::null(),
-            custom_task_runners: &custom_task_runners
-                as *const flutter_engine_sys::FlutterCustomTaskRunners,
-            shutdown_dart_vm_when_done: true,
-            compositor: std::ptr::null(),
-        };
+        let mut project_args: flutter_engine_sys::FlutterProjectArgs =
+            unsafe { mem::zeroed() };
+        project_args.struct_size =
+            mem::size_of::<flutter_engine_sys::FlutterProjectArgs>();
+        project_args.assets_path = path_to_cstring(&inner.assets).into_raw();
+        project_args.command_line_argc = args.len() as i32;
+        project_args.command_line_argv = args.as_mut_ptr() as _;
+        project_args.platform_message_callback =
+            Some(flutter_callbacks::platform_message_callback);
+        project_args.root_isolate_create_callback =
+            Some(flutter_callbacks::root_isolate_create_callback);
+        project_args.custom_task_runners = &custom_task_runners;
+        project_args.shutdown_dart_vm_when_done = true;
+        if let Some(icu) = icu_data_path.as_ref() {
+            project_args.icu_data_path = icu.as_ptr();
+        }
 
         // Initialise engine
         unsafe {
@@ -362,14 +364,13 @@ impl FlutterEngine {
             panic!("Not on platform thread");
         }
 
-        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
-            struct_size: std::mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
-            width,
-            height,
-            pixel_ratio,
-            #[cfg(all(target_arch = "arm", target_os = "android"))]
-            __bindgen_padding_0: 0,
-        };
+        let mut event: flutter_engine_sys::FlutterWindowMetricsEvent =
+            unsafe { mem::zeroed() };
+        event.struct_size =
+            mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>();
+        event.width = width;
+        event.height = height;
+        event.pixel_ratio = pixel_ratio;
         unsafe {
             flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event);
         }
@@ -392,10 +393,13 @@ impl FlutterEngine {
 
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let buttons: flutter_engine_sys::FlutterPointerMouseButtons = buttons.into();
+        // `FlutterPointerEvent` embeds bindgen `enum`s whose first discriminant
+        // is not 0, so `mem::zeroed()` would be undefined behaviour. Build it as
+        // a full literal instead.
         let event = flutter_engine_sys::FlutterPointerEvent {
             struct_size: mem::size_of::<flutter_engine_sys::FlutterPointerEvent>(),
-            timestamp: timestamp.as_micros() as usize,
             phase: phase.into(),
+            timestamp: timestamp.as_micros() as usize,
             x,
             y,
             device,
@@ -404,10 +408,14 @@ impl FlutterEngine {
             scroll_delta_y,
             device_kind: device_kind.into(),
             buttons: buttons as i64,
-            #[cfg(all(target_arch = "arm", target_os = "android"))]
-            __bindgen_padding_0: 0,
-            #[cfg(all(target_arch = "arm", target_os = "android"))]
-            __bindgen_padding_1: 0,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            scale: 0.0,
+            rotation: 0.0,
+            view_id: 0,
+            pressure: 0.0,
+            pressure_min: 0.0,
+            pressure_max: 0.0,
         };
         unsafe {
             flutter_engine_sys::FlutterEngineSendPointerEvent(self.engine_ptr(), &event, 1);

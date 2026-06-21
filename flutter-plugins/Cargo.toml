@@ -2,7 +2,7 @@
 name = "flutter-plugins"
 version = "0.4.0"
 authors = ["juju <gliheng@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "flutter-rs plugins"
 keywords = ["flutter", "GUI"]
 repository = "https://github.com/flutter-rs/flutter-rs"
@@ -10,10 +10,10 @@ license = "MIT"
 
 [dependencies]
 flutter-engine = { path = "../flutter-engine" }
-locale_config = "0.3.0"
-log = "0.4.8"
-parking_lot = "0.10.0"
-serde = { version = "1.0.104", features = ["derive"] }
-serde_json = "1.0.44"
-tinyfiledialogs = "3.3.9"
-unic-locale = "0.7.1"
+locale_config = "0.3"
+log = "0.4"
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tinyfiledialogs = "3.9"
+unic-locale = "0.9"

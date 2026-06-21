@@ -36,6 +36,24 @@ Build flutter desktop app in dart & rust.
 - To build distribution, use:
     `cargo flutter --format appimage build --release`
 
+# Flutter engine library
+
+The embedder links against `libflutter_engine.so`, which must match your Flutter
+SDK's engine version.
+
+- **JIT (debug)** builds are published by Google and can be downloaded directly
+  (see `flutter-tools`, or grab `linux-x64/linux-x64-embedder.zip` from
+  `storage.googleapis.com/flutter_infra_release`). Official builds no longer link
+  the ICU data in, so pass `icudtl.dat` via `icu_data_path` /
+  `FlutterEngineBuilder::with_icu_data_path`.
+- **AOT (release/profile)** builds are *not* published for the generic embedder.
+  Build one from source, matched to your installed SDK, with:
+
+      scripts/build-engine.sh --mode release --out /path/to/your/app/.engine-release
+
+  The script detects the SDK version, checks out the engine at the matching
+  commit, runs `gclient sync` + `gn` + `ninja`, and copies the library out.
+
 # Contribution
 To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
@@ -43,7 +61,7 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 [CHANGELOG](CHANGELOG.md).
 
 [flutter-rs logo]: https://raw.githubusercontent.com/flutter-rs/flutter-rs/master/www/images/logo.svg
-[flutter-badge]: https://img.shields.io/badge/flutter-v1.9.1-blueviolet.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v3.44-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [discord-badge]: https://img.shields.io/discord/743549843632423053?label=discord
 [discord-url]: https://discord.gg/WwdAE6p

@@ -1,6 +1,6 @@
 use crate::handler::{
-    GlfwOpenGLHandler, GlfwPlatformHandler, GlfwPlatformTaskHandler, GlfwTextInputHandler,
-    GlfwWindowHandler,
+    GlfwMouseCursorHandler, GlfwOpenGLHandler, GlfwPlatformHandler, GlfwPlatformTaskHandler,
+    GlfwTextInputHandler, GlfwWindowHandler,
 };
 use flutter_engine::builder::FlutterEngineBuilder;
 use flutter_engine::channel::Channel;
@@ -13,10 +13,13 @@ use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_engine::texture_registry::Texture;
 use flutter_engine::FlutterEngine;
 use flutter_plugins::dialog::DialogPlugin;
+use flutter_plugins::accessibility::AccessibilityPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
+use flutter_plugins::keyboard::KeyboardPlugin;
 use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
+use flutter_plugins::mousecursor::MouseCursorPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
 use flutter_plugins::platform::PlatformPlugin;
 use flutter_plugins::settings::SettingsPlugin;
@@ -192,13 +195,18 @@ impl FlutterWindow {
         let window_handler: Arc<Mutex<GlfwWindowHandler>> =
             Arc::new(Mutex::new(GlfwWindowHandler::new(window.clone())));
         let textinput_handler = Arc::new(Mutex::new(GlfwTextInputHandler::default()));
+        let mousecursor_handler =
+            Arc::new(Mutex::new(GlfwMouseCursorHandler::new(window.clone())));
 
         let mut plugins = PluginRegistrar::new();
+        plugins.add_plugin(&engine, AccessibilityPlugin::default());
         plugins.add_plugin(&engine, DialogPlugin::default());
         plugins.add_plugin(&engine, IsolatePlugin::new_stub());
+        plugins.add_plugin(&engine, KeyboardPlugin::default());
         plugins.add_plugin(&engine, KeyEventPlugin::default());
         plugins.add_plugin(&engine, LifecyclePlugin::default());
         plugins.add_plugin(&engine, LocalizationPlugin::default());
+        plugins.add_plugin(&engine, MouseCursorPlugin::new(mousecursor_handler));
         plugins.add_plugin(&engine, NavigationPlugin::default());
         plugins.add_plugin(&engine, PlatformPlugin::new(platform_handler));
         plugins.add_plugin(&engine, SettingsPlugin::default());

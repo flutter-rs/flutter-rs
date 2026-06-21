@@ -1,5 +1,6 @@
 use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_engine::FlutterOpenGLHandler;
+use flutter_plugins::mousecursor::MouseCursorHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
@@ -180,6 +181,44 @@ impl WindowHandler for GlfwWindowHandler {
 
     fn end_drag(&mut self) {
         self.dragging = false;
+    }
+}
+
+pub struct GlfwMouseCursorHandler {
+    window: Arc<Mutex<glfw::PWindow>>,
+}
+
+impl GlfwMouseCursorHandler {
+    pub fn new(window: Arc<Mutex<glfw::PWindow>>) -> Self {
+        Self { window }
+    }
+}
+
+unsafe impl Send for GlfwMouseCursorHandler {}
+
+impl MouseCursorHandler for GlfwMouseCursorHandler {
+    fn activate_system_cursor(&mut self, kind: &str) {
+        let mut window = self.window.lock();
+        if kind == "none" {
+            window.set_cursor_mode(glfw::CursorMode::Hidden);
+            return;
+        }
+        window.set_cursor_mode(glfw::CursorMode::Normal);
+        // GLFW only ships a handful of standard cursors; map the rest to the
+        // closest available shape.
+        let cursor = match kind {
+            "click" | "grab" | "grabbing" => glfw::StandardCursor::Hand,
+            "text" | "verticalText" => glfw::StandardCursor::IBeam,
+            "precise" | "cell" => glfw::StandardCursor::Crosshair,
+            "resizeLeftRight" | "resizeColumn" | "resizeLeft" | "resizeRight" => {
+                glfw::StandardCursor::HResize
+            }
+            "resizeUpDown" | "resizeRow" | "resizeUp" | "resizeDown" => {
+                glfw::StandardCursor::VResize
+            }
+            _ => glfw::StandardCursor::Arrow,
+        };
+        window.set_cursor(Some(glfw::Cursor::standard(cursor)));
     }
 }
 

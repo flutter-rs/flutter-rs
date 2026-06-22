@@ -6,7 +6,7 @@ use flutter_engine::builder::FlutterEngineBuilder;
 use flutter_engine::channel::Channel;
 use flutter_engine::ffi::{
     FlutterPointerDeviceKind, FlutterPointerMouseButtons, FlutterPointerPhase,
-    FlutterPointerSignalKind,
+    FlutterPointerSignalKind, KeyEventType,
 };
 use flutter_engine::plugins::{Plugin, PluginRegistrar};
 use flutter_engine::tasks::TaskRunnerHandler;
@@ -16,7 +16,6 @@ use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::accessibility::AccessibilityPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
 use flutter_plugins::keyboard::KeyboardPlugin;
-use flutter_plugins::keyevent::{KeyAction, KeyActionType, KeyEventPlugin};
 use flutter_plugins::lifecycle::LifecyclePlugin;
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::mousecursor::MouseCursorPlugin;
@@ -203,7 +202,6 @@ impl FlutterWindow {
         plugins.add_plugin(&engine, DialogPlugin::default());
         plugins.add_plugin(&engine, IsolatePlugin::new_stub());
         plugins.add_plugin(&engine, KeyboardPlugin::default());
-        plugins.add_plugin(&engine, KeyEventPlugin::default());
         plugins.add_plugin(&engine, LifecyclePlugin::default());
         plugins.add_plugin(&engine, LocalizationPlugin::default());
         plugins.add_plugin(&engine, MouseCursorPlugin::new(mousecursor_handler));
@@ -455,6 +453,20 @@ impl FlutterWindow {
         }
     }
 
+    /// Translate a GLFW key event into the modern Flutter key protocol
+    /// (FlutterKeyEvent), which drives HardwareKeyboard, KeyboardListener and
+    /// shortcut/Actions handling. Keys without a Flutter mapping are dropped.
+    fn send_key_event(&self, key: glfw::Key, action: glfw::Action) {
+        let kind = match action {
+            glfw::Action::Press => KeyEventType::Down,
+            glfw::Action::Repeat => KeyEventType::Repeat,
+            glfw::Action::Release => KeyEventType::Up,
+        };
+        if let Some((physical, logical)) = crate::keymap::glfw_key_to_flutter(key as i32) {
+            self.engine.send_key_event(kind, physical, logical, None);
+        }
+    }
+
     pub fn handle_glfw_event(&self, event: glfw::WindowEvent) {
         match event {
             glfw::WindowEvent::Refresh => {
@@ -605,8 +617,12 @@ impl FlutterWindow {
                     text_input.notify_changes();
                 },
             ),
-            glfw::WindowEvent::Key(key, scancode, glfw::Action::Press, modifiers)
-            | glfw::WindowEvent::Key(key, scancode, glfw::Action::Repeat, modifiers) => {
+            glfw::WindowEvent::Key(
+                key,
+                _scancode,
+                action @ (glfw::Action::Press | glfw::Action::Repeat),
+                modifiers,
+            ) => {
                 // TODO: move this to TextInputPlugin
                 match key {
                     glfw::Key::Enter => self.with_plugin_mut(
@@ -746,28 +762,10 @@ impl FlutterWindow {
                     _ => {}
                 }
 
-                self.with_plugin_mut(|keyevent: &mut flutter_plugins::keyevent::KeyEventPlugin| {
-                    keyevent.key_action(KeyAction {
-                        toolkit: "glfw".to_string(),
-                        key_code: key as i32,
-                        scan_code: scancode as i32,
-                        modifiers: modifiers.bits() as i32,
-                        keymap: "linux".to_string(),
-                        _type: KeyActionType::Keydown,
-                    });
-                });
+                self.send_key_event(key, action);
             }
-            glfw::WindowEvent::Key(key, scancode, glfw::Action::Release, modifiers) => {
-                self.with_plugin_mut(|keyevent: &mut flutter_plugins::keyevent::KeyEventPlugin| {
-                    keyevent.key_action(KeyAction {
-                        toolkit: "glfw".to_string(),
-                        key_code: key as i32,
-                        scan_code: scancode as i32,
-                        modifiers: modifiers.bits() as i32,
-                        keymap: "linux".to_string(),
-                        _type: KeyActionType::Keyup,
-                    });
-                });
+            glfw::WindowEvent::Key(key, _scancode, glfw::Action::Release, _modifiers) => {
+                self.send_key_event(key, glfw::Action::Release);
             }
             _ => {}
         }

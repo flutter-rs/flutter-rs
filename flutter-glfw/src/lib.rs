@@ -3,6 +3,7 @@ use log::error;
 use std::path::PathBuf;
 
 mod handler;
+mod keymap;
 pub mod window;
 
 pub fn init() -> Result<FlutterDesktop, glfw::InitError> {

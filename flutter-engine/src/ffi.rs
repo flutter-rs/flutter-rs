@@ -1,4 +1,23 @@
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum KeyEventType {
+    Up,
+    Down,
+    Repeat,
+}
+
+impl From<KeyEventType> for flutter_engine_sys::FlutterKeyEventType {
+    fn from(value: KeyEventType) -> Self {
+        match value {
+            KeyEventType::Up => flutter_engine_sys::FlutterKeyEventType::kFlutterKeyEventTypeUp,
+            KeyEventType::Down => flutter_engine_sys::FlutterKeyEventType::kFlutterKeyEventTypeDown,
+            KeyEventType::Repeat => {
+                flutter_engine_sys::FlutterKeyEventType::kFlutterKeyEventTypeRepeat
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FlutterPointerPhase {
     Cancel,
     Up,

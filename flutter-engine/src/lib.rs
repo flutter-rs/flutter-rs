@@ -422,6 +422,48 @@ impl FlutterEngine {
         }
     }
 
+    /// Send a hardware key event to the engine, feeding `HardwareKeyboard`
+    /// and the modern key event system. `physical` is a USB HID usage code and
+    /// `logical` a Flutter logical key id (both non-zero); `character` is the
+    /// produced text, if any.
+    pub fn send_key_event(
+        &self,
+        kind: crate::ffi::KeyEventType,
+        physical: u64,
+        logical: u64,
+        character: Option<&str>,
+    ) {
+        if !self.is_platform_thread() {
+            panic!("Not on platform thread");
+        }
+
+        // Keep the CString alive until FlutterEngineSendKeyEvent returns.
+        let character = character.and_then(|s| CString::new(s).ok());
+        let timestamp = unsafe { flutter_engine_sys::FlutterEngineGetCurrentTime() } as f64 / 1000.0;
+
+        // FlutterKeyEvent embeds enums whose first discriminant is non-zero, so
+        // it cannot be zero-initialised; build it as a full literal.
+        let event = flutter_engine_sys::FlutterKeyEvent {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterKeyEvent>(),
+            timestamp,
+            type_: kind.into(),
+            physical,
+            logical,
+            character: character.as_ref().map_or(ptr::null(), |c| c.as_ptr()),
+            synthesized: false,
+            device_type:
+                flutter_engine_sys::FlutterKeyEventDeviceType::kFlutterKeyEventDeviceTypeKeyboard,
+        };
+        unsafe {
+            flutter_engine_sys::FlutterEngineSendKeyEvent(
+                self.engine_ptr(),
+                &event,
+                None,
+                ptr::null_mut(),
+            );
+        }
+    }
+
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
         trace!("Sending message on channel {}", message.channel);
         if !self.is_platform_thread() {

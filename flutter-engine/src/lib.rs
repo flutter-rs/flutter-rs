@@ -464,6 +464,22 @@ impl FlutterEngine {
         }
     }
 
+    /// Fire-and-forget a raw, pre-encoded platform message on `channel` to Dart.
+    ///
+    /// This is the low-level escape hatch used by out-of-tree plugins that want
+    /// to push events to Dart (e.g. a `MethodChannel` "invoke method" call whose
+    /// body was encoded with a [`MethodCodec`](crate::codec::MethodCodec)).
+    /// Must be called on the platform thread — wrap it in
+    /// [`run_on_platform_thread`](Self::run_on_platform_thread) when emitting
+    /// from a background thread.
+    pub fn post_message(&self, channel: &str, message: &[u8]) {
+        self.send_platform_message(PlatformMessage {
+            channel: std::borrow::Cow::Borrowed(channel),
+            message,
+            response_handle: None,
+        });
+    }
+
     pub(crate) fn send_platform_message(&self, message: PlatformMessage) {
         trace!("Sending message on channel {}", message.channel);
         if !self.is_platform_thread() {

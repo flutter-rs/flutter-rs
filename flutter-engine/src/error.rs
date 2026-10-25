@@ -1,49 +1,41 @@
+//! Error types shared by the channel and codec layers.
+
 use std::{
-    error, fmt,
+    error,
     sync::mpsc::{RecvError, SendError},
 };
 
+use thiserror::Error;
+
 use crate::codec::{MethodCallResult, Value};
 
-#[derive(Debug)]
+/// A boxed error that can cross thread boundaries, as carried by
+/// [`MessageError::RustError`] and [`MethodCallError::RustError`].
+pub type BoxError = Box<dyn error::Error + Send + Sync>;
+
+/// Failure while pulling typed arguments out of a decoded [`Value`].
+#[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MethodArgsError {
+    /// The field was present but held a value of the wrong type.
+    #[error("expected value for type \"{0}\", but found {1:?}")]
     WrongType(String, Value),
+    /// The named field was missing from the argument map.
+    #[error("missing field \"{0}\" in map")]
     MissingField(String),
 }
 
-impl fmt::Display for MethodArgsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MethodArgsError::MissingField(field) => {
-                write!(f, "missing field \"{}\" in map", field.as_str())
-            }
-            MethodArgsError::WrongType(expected, actual) => write!(
-                f,
-                "expected value for type \"{}\", but found {:?}",
-                expected, actual
-            ),
-        }
-    }
-}
-
-impl error::Error for MethodArgsError {}
-
-#[derive(Debug)]
+/// Failure while moving a message between the platform thread and a worker.
+#[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RuntimeMessageError {
+    /// The receiving end of the channel was dropped.
+    #[error("send error: {0}")]
     SendError(String),
-    RecvError(RecvError),
+    /// The sending end of the channel was dropped.
+    #[error("receive error: {0}")]
+    RecvError(#[source] RecvError),
 }
-
-impl fmt::Display for RuntimeMessageError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RuntimeMessageError::SendError(error) => write!(f, "send error: {}", error),
-            RuntimeMessageError::RecvError(error) => write!(f, "receive error: {}", error),
-        }
-    }
-}
-
-impl error::Error for RuntimeMessageError {}
 
 impl<T> From<SendError<T>> for RuntimeMessageError {
     fn from(error: SendError<T>) -> Self {
@@ -57,47 +49,39 @@ impl From<RecvError> for RuntimeMessageError {
     }
 }
 
-#[derive(Debug)]
+/// Failure of a [`MessageChannel`](crate::channel::MessageChannel) exchange.
+#[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MessageError {
+    /// The channel was removed from the registry, or the engine is gone.
+    #[error("channel already closed")]
     ChannelClosed,
-    RustError(Box<dyn error::Error>),
-    MessageError(RuntimeMessageError),
+    /// A handler returned an arbitrary Rust error.
+    #[error("rust error: {0}")]
+    RustError(#[source] BoxError),
+    /// The message could not be handed to the platform thread.
+    #[error("{0}")]
+    MessageError(#[source] RuntimeMessageError),
+    /// A handler reported a Dart-visible error with a code and details.
+    #[error("{message} ({code})\ndetails: {details:?}")]
     CustomError {
+        /// Dart-visible error code.
         code: String,
+        /// Human-readable message.
         message: String,
+        /// Structured details handed back to Dart.
         details: Value,
     },
+    /// A handler failed without saying why.
+    #[error("unspecified error")]
     UnspecifiedError,
 }
 
 impl MessageError {
-    pub fn from_error<T: error::Error + 'static>(error: T) -> Self {
+    /// Wrap an arbitrary error as a [`MessageError::RustError`].
+    #[must_use]
+    pub fn from_error<T: error::Error + Send + Sync + 'static>(error: T) -> Self {
         MessageError::RustError(Box::new(error))
-    }
-}
-
-impl fmt::Display for MessageError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MessageError::ChannelClosed => write!(f, "channel already closed"),
-            MessageError::RustError(error) => write!(f, "rust error: {}", error),
-            MessageError::MessageError(msg) => write!(f, "{}", msg),
-            MessageError::CustomError {
-                code,
-                message,
-                details,
-            } => write!(f, "{} ({})\ndetails: {:?}", message, code, details),
-            MessageError::UnspecifiedError => write!(f, "unspecified error"),
-        }
-    }
-}
-
-impl error::Error for MessageError {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match self {
-            MessageError::RustError(err) => Some(&**err),
-            _ => None,
-        }
     }
 }
 
@@ -107,24 +91,47 @@ impl From<RuntimeMessageError> for MessageError {
     }
 }
 
-#[derive(Debug)]
+/// Failure of a [`MethodChannel`](crate::channel::MethodChannel) call.
+#[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MethodCallError {
+    /// No handler is registered for the method name.
+    #[error("method not implemented")]
     NotImplemented,
-    ArgParseError(MethodArgsError),
-    DeserializeError(ValueError),
+    /// The call arguments did not match what the handler expected.
+    #[error("failed to parse arguments: {0}")]
+    ArgParseError(#[source] MethodArgsError),
+    /// The call arguments could not be deserialized into the target type.
+    #[error("failed to deserialize value: {0}")]
+    DeserializeError(#[source] ValueError),
+    /// The channel was removed from the registry, or the engine is gone.
+    #[error("channel already closed")]
     ChannelClosed,
-    MessageError(RuntimeMessageError),
-    RustError(Box<dyn error::Error>),
+    /// The call could not be handed to the platform thread.
+    #[error("{0}")]
+    MessageError(#[source] RuntimeMessageError),
+    /// A handler returned an arbitrary Rust error.
+    #[error("rust error: {0}")]
+    RustError(#[source] BoxError),
+    /// A handler reported a Dart-visible error with a code and details.
+    #[error("{message} ({code})\ndetails: {details:?}")]
     CustomError {
+        /// Dart-visible error code.
         code: String,
+        /// Human-readable message.
         message: String,
+        /// Structured details handed back to Dart.
         details: Value,
     },
+    /// A handler failed without saying why.
+    #[error("unspecified error")]
     UnspecifiedError,
 }
 
 impl MethodCallError {
-    pub fn from_error<T: error::Error + 'static>(error: T) -> Self {
+    /// Wrap an arbitrary error as a [`MethodCallError::RustError`].
+    #[must_use]
+    pub fn from_error<T: error::Error + Send + Sync + 'static>(error: T) -> Self {
         MethodCallError::RustError(Box::new(error))
     }
 }
@@ -147,39 +154,9 @@ impl From<RuntimeMessageError> for MethodCallError {
     }
 }
 
-impl fmt::Display for MethodCallError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MethodCallError::NotImplemented => write!(f, "method not implemented"),
-            MethodCallError::ArgParseError(err) => write!(f, "failed to parse arguments: {}", err),
-            MethodCallError::DeserializeError(err) => {
-                write!(f, "failed to deserialize value: {}", err)
-            }
-            MethodCallError::ChannelClosed => write!(f, "channel already closed"),
-            MethodCallError::MessageError(msg) => write!(f, "{}", msg),
-            MethodCallError::RustError(error) => write!(f, "rust error: {}", error),
-            MethodCallError::CustomError {
-                code,
-                message,
-                details,
-            } => write!(f, "{} ({})\ndetails: {:?}", message, code, details),
-            MethodCallError::UnspecifiedError => write!(f, "unspecified error"),
-        }
-    }
-}
-
-impl error::Error for MethodCallError {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match self {
-            MethodCallError::RustError(err) => Some(&**err),
-            _ => None,
-        }
-    }
-}
-
-impl Into<MethodCallResult> for MethodCallError {
-    fn into(self) -> MethodCallResult {
-        match self {
+impl From<MethodCallError> for MethodCallResult {
+    fn from(error: MethodCallError) -> Self {
+        match error {
             MethodCallError::NotImplemented => MethodCallResult::NotImplemented,
             MethodCallError::CustomError {
                 code,
@@ -190,38 +167,35 @@ impl Into<MethodCallResult> for MethodCallError {
                 message,
                 details,
             },
-            error => MethodCallResult::Err {
-                code: "".into(),
-                message: format!("{}", error),
+            other => MethodCallResult::Err {
+                code: String::new(),
+                message: format!("{}", other),
                 details: Value::Null,
             },
         }
     }
 }
 
-#[derive(Debug)]
+/// Failure while encoding or decoding a [`Value`].
+#[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ValueError {
+    /// A free-form message, as produced by serde.
+    #[error("{0}")]
     Message(String),
+    /// The value did not have the expected type.
+    #[error("wrong type")]
     WrongType,
+    /// A list was expected.
+    #[error("value is not a list")]
     NoList,
+    /// A map was expected.
+    #[error("value is not a map")]
     NoMap,
 }
 
-impl fmt::Display for ValueError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ValueError::Message(s) => write!(f, "{}", s),
-            ValueError::WrongType => write!(f, "wrong type"),
-            ValueError::NoList => write!(f, "value is not a list"),
-            ValueError::NoMap => write!(f, "value is not a map"),
-        }
-    }
-}
-
 impl serde::de::Error for ValueError {
-    fn custom<T: fmt::Display>(msg: T) -> Self {
+    fn custom<T: std::fmt::Display>(msg: T) -> Self {
         ValueError::Message(msg.to_string())
     }
 }
-
-impl error::Error for ValueError {}

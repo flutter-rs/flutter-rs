@@ -4,17 +4,20 @@
 use std::sync::{Arc, Weak};
 
 use flutter_engine::{
-    channel::{MethodCall, MethodCallHandler, MethodChannel},
-    codec::{Value, STANDARD_CODEC},
-    plugins::Plugin,
     FlutterEngine,
+    channel::{MethodCall, MethodCallHandler, MethodChannel},
+    codec::{STANDARD_CODEC, Value},
+    plugins::Plugin,
 };
-use log::debug;
+use log::{debug, warn};
 use parking_lot::Mutex;
 
+/// The name this plugin is registered under.
 pub const PLUGIN_NAME: &str = module_path!();
+/// The channel this plugin handles.
 pub const CHANNEL_NAME: &str = "flutter/mousecursor";
 
+/// The embedder half of the `flutter/mousecursor` channel.
 pub trait MouseCursorHandler {
     /// Activate the system cursor identified by `kind`, one of the kinds
     /// defined by Flutter's `SystemMouseCursors` (e.g. `basic`, `click`,
@@ -22,12 +25,14 @@ pub trait MouseCursorHandler {
     fn activate_system_cursor(&mut self, kind: &str);
 }
 
+/// Plugin for the `flutter/mousecursor` channel.
 pub struct MouseCursorPlugin {
     channel: Weak<MethodChannel>,
     handler: Arc<Mutex<dyn MouseCursorHandler + Send>>,
 }
 
 impl MouseCursorPlugin {
+    /// A plugin that serves the channel out of `handler`.
     pub fn new(handler: Arc<Mutex<dyn MouseCursorHandler + Send>>) -> Self {
         Self {
             channel: Weak::new(),
@@ -58,15 +63,18 @@ struct Handler {
 
 impl MethodCallHandler for Handler {
     fn on_method_call(&mut self, call: MethodCall) {
-        match call.method().as_str() {
+        match call.method() {
             "activateSystemCursor" => {
-                if let Value::Map(args) = call.raw_args() {
-                    if let Some(Value::String(kind)) = args.get("kind") {
-                        debug!("activateSystemCursor: {}", kind);
-                        self.handler.lock().activate_system_cursor(kind);
-                        return call.success(true);
-                    }
+                if let Value::Map(args) = call.raw_args()
+                    && let Some(Value::String(kind)) = args.get("kind")
+                {
+                    debug!("activateSystemCursor: {kind}");
+                    self.handler.lock().activate_system_cursor(kind);
+                    return call.success(true);
                 }
+                // `false` tells the framework the cursor was not applied, so
+                // that it can fall back to its own handling.
+                warn!("activateSystemCursor without a kind: {:?}", call.raw_args());
                 call.success(false)
             }
             _ => call.not_implemented(),

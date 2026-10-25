@@ -12,8 +12,17 @@
 # matching version, builds the embedder library in the requested runtime mode,
 # and copies it where you ask.
 #
+# Since the 2024 monorepo merge the engine lives inside flutter/flutter at
+# engine/src/flutter, bootstrapped by engine/scripts/standard.gclient and built
+# with engine/src/flutter/tools/gn. That layout, and every gn flag used below,
+# was last checked against the 3.44.2 and 3.47.8 tags.
+#
+# Expect the first run to take hours and tens of GB: `gclient sync` fetches the
+# whole engine dependency tree before anything is compiled.
+#
 # Usage:
 #   scripts/build-engine.sh [--mode release|profile|debug] [--out DIR] [--jobs N]
+#   scripts/build-engine.sh --help
 #
 # Environment overrides:
 #   FLUTTER_ROOT   Flutter SDK path (default: derived from `which flutter`)
@@ -36,13 +45,17 @@ BUILD_ROOT="${BUILD_ROOT:-$HOME/flutter-engine-build}"
 OUT_DIR="${OUT_DIR:-}"
 JOBS="${JOBS:-$(nproc)}"
 
+# Print this file's header comment (everything from the line after the shebang
+# up to the first non-comment line), with the leading '# ' stripped.
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
+
 # ---- parse flags ----------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode) MODE="$2"; shift 2;;
     --out)  OUT_DIR="$2"; shift 2;;
     --jobs) JOBS="$2"; shift 2;;
-    -h|--help) sed -n '2,33p' "$0"; exit 0;;
+    -h|--help) usage; exit 0;;
     *) echo "unknown argument: $1" >&2; exit 2;;
   esac
 done
@@ -65,8 +78,26 @@ fi
 [[ -d "$FLUTTER_ROOT" ]] || die "FLUTTER_ROOT does not exist: $FLUTTER_ROOT"
 
 FRAMEWORK_SHA="$(git -C "$FLUTTER_ROOT" rev-parse HEAD 2>/dev/null || true)"
-FLUTTER_VERSION="$(cat "$FLUTTER_ROOT/version" 2>/dev/null | tr -d '[:space:]' || true)"
-ENGINE_VERSION="$(cat "$FLUTTER_ROOT/bin/internal/engine.version" 2>/dev/null | tr -d '[:space:]' || true)"
+# `$FLUTTER_ROOT/version` was removed from the SDK years ago; the framework
+# version now lives in bin/cache/flutter.version.json (written the first time
+# `flutter` runs), with the git tag as a fallback for a fresh checkout.
+FLUTTER_VERSION="$(
+  sed -n 's/.*"frameworkVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$FLUTTER_ROOT/bin/cache/flutter.version.json" 2>/dev/null | head -1 || true
+)"
+if [[ -z "$FLUTTER_VERSION" ]]; then
+  FLUTTER_VERSION="$(git -C "$FLUTTER_ROOT" describe --tags --exact-match 2>/dev/null || true)"
+fi
+
+# bin/cache/engine.stamp is what the flutter tool itself reads and exists on
+# every channel; bin/internal/engine.version is only committed on a tagged
+# release. Logged only — the build uses the framework checkout, not this hash.
+ENGINE_VERSION="$(
+  {
+    tr -d '[:space:]' < "$FLUTTER_ROOT/bin/cache/engine.stamp" ||
+      tr -d '[:space:]' < "$FLUTTER_ROOT/bin/internal/engine.version"
+  } 2>/dev/null || true
+)"
 
 log "Flutter SDK:       $FLUTTER_ROOT"
 log "Flutter version:   ${FLUTTER_VERSION:-unknown}"
@@ -136,7 +167,10 @@ if [[ -n "$OUT_DIR" ]]; then
   log "Copied to: $OUT_DIR/libflutter_engine.so"
   # icudtl.dat is shipped separately by the SDK and is needed at runtime.
   ICU="$(find "$FLUTTER_ROOT/bin/cache/artifacts/engine" -name icudtl.dat 2>/dev/null | head -1 || true)"
-  [[ -n "$ICU" ]] && log "icudtl.dat (pass as FLUTTER_ICU_DATA): $ICU"
+  # There is no FLUTTER_ICU_DATA environment variable: the only way to feed
+  # this path in is the builder API.
+  [[ -n "$ICU" ]] &&
+    log "icudtl.dat (pass to FlutterEngineBuilder::with_icu_data_path): $ICU"
 else
   log "No --out given. Use it directly, e.g.:"
   echo "    LD_LIBRARY_PATH=$(dirname "$SO") ..."

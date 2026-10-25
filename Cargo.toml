@@ -1,10 +1,75 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "flutter-engine",
     "flutter-engine-sys",
     "flutter-plugins",
-#    "flutter-winit",
     "flutter-glfw",
-    "flutter-tools"
+    "flutter-tools",
 ]
+# Parked: the winit/glutin backend has not been ported to winit 0.30 / glutin 0.32
+# and its pinned glutin fork no longer resolves. Excluded so cargo commands work
+# inside the directory without pulling it into the workspace graph.
+exclude = ["flutter-winit"]
+
+[workspace.package]
+version = "0.5.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/flutter-rs/flutter-rs"
+homepage = "https://github.com/flutter-rs/flutter-rs"
+keywords = ["flutter", "gui"]
+
+[workspace.dependencies]
+flutter-engine = { path = "flutter-engine", version = "0.5.0" }
+flutter-engine-sys = { path = "flutter-engine-sys", version = "0.5.0" }
+flutter-plugins = { path = "flutter-plugins", version = "0.5.0" }
+bindgen = "0.73"
+crossbeam-channel = "0.5"
+curl = "0.4"
+dirs = "7"
+gl = "0.14"
+glfw = { version = "0.63", default-features = false, features = [
+    "x11",
+    "wayland",
+    "raw-window-handle-v0-6",
+] }
+image = { version = "0.25", default-features = false }
+indicatif = "0.18"
+libloading = "0.9"
+log = "0.4"
+parking_lot = "0.12"
+priority-queue = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sys-locale = "0.3"
+thiserror = "2"
+tinyfiledialogs = "3.9"
+unic-locale = "0.9"
+which = "8"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+unexpected_cfgs = "warn"
+
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# The engine graph legitimately carries duplicate majors (bitflags, getrandom)
+# through transitive deps we do not control.
+multiple_crate_versions = "allow"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "warn"
+
+# Keep unwinding in release: the FFI callbacks are the only place a panic can
+# reach C, and `panic = "abort"` would remove the ability to catch it there.
+[profile.release]
+lto = "thin"
+codegen-units = 1

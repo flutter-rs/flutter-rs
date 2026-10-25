@@ -1,19 +1,32 @@
 [package]
 name = "flutter-plugins"
-version = "0.4.0"
+version.workspace = true
 authors = ["juju <gliheng@gmail.com>"]
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "flutter-rs plugins"
-keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
-license = "MIT"
+keywords.workspace = true
+categories = ["gui"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-plugins"
+license.workspace = true
+readme = "../README.md"
 
 [dependencies]
-flutter-engine = { path = "../flutter-engine" }
-locale_config = "0.3"
-log = "0.4"
-parking_lot = "0.12"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tinyfiledialogs = "3.9"
-unic-locale = "0.9"
+flutter-engine.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tinyfiledialogs = { workspace = true, optional = true }
+unic-locale.workspace = true
+
+[features]
+default = ["dialog"]
+# The file/message dialog plugin vendors C sources through `cc`; opt out of it
+# for builds that cannot run a C compiler.
+dialog = ["dep:tinyfiledialogs"]
+
+[lints]
+workspace = true

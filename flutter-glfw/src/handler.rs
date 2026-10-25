@@ -1,13 +1,12 @@
-use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_engine::FlutterOpenGLHandler;
+use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_plugins::mousecursor::MouseCursorHandler;
 use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
 use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use glfw::Context;
 use parking_lot::Mutex;
-use std::cell::RefCell;
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 use std::sync::Arc;
 
 pub(crate) struct GlfwPlatformTaskHandler {}
@@ -20,6 +19,10 @@ impl GlfwPlatformTaskHandler {
 
 impl TaskRunnerHandler for GlfwPlatformTaskHandler {
     fn wake(&self) {
+        // SAFETY: `glfwPostEmptyEvent` takes no arguments and GLFW documents it
+        // as callable from any thread, which is the point: the engine wakes the
+        // platform thread from its own. `glfw::init` has run, because a
+        // `FlutterWindow` cannot exist before it.
         unsafe {
             glfw::ffi::glfwPostEmptyEvent();
         }
@@ -27,27 +30,30 @@ impl TaskRunnerHandler for GlfwPlatformTaskHandler {
 }
 
 pub(crate) struct GlfwOpenGLHandler {
-    render_ctx: RefCell<glfw::PRenderContext>,
-    resource_ctx: RefCell<glfw::PRenderContext>,
+    // The engine makes these contexts current on its raster and IO threads, so
+    // `FlutterOpenGLHandler` is shared by `&` across threads and the interior
+    // mutability has to be thread-safe.
+    render_ctx: Mutex<glfw::PRenderContext>,
+    resource_ctx: Mutex<glfw::PRenderContext>,
 }
 
 impl GlfwOpenGLHandler {
     pub fn new(render_ctx: glfw::PRenderContext, resource_ctx: glfw::PRenderContext) -> Self {
         Self {
-            render_ctx: RefCell::new(render_ctx),
-            resource_ctx: RefCell::new(resource_ctx),
+            render_ctx: Mutex::new(render_ctx),
+            resource_ctx: Mutex::new(resource_ctx),
         }
     }
 }
 
 impl FlutterOpenGLHandler for GlfwOpenGLHandler {
     fn swap_buffers(&self) -> bool {
-        self.render_ctx.borrow_mut().swap_buffers();
+        self.render_ctx.lock().swap_buffers();
         true
     }
 
     fn make_current(&self) -> bool {
-        self.render_ctx.borrow_mut().make_current();
+        self.render_ctx.lock().make_current();
         true
     }
 
@@ -61,20 +67,24 @@ impl FlutterOpenGLHandler for GlfwOpenGLHandler {
     }
 
     fn make_resource_current(&self) -> bool {
-        self.resource_ctx.borrow_mut().make_current();
+        self.resource_ctx.lock().make_current();
         true
     }
 
-    fn gl_proc_resolver(&self, proc: *const i8) -> *mut c_void {
-        unsafe { glfw::ffi::glfwGetProcAddress(proc as _) as _ }
+    fn gl_proc_resolver(&self, proc: *const c_char) -> *mut c_void {
+        // SAFETY: `proc` is the NUL-terminated symbol name the engine passes
+        // us, which `glfwGetProcAddress` only reads. The engine calls this from
+        // its raster thread, which has already made a context current through
+        // `make_current`, as GLFW requires.
+        unsafe { glfw::ffi::glfwGetProcAddress(proc as _) }
+            .map_or(std::ptr::null_mut(), |f| f as *mut c_void)
     }
 }
 
+/// Backs `flutter/platform`: the window title and the system clipboard.
 pub struct GlfwPlatformHandler {
     pub window: Arc<Mutex<glfw::PWindow>>,
 }
-
-unsafe impl Send for GlfwPlatformHandler {}
 
 impl PlatformHandler for GlfwPlatformHandler {
     fn set_application_switcher_description(&mut self, description: AppSwitcherDescription) {
@@ -96,6 +106,8 @@ impl PlatformHandler for GlfwPlatformHandler {
     }
 }
 
+/// Backs `flutter/window`: window geometry, visibility and client-side
+/// dragging of a borderless window.
 pub struct GlfwWindowHandler {
     window: Arc<Mutex<glfw::PWindow>>,
     dragging: bool,
@@ -111,19 +123,25 @@ impl GlfwWindowHandler {
         }
     }
 
+    /// Move the window by the cursor's offset from where [`start_drag`] was
+    /// called, and report whether a drag is in progress — in which case the
+    /// cursor event belongs to the drag and not to Flutter.
+    ///
+    /// [`start_drag`]: flutter_plugins::window::WindowHandler::start_drag
     pub fn drag_window(&self, x: f64, y: f64) -> bool {
         if self.dragging {
             let mut window = self.window.lock();
             let (wx, wy) = window.get_pos();
-            let dx = (x - self.start_cursor_pos.0) as i32;
-            let dy = (y - self.start_cursor_pos.1) as i32;
+            // `as i32` saturates, and GLFW cursor positions are far inside
+            // i32; round rather than truncate so dragging left/up moves by the
+            // same amount as dragging right/down.
+            let dx = (x - self.start_cursor_pos.0).round() as i32;
+            let dy = (y - self.start_cursor_pos.1).round() as i32;
             window.set_pos(wx + dx, wy + dy);
         }
         self.dragging
     }
 }
-
-unsafe impl Send for GlfwWindowHandler {}
 
 impl WindowHandler for GlfwWindowHandler {
     fn close(&mut self) {
@@ -184,6 +202,8 @@ impl WindowHandler for GlfwWindowHandler {
     }
 }
 
+/// Backs `flutter/mousecursor`, mapping Flutter's cursor names onto the
+/// handful of standard shapes GLFW ships.
 pub struct GlfwMouseCursorHandler {
     window: Arc<Mutex<glfw::PWindow>>,
 }
@@ -193,8 +213,6 @@ impl GlfwMouseCursorHandler {
         Self { window }
     }
 }
-
-unsafe impl Send for GlfwMouseCursorHandler {}
 
 impl MouseCursorHandler for GlfwMouseCursorHandler {
     fn activate_system_cursor(&mut self, kind: &str) {
@@ -222,13 +240,10 @@ impl MouseCursorHandler for GlfwMouseCursorHandler {
     }
 }
 
+/// Backs `flutter/textinput`'s show/hide requests, which a desktop window
+/// with a hardware keyboard has nothing to do about.
+#[derive(Default)]
 pub struct GlfwTextInputHandler {}
-
-impl Default for GlfwTextInputHandler {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl TextInputHandler for GlfwTextInputHandler {
     fn show(&mut self) {}

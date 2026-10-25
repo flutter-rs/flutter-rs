@@ -1,0 +1,65 @@
+# cargo-deny configuration — see https://embarkstudios.github.io/cargo-deny/
+#
+# `cargo deny check advisories licenses bans sources` runs in CI
+# (.github/workflows/ci.yml, job `deny`). Run it locally the same way:
+#
+#     cargo install cargo-deny --locked
+#     cargo deny check advisories licenses bans sources
+#
+# Checked with cargo-deny 0.20.2 against the committed Cargo.lock.
+
+[graph]
+# The engine is a desktop embedder; these are the targets the workspace is
+# actually built for, so the graph (and the license set) stays honest.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# No ignored advisories. If one has to be added, give it a dated rationale:
+#   ignore = [{ id = "RUSTSEC-0000-0000", reason = "…, revisit YYYY-MM-DD" }]
+ignore = []
+
+[licenses]
+version = 2
+# Every licence in the current graph, nothing speculative.
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",        # bindgen
+    "ISC",                 # libloading
+    "MIT",
+    "MPL-2.0",             # see below
+    "Unicode-3.0",         # tinystr, unicode-ident
+    "Zlib",                # glfw-sys, zlib-rs, raw-window-handle
+    "zlib-acknowledgement", # tinyfiledialogs
+]
+# priority-queue is `LGPL-3.0-or-later OR MPL-2.0`; take MPL-2.0 so flutter-rs
+# stays MIT-licensable. MPL-2.0 is weak, file-level copyleft: it obliges you to
+# publish changes to *those files*, not to your own crate. Also reached
+# unconditionally through dirs -> dirs-sys -> option-ext, which is MPL-2.0 only.
+[[licenses.clarify]]
+crate = "priority-queue"
+expression = "MPL-2.0"
+license-files = []
+
+[bans]
+# The engine graph legitimately carries duplicate majors through transitive
+# dependencies we do not control (bitflags 1/2, libloading 0.8/0.9, …), which
+# is also why [workspace.lints.clippy] allows multiple_crate_versions. Warn so
+# the list stays visible without blocking a merge.
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

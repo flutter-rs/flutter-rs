@@ -1,25 +1,33 @@
 [package]
 name = "flutter-engine"
-version = "0.4.0"
+version.workspace = true
 authors = ["juju <gliheng@gmail.com>", "Sophie Tauchert <sophie@999eagle.moe>"]
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 description = "Flutter engine embedder in rust."
-keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
-license = "MIT"
+keywords.workspace = true
+categories = ["gui", "api-bindings"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-engine"
+license.workspace = true
 
 [dependencies]
-crossbeam-channel = "0.5"
-flutter-engine-sys = { path = "../flutter-engine-sys" }
-gl = { version = "0.14", optional = true }
-image = { version = "0.25", optional = true, default-features = false }
-log = "0.4"
-parking_lot = "0.12"
-priority-queue = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-async-std = "1"
-futures-task = "0.3"
+crossbeam-channel.workspace = true
+flutter-engine-sys.workspace = true
+gl = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+log.workspace = true
+parking_lot.workspace = true
+priority-queue.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [features]
-gl-helpers = ["gl", "image"]
+# `dep:` keeps `gl` and `image` from becoming public features of their own:
+# enabling either alone does not configure the texture helpers.
+gl-helpers = ["dep:gl", "dep:image"]
+
+[lints]
+workspace = true

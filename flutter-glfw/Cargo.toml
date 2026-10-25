@@ -1,18 +1,34 @@
 [package]
 name = "flutter-glfw"
-version = "0.4.0"
-authors = ["juju <gliheng@gmail.com>", "Sophie Tauchert <sophie@999eagle.moe>", "Chandler Newman <chandler2newman@hotmail.co.uk>"]
-edition = "2021"
+version.workspace = true
+authors = [
+    "juju <gliheng@gmail.com>",
+    "Sophie Tauchert <sophie@999eagle.moe>",
+    "Chandler Newman <chandler2newman@hotmail.co.uk>",
+]
+edition.workspace = true
+# Not the workspace's 1.88: glfw 0.63 uses `cfg_select!`, stable since 1.95, and
+# declares `rust-version = "1.56"` itself, so cargo cannot work that out for us.
+# Without this, building on 1.88 fails with "cannot find macro `cfg_select`"
+# inside a dependency instead of a plain MSRV error here.
+rust-version = "1.95"
 description = "Flutter engine embedder using glfw."
-keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
-license = "MIT"
+keywords.workspace = true
+categories = ["gui", "rendering"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-glfw"
+license.workspace = true
 
 [dependencies]
-flutter-engine-sys = { path = "../flutter-engine-sys" }
-flutter-engine = { path = "../flutter-engine" }
-flutter-plugins = { path = "../flutter-plugins" }
-locale_config = "0.3"
-log = "0.4"
-parking_lot = "0.12"
-glfw = "0.59"
+flutter-engine.workspace = true
+# The dialog plugin is registered unconditionally by `FlutterWindow`.
+flutter-plugins = { workspace = true, features = ["dialog"] }
+glfw.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+sys-locale.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

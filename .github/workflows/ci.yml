@@ -226,3 +226,30 @@ jobs:
           # keeps `cargo metadata` out of that argument entirely.
           rust-version: stable
           command: check advisories licenses bans sources
+
+  # ---------------------------------------------------------------------------
+  # The generated half of flutter-glfw/src/keymap.rs against the SDK's own key
+  # data. `--check` re-scrapes keyboard_maps.g.dart / keyboard_key.g.dart and
+  # compares; it writes nothing.
+  #
+  # This catches a hand-edit of the generated table, and — like `deny` — can go
+  # red without a commit touching the repository, when Flutter stable changes a
+  # key id. The fix for that is to re-run the generator and look at what moved
+  # upstream, never to edit the table.
+  #
+  # No Rust toolchain, no engine and no `flutter` run: the two .g.dart files
+  # ship in the SDK checkout, so installing the SDK is the whole setup. python3
+  # is preinstalled on the runner image.
+  # ---------------------------------------------------------------------------
+  keymap:
+    name: keymap in sync with the sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      # flutter-action exports FLUTTER_ROOT, which is where the generator looks
+      # before falling back to `flutter` on PATH.
+      - run: python3 scripts/gen-keymap.py --check

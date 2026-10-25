@@ -177,7 +177,9 @@ impl MessageChannel {
     /// Send a value on this channel and hand Dart's reply to `callback`.
     ///
     /// `callback` runs on the platform thread. It is not called at all if the
-    /// reply cannot be decoded as `V`, which is logged instead.
+    /// reply cannot be decoded as `V`, which is logged instead, or if the
+    /// reply never comes — the send failed, or the engine was shut down with
+    /// the message in flight — in which case it is dropped.
     pub fn send_with_result<T, F, V>(&self, value: T, callback: F)
     where
         T: Serialize,

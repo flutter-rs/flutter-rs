@@ -27,6 +27,7 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 
@@ -200,15 +201,29 @@ def splice(existing, table):
 def write_atomically(path, contents):
     """Write via a temporary file so a crash cannot truncate the target."""
     directory = os.path.dirname(os.path.abspath(path)) or "."
+
+    # NamedTemporaryFile creates its file 0600, but the target is a checked-in
+    # source file, so carry its mode over (0644 for one that does not exist
+    # yet) instead of making keymap.rs owner-only on every regeneration.
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError:
+        mode = 0o644
+
     handle = tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=directory, prefix=".keymap-", suffix=".rs", delete=False
     )
     try:
         with handle:
             handle.write(contents)
+        os.chmod(handle.name, mode)
         os.replace(handle.name, path)
     except BaseException:
-        os.unlink(handle.name)
+        # Losing the temporary file is not worth masking whatever went wrong.
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
         raise
 
 

@@ -1,8 +1,9 @@
 //! Plugin for the `flutter/platform` channel.
 //!
-//! Carries the clipboard and the window-chrome calls the framework makes on
-//! the host: `Clipboard.getData`/`setData`/`hasStrings` and
-//! `SystemChrome.setApplicationSwitcherDescription`. Anything else is
+//! Carries the clipboard, the window-chrome and the app-exit calls the
+//! framework makes on the host: `Clipboard.getData`/`setData`/`hasStrings`,
+//! `SystemChrome.setApplicationSwitcherDescription`,
+//! `SystemNavigator.pop` and `System.exitApplication`. Anything else is
 //! answered as not implemented, which is what `SystemChannels.platform` — an
 //! `OptionalMethodChannel` — expects for a call the embedder does not
 //! support.
@@ -32,6 +33,38 @@ pub const CHANNEL_NAME: &str = "flutter/platform";
 #[error("unsupported clipboard mime type")]
 pub struct MimeError;
 
+/// Why the framework is asking the embedder to exit, mirroring
+/// `ui.AppExitType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AppExitType {
+    /// The app may refuse: an `onExitRequested` observer can cancel it.
+    Cancelable,
+    /// The app has already decided; the embedder is only being told.
+    Required,
+}
+
+/// The embedder's answer to [`PlatformHandler::exit_application`], mirroring
+/// `ui.AppExitResponse`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AppExitResponse {
+    /// The embedder is closing the app.
+    Exit,
+    /// The embedder is not closing; the framework keeps running.
+    Cancel,
+}
+
+impl AppExitResponse {
+    /// The wire value `ServicesBinding.exitApplication` matches on.
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Exit => "exit",
+            Self::Cancel => "cancel",
+        }
+    }
+}
+
 /// The embedder half of the `flutter/platform` channel.
 pub trait PlatformHandler {
     /// Describe the app to the host's window/app switcher.
@@ -47,6 +80,21 @@ pub trait PlatformHandler {
     /// Fails with [`MimeError`] if the clipboard cannot produce `mime`. The
     /// framework only ever asks for `text/plain`.
     fn get_clipboard_data(&mut self, mime: &str) -> Result<String, MimeError>;
+
+    /// Close the app, or refuse to.
+    ///
+    /// The framework asks for this through `SystemNavigator.pop`, which is
+    /// always [`AppExitType::Required`] and ignores the answer, and through
+    /// `ServicesBinding.exitApplication`, where an app that installed an
+    /// `onExitRequested` observer may ask for a [`AppExitType::Cancelable`]
+    /// exit. Answering [`AppExitResponse::Cancel`] to a `Required` request
+    /// leaves the user with a window that cannot be closed, because the
+    /// framework has already decided by then.
+    ///
+    /// `exit_code` is the status the app would like the process to end with;
+    /// an embedder that cannot choose its own exit status should say so in its
+    /// implementation rather than pretend.
+    fn exit_application(&mut self, exit_type: AppExitType, exit_code: i32) -> AppExitResponse;
 }
 
 /// Plugin for the `flutter/platform` channel.
@@ -136,9 +184,59 @@ impl MethodCallHandler for Handler {
                     .is_ok_and(|text| !text.is_empty());
                 call.success(HasStringsResult { value: has_strings })
             }
+            // The older, unconditional form: the framework has decided
+            // already and discards the reply. Its `animated` argument is an
+            // Android transition hint with no desktop meaning.
+            "SystemNavigator.pop" => {
+                self.handler
+                    .lock()
+                    .exit_application(AppExitType::Required, 0);
+                call.success_empty()
+            }
+            // The negotiated form. `ServicesBinding.exitApplication` reads the
+            // reply as `result['response']` and treats a null result as
+            // `cancel`, so the answer has to be this exact map.
+            "System.exitApplication" => {
+                let (exit_type, exit_code) = exit_request(call.raw_args());
+                let response = self.handler.lock().exit_application(exit_type, exit_code);
+                call.success(ExitApplicationResponse {
+                    response: response.as_str(),
+                })
+            }
             _ => call.not_implemented(),
         }
     }
+}
+
+/// Read `System.exitApplication`'s arguments, which the framework sends as
+/// `{"type": "cancelable" | "required", "exitCode": int}`.
+///
+/// Anything unreadable counts as `required`: the embedder cannot tell whether
+/// the app is in a state to be asked, and refusing an exit the framework
+/// believes it already performed is the worse failure of the two.
+fn exit_request(args: &Value) -> (AppExitType, i32) {
+    let Value::Map(args) = args else {
+        return (AppExitType::Required, 0);
+    };
+
+    let exit_type = match args.get("type") {
+        Some(Value::String(name)) if name == "cancelable" => AppExitType::Cancelable,
+        _ => AppExitType::Required,
+    };
+    let exit_code = match args.get("exitCode") {
+        Some(Value::I32(code)) => *code,
+        // The JSON codec this channel uses widens every int it reads.
+        Some(Value::I64(code)) => i32::try_from(*code).unwrap_or_default(),
+        _ => 0,
+    };
+
+    (exit_type, exit_code)
+}
+
+/// The reply to `System.exitApplication`.
+#[derive(Debug, Serialize)]
+struct ExitApplicationResponse {
+    response: &'static str,
 }
 
 /// `Clipboard.kTextPlain`, the only mime type the framework asks for.
@@ -162,4 +260,76 @@ pub struct AppSwitcherDescription {
     pub primary_color: i64,
     /// Label of the app's switcher entry.
     pub label: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::HashMap;
+
+    fn map(entries: &[(&str, Value)]) -> Value {
+        Value::Map(
+            entries
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), value.clone()))
+                .collect::<HashMap<_, _>>(),
+        )
+    }
+
+    #[test]
+    fn the_frameworks_exit_arguments_are_read_as_sent() {
+        // `ServicesBinding.exitApplication` sends `AppExitType.name` and an
+        // int, and the JSON codec widens the int.
+        assert_eq!(
+            exit_request(&map(&[
+                ("type", Value::String("cancelable".to_owned())),
+                ("exitCode", Value::I64(0)),
+            ])),
+            (AppExitType::Cancelable, 0)
+        );
+        assert_eq!(
+            exit_request(&map(&[
+                ("type", Value::String("required".to_owned())),
+                ("exitCode", Value::I32(2)),
+            ])),
+            (AppExitType::Required, 2)
+        );
+    }
+
+    #[test]
+    fn an_unreadable_exit_request_is_treated_as_required() {
+        // Refusing an exit the framework believes it has already performed
+        // would leave a window the user cannot close, so every unreadable
+        // shape has to fall this way.
+        assert_eq!(exit_request(&Value::Null), (AppExitType::Required, 0));
+        assert_eq!(exit_request(&map(&[])), (AppExitType::Required, 0));
+        assert_eq!(
+            exit_request(&map(&[("type", Value::I64(1))])),
+            (AppExitType::Required, 0)
+        );
+        assert_eq!(
+            exit_request(&map(&[
+                ("type", Value::String("Cancelable".to_owned())),
+                ("exitCode", Value::String("0".to_owned())),
+            ])),
+            (AppExitType::Required, 0)
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_exit_code_does_not_wrap() {
+        assert_eq!(
+            exit_request(&map(&[("exitCode", Value::I64(i64::from(i32::MAX) + 1))])),
+            (AppExitType::Required, 0)
+        );
+    }
+
+    #[test]
+    fn the_response_strings_match_the_frameworks_parser() {
+        // `ServicesBinding.exitApplication` matches on these two literals and
+        // treats everything else as `exit`.
+        assert_eq!(AppExitResponse::Exit.as_str(), "exit");
+        assert_eq!(AppExitResponse::Cancel.as_str(), "cancel");
+    }
 }

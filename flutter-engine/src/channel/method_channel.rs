@@ -269,7 +269,9 @@ impl MethodChannel {
     /// `callback`.
     ///
     /// `callback` runs on the platform thread. It is not called at all if the
-    /// reply envelope cannot be decoded, which is logged instead.
+    /// reply envelope cannot be decoded, which is logged instead, or if the
+    /// reply never comes — the send failed, or the engine was shut down with
+    /// the message in flight — in which case it is dropped.
     pub fn invoke_method_with_result<T, F, V, D>(&self, method: String, args: T, callback: F)
     where
         T: Serialize,

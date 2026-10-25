@@ -24,17 +24,20 @@ use flutter_engine::texture_registry::Texture;
 use flutter_plugins::accessibility::AccessibilityPlugin;
 use flutter_plugins::dialog::DialogPlugin;
 use flutter_plugins::isolate::IsolatePlugin;
-use flutter_plugins::keyboard::KeyboardPlugin;
-use flutter_plugins::lifecycle::LifecyclePlugin;
+use flutter_plugins::keyboard::{KeyboardPlugin, KeyboardStateHandler};
+use flutter_plugins::lifecycle::{AppLifecycleState, LifecyclePlugin};
 use flutter_plugins::localization::LocalizationPlugin;
 use flutter_plugins::mousecursor::MouseCursorPlugin;
 use flutter_plugins::navigation::NavigationPlugin;
 use flutter_plugins::platform::PlatformPlugin;
-use flutter_plugins::settings::SettingsPlugin;
+use flutter_plugins::settings::{PlatformBrightness, SettingsPlugin};
 use flutter_plugins::system::SystemPlugin;
 use flutter_plugins::textinput::TextInputPlugin;
 use flutter_plugins::window::WindowPlugin;
 use log::{debug, info};
+// `warn!` only reports a brightness watcher that could not start.
+#[cfg(feature = "brightness")]
+use log::warn;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -45,6 +48,30 @@ use std::time::Instant;
 
 // seems to be about 2.5 lines of text
 const SCROLL_SPEED: f64 = 50.0;
+
+/// The `textScaleFactor` sent on `flutter/settings`.
+///
+/// GLFW reports the window's *content* scale, which this crate already turns
+/// into the device pixel ratio of the window metrics, and nothing at all about
+/// the user's preferred text scaling; neither X11 nor Wayland defines a
+/// cross-desktop setting for it, and the XDG appearance portal does not carry
+/// one either. Inventing a number from the content scale would double-apply
+/// the DPI, so the framework's own default goes out instead: an app that knows
+/// better can send its own message through
+/// [`FlutterWindow::with_plugin`]`::<SettingsPlugin>`.
+const TEXT_SCALE_FACTOR: f64 = 1.0;
+
+/// The `alwaysUse24HourFormat` sent on `flutter/settings`.
+///
+/// Sourcing this honestly means asking the C library for the locale's time
+/// format — `nl_langinfo(T_FMT)` on glibc, `LOCALE_STIMEFORMAT` on Windows,
+/// `NSDateFormatter` on macOS — none of which this crate links, and deriving
+/// it from the language tag `sys_locale` returns would be making data up (`en`
+/// is 12-hour in the US and 24-hour in Ireland). So the framework's own
+/// default goes out, and an app that knows its users overrides it through
+/// [`FlutterWindow::with_plugin`]`::<SettingsPlugin>`.
+const USE_24_HOUR_FORMAT: bool = false;
+
 #[cfg(not(target_os = "macos"))]
 const BY_WORD_MODIFIER_KEY: glfw::Modifiers = glfw::Modifiers::Control;
 #[cfg(target_os = "macos")]
@@ -132,9 +159,218 @@ pub struct FlutterWindow {
     main_thread_receiver: Receiver<MainTheadFn>,
     main_thread_sender: Sender<MainTheadFn>,
     mouse_tracker: Mutex<HashMap<glfw::MouseButton, glfw::Action>>,
+    key_stager: Mutex<KeyStager>,
+    pressed_keys: Arc<Mutex<PressedKeys>>,
+    lifecycle: Mutex<LifecycleTracker>,
+    brightness_watcher_started: AtomicBool,
     window_handler: Arc<Mutex<GlfwWindowHandler>>,
     platform_task_handler: Arc<GlfwPlatformTaskHandler>,
     plugins: RwLock<PluginRegistrar>,
+}
+
+/// The lifecycle state a window's visibility and focus add up to.
+///
+/// Mirrors the official GTK embedder's `fl_window_state_monitor`: a window with
+/// pixels on screen is `resumed` when it holds the keyboard focus and
+/// `inactive` when it does not, and a window that is minimised is `hidden`
+/// either way. `paused` and `detached` are documented as Android/iOS-only —
+/// `paused` means the platform has stopped asking for frames — so a desktop
+/// embedder never sends them.
+///
+/// The embedder does not have to walk the state machine one step at a time:
+/// `ServicesBinding._generateStateTransitions` fills in the states between the
+/// one it last saw and the one it is handed, which is what makes jumping
+/// straight from `resumed` to `hidden` on a minimise correct.
+fn lifecycle_state(visible: bool, focused: bool) -> AppLifecycleState {
+    if !visible {
+        AppLifecycleState::Hidden
+    } else if focused {
+        AppLifecycleState::Resumed
+    } else {
+        AppLifecycleState::Inactive
+    }
+}
+
+/// The window's visibility and focus, and the last lifecycle state they were
+/// reported as.
+///
+/// GLFW reports visibility and focus in separate events, so each one has to be
+/// combined with the last value of the other; and because two different window
+/// states can map onto the same lifecycle state — an unfocused minimised window
+/// and a focused one are both `hidden` — the state last sent is remembered so
+/// the channel does not carry a transition the framework would ignore.
+#[derive(Debug)]
+struct LifecycleTracker {
+    visible: bool,
+    focused: bool,
+    sent: Option<AppLifecycleState>,
+}
+
+impl LifecycleTracker {
+    /// A tracker for a window that has not reported anything yet, so that the
+    /// first update always sends.
+    fn new() -> Self {
+        Self {
+            visible: true,
+            focused: false,
+            sent: None,
+        }
+    }
+
+    /// Record both halves of the window state, returning the lifecycle state
+    /// to send if it is not the one already sent.
+    fn update(&mut self, visible: bool, focused: bool) -> Option<AppLifecycleState> {
+        self.visible = visible;
+        self.focused = focused;
+        let state = lifecycle_state(visible, focused);
+        if self.sent == Some(state) {
+            return None;
+        }
+        self.sent = Some(state);
+        Some(state)
+    }
+
+    /// Record that the window gained or lost the keyboard focus.
+    fn set_focused(&mut self, focused: bool) -> Option<AppLifecycleState> {
+        self.update(self.visible, focused)
+    }
+
+    /// Record that the window appeared on, or disappeared from, the screen.
+    fn set_visible(&mut self, visible: bool) -> Option<AppLifecycleState> {
+        self.update(visible, self.focused)
+    }
+}
+
+/// The keys GLFW has reported as held, as the modern key protocol's
+/// `(physical, logical)` id pairs.
+///
+/// GLFW has no synchronous "which keys are down?" query, so `flutter/keyboard`'s
+/// `getKeyboardState` is answered out of this table, which
+/// [`FlutterWindow::send_key_event`] maintains from the very events it
+/// translates — which is also what keeps the ids reported here identical to the
+/// ones the framework saw.
+#[derive(Debug, Default)]
+struct PressedKeys(HashMap<u64, u64>);
+
+impl PressedKeys {
+    /// Record a key going down or auto-repeating. A repeat re-inserts the same
+    /// pair, so the table recovers if a down event was ever missed.
+    fn press(&mut self, physical: u64, logical: u64) {
+        self.0.insert(physical, logical);
+    }
+
+    /// Record a key coming up.
+    fn release(&mut self, physical: u64) {
+        self.0.remove(&physical);
+    }
+
+    /// Empty the table, handing back everything that was in it: the keys whose
+    /// `Up` the embedder now owes the framework.
+    fn release_all(&mut self) -> Vec<(u64, u64)> {
+        self.0.drain().collect()
+    }
+}
+
+impl KeyboardStateHandler for PressedKeys {
+    fn pressed_keys(&mut self) -> Vec<(u64, u64)> {
+        self.0
+            .iter()
+            .map(|(&physical, &logical)| (physical, logical))
+            .collect()
+    }
+}
+
+/// A key event GLFW has reported, on its way to the engine.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StagedKey {
+    kind: KeyEventType,
+    physical: u64,
+    logical: u64,
+    /// The text the key produces, which `KeyEvent.character` carries. `None`
+    /// for a key that produces none — a modifier, an arrow, a function key —
+    /// and for every up event, where the engine ignores it.
+    character: Option<String>,
+}
+
+/// Holds a key event back until the text it produces is known.
+///
+/// GLFW reports that text in a `Char` event that arrives *after* the `Key`
+/// event, so a key event sent the moment it is seen can never carry a
+/// `character`. The staged event is released by the next `Char` — which fills
+/// it in — or by the next event of any other kind, or at the end of the batch
+/// of events the loop is draining, so it is never delayed past the frame it
+/// belongs to.
+#[derive(Debug, Default)]
+struct KeyStager {
+    pending: Option<StagedKey>,
+}
+
+impl KeyStager {
+    /// Hold `key` back, returning whatever it displaces — which has to be sent
+    /// as it is, because no text is coming for it any more.
+    fn stage(&mut self, key: StagedKey) -> Option<StagedKey> {
+        self.pending.replace(key)
+    }
+
+    /// Release the staged event with the text GLFW has just reported.
+    ///
+    /// A key that produces more than one `Char` — a dead key resolving, a
+    /// composed sequence — only carries the first into its key event; there is
+    /// nothing staged by the time the rest arrive.
+    fn take_with_character(&mut self, character: char) -> Option<StagedKey> {
+        self.pending.take().map(|mut key| {
+            key.character = Some(character.to_string());
+            key
+        })
+    }
+
+    /// Release the staged event with no text.
+    fn take(&mut self) -> Option<StagedKey> {
+        self.pending.take()
+    }
+}
+
+/// Turn `dark-light`'s reading of the host into the framework's brightness.
+#[cfg(feature = "brightness")]
+fn brightness_from(mode: dark_light::Mode) -> PlatformBrightness {
+    match mode {
+        dark_light::Mode::Dark => PlatformBrightness::Dark,
+        dark_light::Mode::Light => PlatformBrightness::Light,
+        // The host has no preference, so the framework's own default is as
+        // correct as anything this crate could make up.
+        dark_light::Mode::Unspecified => PlatformBrightness::default(),
+    }
+}
+
+/// The host's light/dark preference, or the framework's default when the host
+/// has no opinion or cannot be asked.
+///
+/// `dark-light` reads the XDG desktop portal's `org.freedesktop.appearance`
+/// `color-scheme` on Linux and the BSDs, the registry on Windows and
+/// `NSUserDefaults` on macOS. All of those can legitimately fail — no session
+/// bus, no portal, a sandbox without the permission — which is not an embedder
+/// error: the framework's `Brightness.light` default is then exactly as right
+/// as it would be if this crate never asked.
+#[cfg(feature = "brightness")]
+fn detect_platform_brightness() -> PlatformBrightness {
+    match dark_light::detect() {
+        Ok(mode) => brightness_from(mode),
+        Err(error) => {
+            debug!("could not read the host's light/dark preference: {error}");
+            PlatformBrightness::default()
+        }
+    }
+}
+
+/// The framework's default, because without the `brightness` feature the host
+/// is never asked.
+///
+/// The settings message is still sent: the framework re-reads all three values
+/// out of every message, so sending the default is what keeps the other two
+/// honest.
+#[cfg(not(feature = "brightness"))]
+fn detect_platform_brightness() -> PlatformBrightness {
+    PlatformBrightness::default()
 }
 
 /// The cumulative mask of the buttons `tracked` says are down.
@@ -275,12 +511,15 @@ impl FlutterWindow {
             Arc::new(Mutex::new(GlfwWindowHandler::new(window.clone())));
         let textinput_handler = Arc::new(Mutex::new(GlfwTextInputHandler::default()));
         let mousecursor_handler = Arc::new(Mutex::new(GlfwMouseCursorHandler::new(window.clone())));
+        let pressed_keys = Arc::new(Mutex::new(PressedKeys::default()));
 
         let mut plugins = PluginRegistrar::new();
         plugins.add_plugin(&engine, AccessibilityPlugin::default());
         plugins.add_plugin(&engine, DialogPlugin::default());
         plugins.add_plugin(&engine, IsolatePlugin::new_stub());
-        plugins.add_plugin(&engine, KeyboardPlugin::default());
+        // The same table the event loop maintains, so `getKeyboardState`
+        // answers with the ids the framework has already seen.
+        plugins.add_plugin(&engine, KeyboardPlugin::new(pressed_keys.clone()));
         plugins.add_plugin(&engine, LifecyclePlugin::default());
         plugins.add_plugin(&engine, LocalizationPlugin::default());
         plugins.add_plugin(&engine, MouseCursorPlugin::new(mousecursor_handler));
@@ -305,6 +544,10 @@ impl FlutterWindow {
             main_thread_receiver: main_rx,
             main_thread_sender: main_tx,
             mouse_tracker: Mutex::new(Default::default()),
+            key_stager: Mutex::new(KeyStager::default()),
+            pressed_keys,
+            lifecycle: Mutex::new(LifecycleTracker::new()),
+            brightness_watcher_started: AtomicBool::new(false),
             window_handler,
             platform_task_handler,
             plugins: RwLock::new(plugins),
@@ -423,6 +666,11 @@ impl FlutterWindow {
             window.set_size_polling(true);
             window.set_content_scale_polling(true);
             window.set_refresh_polling(true);
+            // Both halves of the lifecycle state: focus decides between
+            // `resumed` and `inactive`, iconification between those and
+            // `hidden`.
+            window.set_focus_polling(true);
+            window.set_iconify_polling(true);
         }
 
         self.with_plugin(
@@ -430,6 +678,23 @@ impl FlutterWindow {
                 localization.send_locales(sys_locale::get_locales());
             },
         );
+
+        // The framework's lifecycle state stays `null` until something sends on
+        // `flutter/lifecycle`, so report where the window actually starts
+        // rather than waiting for the first focus change.
+        let (visible, focused) = {
+            let window = self.window.lock();
+            (
+                window.is_visible() && !window.is_iconified(),
+                window.is_focused(),
+            )
+        };
+        self.send_lifecycle(|tracker| tracker.update(visible, focused));
+
+        // Likewise for the user-interface settings: without a message the
+        // framework keeps `platformBrightness: light` for the whole run.
+        self.send_settings(detect_platform_brightness());
+        self.watch_platform_brightness();
 
         let mut glfw = self.glfw.clone();
         while !self.window.lock().should_close() {
@@ -468,6 +733,12 @@ impl FlutterWindow {
                     self.handle_glfw_event(event);
                 }
             }
+
+            // No more `Char` events are coming this time round, so a key event
+            // still waiting for one produces no text. Flushing here is what
+            // keeps the delay bounded by the batch rather than by the next
+            // event, which `wait_events` may not deliver for minutes.
+            self.flush_staged_key();
 
             if let Some(callback) = &mut frame_callback {
                 callback(self);
@@ -597,20 +868,191 @@ impl FlutterWindow {
         }
     }
 
+    /// Publish the host's user-interface settings on `flutter/settings`.
+    ///
+    /// Nothing asks for these: the framework keeps its built-in defaults
+    /// (`textScaleFactor` 1.0, `alwaysUse24HourFormat` false,
+    /// `platformBrightness` light) until the embedder sends a message, and
+    /// re-reads all three out of every message it gets. See
+    /// [`TEXT_SCALE_FACTOR`] and [`USE_24_HOUR_FORMAT`] for why only the
+    /// brightness is sourced from the host.
+    fn send_settings(&self, brightness: PlatformBrightness) {
+        self.with_plugin(|settings: &SettingsPlugin| {
+            settings
+                .start_message(TEXT_SCALE_FACTOR, USE_24_HOUR_FORMAT, brightness)
+                .send();
+        });
+    }
+
+    /// Follow the host's light/dark preference for the rest of the run.
+    ///
+    /// `dark-light`'s watcher blocks on a platform notification — the XDG
+    /// portal's `SettingChanged` signal on Linux — so it gets a thread of its
+    /// own, and the settings message is posted back onto the platform thread,
+    /// which is the only one allowed to send on a channel. The thread holds
+    /// nothing but a clone of the callback sender and the loop's waker, so it
+    /// outlives the window harmlessly and stops at the next change after the
+    /// receiver is gone.
+    ///
+    /// A host that cannot be watched — no session bus, no portal, a platform
+    /// `dark-light` has no watcher for — only costs the app live updates; the
+    /// brightness sent at startup stands.
+    fn watch_platform_brightness(&self) {
+        // `run` can be entered again after the loop has exited, and a second
+        // watcher would be a second thread sending the same message.
+        if self
+            .brightness_watcher_started
+            .swap(true, Ordering::Relaxed)
+        {
+            return;
+        }
+
+        self.spawn_brightness_watcher();
+    }
+
+    /// Start the thread [`watch_platform_brightness`] describes.
+    ///
+    /// [`watch_platform_brightness`]: Self::watch_platform_brightness
+    #[cfg(feature = "brightness")]
+    fn spawn_brightness_watcher(&self) {
+        let watcher = match dark_light::subscribe() {
+            Ok(watcher) => watcher,
+            Err(error) => {
+                debug!("not following the host's light/dark preference: {error}");
+                return;
+            }
+        };
+
+        let sender = self.main_thread_sender.clone();
+        let waker = self.platform_task_handler.clone();
+        let spawned = std::thread::Builder::new()
+            .name("fl-brightness".to_owned())
+            .spawn(move || {
+                while let Ok(mode) = watcher.recv() {
+                    let brightness = brightness_from(mode);
+                    debug!("the host switched to {} mode", brightness.as_str());
+                    let callback: MainTheadFn =
+                        Box::new(move |window: &FlutterWindow| window.send_settings(brightness));
+                    if sender.send(callback).is_err() {
+                        // The event loop is gone, and with it the only thread
+                        // allowed to send the message.
+                        break;
+                    }
+                    waker.wake();
+                }
+            });
+        if let Err(error) = spawned {
+            warn!("could not start the brightness watcher thread: {error}");
+        }
+    }
+
+    /// Without the `brightness` feature there is no host preference to follow,
+    /// so the message sent at startup is the only one.
+    #[cfg(not(feature = "brightness"))]
+    fn spawn_brightness_watcher(&self) {}
+
+    /// Push the lifecycle state `f` produces to the framework.
+    ///
+    /// `f` returns `None` when the window state maps onto the state already
+    /// sent, which is not worth a channel message.
+    fn send_lifecycle<F>(&self, f: F)
+    where
+        F: FnOnce(&mut LifecycleTracker) -> Option<AppLifecycleState>,
+    {
+        // Resolve the new state before touching the plugin registry, so the
+        // tracker's lock is never held across a channel send.
+        let state = f(&mut self.lifecycle.lock());
+        if let Some(state) = state {
+            self.with_plugin(|lifecycle: &LifecyclePlugin| lifecycle.send_state(state));
+        }
+    }
+
+    fn send_staged_key(&self, key: StagedKey) {
+        self.engine.send_key_event(
+            key.kind,
+            key.physical,
+            key.logical,
+            key.character.as_deref(),
+        );
+    }
+
+    /// Send the key event that is waiting for its text, with none.
+    fn flush_staged_key(&self) {
+        // Take it out from under the lock first: the send reaches the engine,
+        // and `parking_lot::Mutex` is not reentrant.
+        let staged = self.key_stager.lock().take();
+        if let Some(key) = staged {
+            self.send_staged_key(key);
+        }
+    }
+
+    /// Tell the framework that every key it believes is held has come up.
+    ///
+    /// GLFW stops reporting a key the moment the window loses the keyboard, so
+    /// a key released while another window has focus never produces an `Up` —
+    /// and `HardwareKeyboard` would go on believing it is held for the rest of
+    /// the run, breaking every shortcut that key takes part in.
+    ///
+    /// These go out as ordinary up events rather than synthesised ones, which
+    /// the embedder API has a flag for but
+    /// [`FlutterEngine::send_key_event`](flutter_engine::FlutterEngine::send_key_event)
+    /// does not expose: the framework dispatches them to the app's handlers,
+    /// which is what an app watching a key-and-hold gesture needs to see.
+    fn release_all_keys(&self) {
+        let held = self.pressed_keys.lock().release_all();
+        for (physical, logical) in held {
+            debug!("synthesising a key up for {physical:#x} after losing the keyboard");
+            self.engine
+                .send_key_event(KeyEventType::Up, physical, logical, None);
+        }
+    }
+
     /// Translate a GLFW key event into the modern Flutter key protocol
     /// (FlutterKeyEvent), which drives HardwareKeyboard, KeyboardListener and
     /// shortcut/Actions handling. Keys without a Flutter mapping are dropped.
+    ///
+    /// A down or repeat event is staged rather than sent, because the text it
+    /// produces only arrives in the `Char` event that follows it; see
+    /// [`KeyStager`]. An up event is sent straight away — the engine ignores
+    /// `character` on one.
     fn send_key_event(&self, key: glfw::Key, action: glfw::Action) {
         let kind = match action {
             glfw::Action::Press => KeyEventType::Down,
             glfw::Action::Repeat => KeyEventType::Repeat,
             glfw::Action::Release => KeyEventType::Up,
         };
-        let key = key as i32;
-        if let Some((physical, logical)) = crate::keymap::glfw_key_to_flutter(key)
-            .or_else(|| crate::keymap::glfw_key_to_flutter_extra(key))
-        {
-            self.engine.send_key_event(kind, physical, logical, None);
+        let code = key as i32;
+        let Some((physical, logical)) = crate::keymap::glfw_key_to_flutter(code)
+            .or_else(|| crate::keymap::glfw_key_to_flutter_extra(code))
+        else {
+            debug!("dropping GLFW key {key:?} ({code}): Flutter defines no key id for it");
+            return;
+        };
+
+        match kind {
+            KeyEventType::Down | KeyEventType::Repeat => {
+                self.pressed_keys.lock().press(physical, logical);
+                let displaced = self.key_stager.lock().stage(StagedKey {
+                    kind,
+                    physical,
+                    logical,
+                    character: None,
+                });
+                // Only reachable if something bypassed `handle_glfw_event`,
+                // which flushes before every event that is not a `Char`.
+                if let Some(key) = displaced {
+                    self.send_staged_key(key);
+                }
+            }
+            KeyEventType::Up => {
+                self.pressed_keys.lock().release(physical);
+                self.send_staged_key(StagedKey {
+                    kind,
+                    physical,
+                    logical,
+                    character: None,
+                });
+            }
         }
     }
 
@@ -618,10 +1060,23 @@ impl FlutterWindow {
     /// events. [`Self::run`] calls this unless a [`WindowEventHandler`] has
     /// claimed the event.
     ///
+    /// A key press is held back here until the `Char` event that carries the
+    /// text it produces, so a [`WindowEventHandler`] that claims a `Char`
+    /// event costs the key event before it its `character` — the key event
+    /// itself still goes out, without one, at the next event or at the end of
+    /// the batch.
+    ///
     /// # Panics
     ///
     /// Panics if called from a thread other than the platform thread.
     pub fn handle_glfw_event(&self, event: glfw::WindowEvent) {
+        // A staged key event is waiting for the `Char` that carries its text.
+        // Any other event means none is coming, and flushing here is what
+        // keeps the engine seeing key events in the order GLFW reported them.
+        if !matches!(event, glfw::WindowEvent::Char(_)) {
+            self.flush_staged_key();
+        }
+
         match event {
             glfw::WindowEvent::Refresh => {
                 self.send_scale_or_size_change();
@@ -718,14 +1173,48 @@ impl FlutterWindow {
             glfw::WindowEvent::ContentScale(_, _) => {
                 self.send_scale_or_size_change();
             }
-            glfw::WindowEvent::Char(char) => self.with_plugin_mut(
-                |text_input: &mut flutter_plugins::textinput::TextInputPlugin| {
-                    text_input.with_state(|state| {
-                        state.add_characters(&char.to_string());
-                    });
-                    text_input.notify_changes();
-                },
-            ),
+            // GLFW's text goes to two consumers, in this order.
+            //
+            // First it completes the key event staged by the `Key` event that
+            // preceded it, which is what fills in `KeyEvent.character` for
+            // `HardwareKeyboard`, `KeyboardListener` and character-based
+            // shortcuts.
+            //
+            // Then it goes to the legacy in-embedder editing path, which is
+            // what actually types into a focused Dart `TextField`: that field
+            // is driven entirely by `flutter/textinput`, and the engine never
+            // inserts a key event's `character` into one.
+            //
+            // So the two are not alternatives and cannot double up — the text
+            // reaches the framework exactly once, through the text input
+            // channel — while dropping either one loses a feature: no
+            // `character` on key events, or no typing at all.
+            glfw::WindowEvent::Char(char) => {
+                let staged = self.key_stager.lock().take_with_character(char);
+                if let Some(key) = staged {
+                    self.send_staged_key(key);
+                }
+                self.with_plugin_mut(
+                    |text_input: &mut flutter_plugins::textinput::TextInputPlugin| {
+                        text_input.with_state(|state| {
+                            state.add_characters(&char.to_string());
+                        });
+                        text_input.notify_changes();
+                    },
+                );
+            }
+            glfw::WindowEvent::Focus(focused) => {
+                if !focused {
+                    // Do this before the lifecycle message, so the framework's
+                    // keyboard state is consistent by the time the app's
+                    // `didChangeAppLifecycleState` runs.
+                    self.release_all_keys();
+                }
+                self.send_lifecycle(|tracker| tracker.set_focused(focused));
+            }
+            glfw::WindowEvent::Iconify(iconified) => {
+                self.send_lifecycle(|tracker| tracker.set_visible(!iconified));
+            }
             glfw::WindowEvent::Key(
                 key,
                 _scancode,
@@ -1007,5 +1496,219 @@ mod tests {
             assert!(ratio.is_finite(), "{window}x{framebuffer} -> {ratio}");
             assert_eq!(ratio, 1.0, "{window}x{framebuffer}");
         }
+    }
+
+    /// `paused` means "the platform has stopped asking for frames", which a
+    /// GLFW window never does, and `detached` is Android/iOS-only. A minimised
+    /// window is `hidden` whether or not it still holds the focus.
+    #[test]
+    fn window_state_maps_onto_the_three_desktop_lifecycle_states() {
+        assert_eq!(lifecycle_state(true, true), AppLifecycleState::Resumed);
+        assert_eq!(lifecycle_state(true, false), AppLifecycleState::Inactive);
+        assert_eq!(lifecycle_state(false, false), AppLifecycleState::Hidden);
+        assert_eq!(lifecycle_state(false, true), AppLifecycleState::Hidden);
+    }
+
+    /// The same five transitions the official GTK embedder's
+    /// `fl_window_state_monitor` tests pin, driven through GLFW's separate
+    /// focus and iconify events.
+    #[test]
+    fn focus_and_iconify_produce_the_official_embedders_transitions() {
+        let mut tracker = LifecycleTracker::new();
+        assert_eq!(
+            tracker.update(true, false),
+            Some(AppLifecycleState::Inactive),
+            "a window that starts unfocused"
+        );
+        assert_eq!(
+            tracker.set_focused(true),
+            Some(AppLifecycleState::Resumed),
+            "gaining focus"
+        );
+        assert_eq!(
+            tracker.set_focused(false),
+            Some(AppLifecycleState::Inactive),
+            "losing focus"
+        );
+        assert_eq!(
+            tracker.set_visible(false),
+            Some(AppLifecycleState::Hidden),
+            "being iconified"
+        );
+        assert_eq!(
+            tracker.set_visible(true),
+            Some(AppLifecycleState::Inactive),
+            "leaving iconified without focus"
+        );
+
+        // And the focused variant of the last one: GLFW reports the restore
+        // and the focus as two events, so the tracker passes through
+        // `inactive` on the way to `resumed`.
+        assert_eq!(tracker.set_visible(false), Some(AppLifecycleState::Hidden));
+        assert_eq!(tracker.set_focused(true), None, "still iconified");
+        assert_eq!(
+            tracker.set_visible(true),
+            Some(AppLifecycleState::Resumed),
+            "leaving iconified with focus"
+        );
+    }
+
+    /// Two different window states can mean the same lifecycle state — an
+    /// iconified window gaining focus is still `hidden` — and the framework
+    /// ignores a repeat anyway, so it is not worth a channel message.
+    #[test]
+    fn an_unchanged_lifecycle_state_is_not_resent() {
+        let mut tracker = LifecycleTracker::new();
+        assert_eq!(tracker.update(true, true), Some(AppLifecycleState::Resumed));
+        assert_eq!(tracker.update(true, true), None);
+        assert_eq!(tracker.set_focused(true), None);
+        assert_eq!(tracker.set_visible(false), Some(AppLifecycleState::Hidden));
+        assert_eq!(tracker.set_focused(false), None, "hidden either way");
+        assert_eq!(tracker.set_focused(true), None, "hidden either way");
+    }
+
+    /// `(physical, logical)` for `A` and for left Shift, from the keymap.
+    const KEY_A: (u64, u64) = (0x0007_0004, 0x0000_0061);
+    const LEFT_SHIFT: (u64, u64) = (0x0007_00e1, 0x0002_0000_0102);
+
+    fn sorted(mut keys: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
+        keys.sort_unstable();
+        keys
+    }
+
+    #[test]
+    fn pressed_keys_tracks_what_the_framework_believes_is_held() {
+        let mut keys = PressedKeys::default();
+        assert_eq!(keys.pressed_keys(), Vec::new());
+
+        keys.press(KEY_A.0, KEY_A.1);
+        keys.press(LEFT_SHIFT.0, LEFT_SHIFT.1);
+        assert_eq!(sorted(keys.pressed_keys()), sorted(vec![KEY_A, LEFT_SHIFT]));
+
+        keys.release(KEY_A.0);
+        assert_eq!(keys.pressed_keys(), vec![LEFT_SHIFT]);
+    }
+
+    /// A repeat arrives as another press of a key already held; it must not
+    /// turn into a second entry or a second logical id.
+    #[test]
+    fn repeating_a_held_key_does_not_duplicate_it() {
+        let mut keys = PressedKeys::default();
+        keys.press(KEY_A.0, KEY_A.1);
+        keys.press(KEY_A.0, KEY_A.1);
+        assert_eq!(keys.pressed_keys(), vec![KEY_A]);
+        keys.release(KEY_A.0);
+        assert_eq!(keys.pressed_keys(), Vec::new());
+    }
+
+    /// Releasing a key GLFW never reported down — which happens after the
+    /// table was cleared on a focus loss — must not resurrect it.
+    #[test]
+    fn releasing_an_unheld_key_is_a_no_op() {
+        let mut keys = PressedKeys::default();
+        keys.release(KEY_A.0);
+        assert_eq!(keys.pressed_keys(), Vec::new());
+    }
+
+    /// Losing the keyboard hands back every held key exactly once, so the
+    /// embedder can synthesise the up events GLFW will never deliver, and
+    /// leaves the table empty so they are not sent twice.
+    #[test]
+    fn losing_the_keyboard_hands_back_every_held_key_once() {
+        let mut keys = PressedKeys::default();
+        keys.press(KEY_A.0, KEY_A.1);
+        keys.press(LEFT_SHIFT.0, LEFT_SHIFT.1);
+
+        assert_eq!(sorted(keys.release_all()), sorted(vec![KEY_A, LEFT_SHIFT]));
+        assert_eq!(keys.release_all(), Vec::new());
+        assert_eq!(keys.pressed_keys(), Vec::new());
+    }
+
+    fn staged(kind: KeyEventType, (physical, logical): (u64, u64)) -> StagedKey {
+        StagedKey {
+            kind,
+            physical,
+            logical,
+            character: None,
+        }
+    }
+
+    /// The whole point of staging: GLFW reports the text after the key, so a
+    /// key event sent immediately could never carry a `character`.
+    #[test]
+    fn a_staged_key_picks_up_the_character_that_follows_it() {
+        let mut stager = KeyStager::default();
+        assert_eq!(stager.stage(staged(KeyEventType::Down, KEY_A)), None);
+
+        let key = stager
+            .take_with_character('a')
+            .expect("the staged key is released by the char");
+        assert_eq!(key.character.as_deref(), Some("a"));
+        assert_eq!((key.physical, key.logical), KEY_A);
+        assert_eq!(key.kind, KeyEventType::Down);
+    }
+
+    /// A key that produces no text — a modifier, an arrow, a function key —
+    /// is followed by the next event instead of a `Char`, and goes out with
+    /// `character: None` rather than being dropped.
+    #[test]
+    fn a_key_with_no_text_is_released_without_a_character() {
+        let mut stager = KeyStager::default();
+        stager.stage(staged(KeyEventType::Down, LEFT_SHIFT));
+
+        let key = stager.take().expect("flushed by the next event");
+        assert_eq!(key.character, None);
+        assert_eq!((key.physical, key.logical), LEFT_SHIFT);
+    }
+
+    /// Nothing is staged after a release, so the next `Char` — the second one
+    /// of a composed sequence, say — must not attach itself to an event that
+    /// has already gone out.
+    #[test]
+    fn a_character_with_nothing_staged_is_dropped() {
+        let mut stager = KeyStager::default();
+        assert_eq!(stager.take_with_character('a'), None);
+        assert_eq!(stager.take(), None);
+
+        stager.stage(staged(KeyEventType::Down, KEY_A));
+        assert!(stager.take_with_character('a').is_some());
+        assert_eq!(stager.take_with_character('b'), None, "already released");
+    }
+
+    /// Staging over a key that is still waiting hands the old one back so it
+    /// can be sent first; dropping it would lose a key press entirely.
+    #[test]
+    fn staging_over_a_waiting_key_hands_it_back() {
+        let mut stager = KeyStager::default();
+        stager.stage(staged(KeyEventType::Down, LEFT_SHIFT));
+
+        let displaced = stager
+            .stage(staged(KeyEventType::Down, KEY_A))
+            .expect("the first key is handed back");
+        assert_eq!((displaced.physical, displaced.logical), LEFT_SHIFT);
+        assert_eq!(displaced.character, None);
+        assert_eq!(
+            stager.take().map(|key| (key.physical, key.logical)),
+            Some(KEY_A)
+        );
+    }
+
+    /// A host with no light/dark preference gets the framework's default,
+    /// which is what it would have used had the embedder sent nothing.
+    #[cfg(feature = "brightness")]
+    #[test]
+    fn an_unspecified_host_preference_falls_back_to_the_frameworks_default() {
+        assert_eq!(
+            brightness_from(dark_light::Mode::Dark),
+            PlatformBrightness::Dark
+        );
+        assert_eq!(
+            brightness_from(dark_light::Mode::Light),
+            PlatformBrightness::Light
+        );
+        assert_eq!(
+            brightness_from(dark_light::Mode::Unspecified),
+            PlatformBrightness::default()
+        );
     }
 }

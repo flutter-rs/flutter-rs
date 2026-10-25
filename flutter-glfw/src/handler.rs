@@ -1,7 +1,9 @@
 use flutter_engine::FlutterOpenGLHandler;
 use flutter_engine::tasks::TaskRunnerHandler;
 use flutter_plugins::mousecursor::MouseCursorHandler;
-use flutter_plugins::platform::{AppSwitcherDescription, MimeError, PlatformHandler};
+use flutter_plugins::platform::{
+    AppExitResponse, AppExitType, AppSwitcherDescription, MimeError, PlatformHandler,
+};
 use flutter_plugins::textinput::TextInputHandler;
 use flutter_plugins::window::{PositionParams, WindowHandler};
 use glfw::Context;
@@ -103,6 +105,17 @@ impl PlatformHandler for GlfwPlatformHandler {
             }),
             _ => Err(MimeError),
         }
+    }
+
+    fn exit_application(&mut self, exit_type: AppExitType, exit_code: i32) -> AppExitResponse {
+        // Raising the close flag is what ends `FlutterWindow::run`, which
+        // shuts the engine down on its way out. `exit_code` is only logged:
+        // the host's `main` decides what the process returns once `run` has
+        // returned, and this handler has no way to reach it.
+        log::debug!("the framework asked to exit ({exit_type:?}, code {exit_code})");
+        self.window.lock().set_should_close(true);
+
+        AppExitResponse::Exit
     }
 }
 

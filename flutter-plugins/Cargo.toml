@@ -21,6 +21,7 @@ serde.workspace = true
 thiserror.workspace = true
 tinyfiledialogs = { workspace = true, optional = true }
 unic-locale.workspace = true
+unicode-segmentation.workspace = true
 
 [features]
 default = ["dialog"]

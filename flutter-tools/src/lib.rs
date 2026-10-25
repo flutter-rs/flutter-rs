@@ -33,6 +33,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use zip::ZipArchive;
 
 /// Base URL of Flutter's artifact storage, overridable with
@@ -89,6 +90,16 @@ pub enum Error {
     /// The downloaded engine archive could not be read.
     #[error("could not read the engine archive: {0}")]
     Zip(#[from] zip::result::ZipError),
+    /// The archive unpacked without producing the engine library, so the
+    /// artifact's layout is not the one this crate knows.
+    #[error("the engine archive from {url} contains no {library}")]
+    ArchiveMissingLibrary {
+        /// Library (or framework bundle) that was expected at the top of the
+        /// extracted tree.
+        library: String,
+        /// URL the archive came from.
+        url: String,
+    },
 }
 
 /// A located Flutter SDK.
@@ -329,6 +340,9 @@ impl Engine {
     }
 
     /// Path the library (or framework bundle) ends up at once downloaded.
+    ///
+    /// Only meaningful once [`Engine::download`] has returned `Ok`: nothing is
+    /// published under this path until the whole artifact is in place.
     pub fn library_path(&self) -> Result<PathBuf, Error> {
         Ok(self.engine_dir()?.join(self.library_name()?))
     }
@@ -336,10 +350,28 @@ impl Engine {
     /// Download and extract the artifact into [`Engine::engine_dir`], unless it
     /// is already there.
     ///
-    /// Returns [`Error::AotEngineNotPublished`] for [`Build::Release`] and
-    /// [`Build::Profile`]: Flutter only publishes the JIT embedder, and
-    /// installing it under a `release` directory would hand the caller an
-    /// engine that cannot run an AOT snapshot.
+    /// The artifact is assembled in a staging directory beside
+    /// [`Engine::engine_dir`] and renamed into place only once the archive has
+    /// unpacked and the library is where [`Engine::library_path`] promises it.
+    /// An interrupted run therefore leaves nothing behind that the next one
+    /// would mistake for a usable engine, and the archive itself is thrown away
+    /// with the staging directory rather than installed next to the library.
+    /// Two processes downloading the same artifact are safe: each stages
+    /// separately, and whoever loses the rename keeps the winner's copy.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::AotEngineNotPublished`] for [`Build::Release`] and
+    ///   [`Build::Profile`]: Flutter only publishes the JIT embedder, and
+    ///   installing it under a `release` directory would hand the caller an
+    ///   engine that cannot run an AOT snapshot.
+    /// - [`Error::UnsupportedTarget`] if Flutter publishes no embedder for this
+    ///   target, or [`Error::NoCacheDir`] if the cache directory is unknown.
+    /// - [`Error::DownloadNotFound`] if storage holds no artifact for this
+    ///   engine revision, and [`Error::Curl`] for any other transfer failure.
+    /// - [`Error::ArchiveMissingLibrary`] if the archive unpacked without
+    ///   producing [`Engine::library_name`], [`Error::Zip`] if it could not be
+    ///   read, and [`Error::Io`] for any failure writing the engine cache.
     pub fn download(&self) -> Result<(), Error> {
         if self.build != Build::Debug {
             return Err(Error::AotEngineNotPublished);
@@ -353,23 +385,36 @@ impl Engine {
             return Ok(());
         }
 
+        let url = self.download_url()?;
+        let staging = Staging::create(&staging_path(&dir))?;
+        // What `engine_dir` is going to be: everything the artifact installs
+        // and nothing else, so that installing it is a single rename.
+        let payload = staging.path().join("payload");
+
         // The darwin artifact is a *bare* framework: its entries are rooted at
         // `Versions/`, not at `FlutterEmbedder.framework/`, so it has to be
         // unpacked into the bundle directory itself. Everything else ships a
         // flat archive that belongs directly in `engine_dir`.
         let extract_dir = if library.ends_with(".framework") {
-            installed
+            payload.join(library)
         } else {
-            dir.clone()
+            payload.clone()
         };
+        std::fs::create_dir_all(&extract_dir)?;
 
-        std::fs::create_dir_all(&dir)?;
+        // Outside `payload`, so it is discarded with the staging directory.
+        let archive = staging.path().join("engine.zip");
+        download(&url, &archive, &self.version)?;
+        unzip(&archive, &extract_dir)?;
 
-        let download_file = dir.join("engine.zip");
-        download(&self.download_url()?, &download_file, &self.version)?;
-        unzip(&download_file, &extract_dir)?;
+        if !payload.join(library).exists() {
+            return Err(Error::ArchiveMissingLibrary {
+                library: library.to_owned(),
+                url,
+            });
+        }
 
-        Ok(())
+        install(&payload, &dir, &installed)
     }
 
     /// Previously looked for a `dart` binary next to the engine library.
@@ -406,6 +451,110 @@ fn compose_download_url(
         format!("{base}/{tail}")
     } else {
         format!("{base}/{realm}/{tail}")
+    }
+}
+
+/// Path of the staging directory an engine cache entry is assembled in.
+///
+/// A sibling of `dir`, so installing it is a rename inside one directory (and
+/// therefore one filesystem), under a name no artifact and no concurrent
+/// download can collide with: [`Build::build`] never starts with a dot.
+fn staging_path(dir: &Path) -> PathBuf {
+    /// Tells apart two staging directories made by one process.
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    // Relaxed: the counter only has to hand out distinct values, and nothing is
+    // published through it.
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let leaf = dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("engine");
+
+    dir.with_file_name(format!(".{leaf}.staging-{}-{sequence}", std::process::id()))
+}
+
+/// A scratch directory that is removed again when it goes out of scope.
+///
+/// [`Engine::download`] assembles the cache entry in here, so every way out of
+/// that function — including the `?` on a failed transfer and a panic — has to
+/// take the half-written tree with it.
+struct Staging {
+    path: PathBuf,
+}
+
+impl Staging {
+    /// Create `path`, discarding anything already there.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the directory cannot be created.
+    fn create(path: &Path) -> Result<Self, Error> {
+        // Only a crashed run of this very process id can have left a directory
+        // here, and its contents are worthless either way.
+        if path.exists() {
+            std::fs::remove_dir_all(path)?;
+        }
+        std::fs::create_dir_all(path)?;
+
+        Ok(Self {
+            path: path.to_owned(),
+        })
+    }
+
+    /// The directory being staged in.
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        // `NotFound` is not a failure: something else, such as another run's
+        // cleanup, got there first. Anything else leaves a stale copy of a
+        // 15 MB download behind, which is worth a word even though the caller
+        // is usually already on its way out with an error of its own.
+        if let Err(error) = std::fs::remove_dir_all(&self.path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("warning: could not remove {}: {error}", self.path.display());
+        }
+    }
+}
+
+/// Move the fully assembled `staged` directory onto `dest`.
+///
+/// `installed` is the file (or bundle) inside `dest` that marks the entry as
+/// complete; see [`Engine::library_path`].
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] if `dest` is occupied by something that is neither a
+/// complete engine nor removable, or if the rename fails for any other reason.
+fn install(staged: &Path, dest: &Path, installed: &Path) -> Result<(), Error> {
+    let blocked = match std::fs::rename(staged, dest) {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+
+    // Something is in the way. Either another process installed the same
+    // artifact while this one was downloading — its copy is as good as ours —
+    // or an interrupted run left a partial directory, which `rename` will not
+    // replace: it refuses a non-empty destination, and on Windows any existing
+    // destination at all.
+    if installed.exists() {
+        return Ok(());
+    }
+    if !dest.exists() {
+        return Err(Error::Io(blocked));
+    }
+
+    std::fs::remove_dir_all(dest)?;
+    match std::fs::rename(staged, dest) {
+        Ok(()) => Ok(()),
+        // Lost the same race, one step later.
+        Err(_) if installed.exists() => Ok(()),
+        Err(error) => Err(Error::Io(error)),
     }
 }
 
@@ -594,6 +743,37 @@ mod tests {
         Engine::new("deadbeef".to_owned(), target.to_owned(), Build::Debug)
     }
 
+    /// A unique directory under the system temp directory, removed on drop so a
+    /// failing assertion cannot leak it into the next run.
+    struct Scratch {
+        path: PathBuf,
+    }
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+            let path = std::env::temp_dir().join(format!(
+                "flutter-tools-{name}-{}-{}",
+                std::process::id(),
+                SEQUENCE.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&path).expect("the temp directory is writable");
+
+            Self { path }
+        }
+
+        fn join(&self, name: &str) -> PathBuf {
+            self.path.join(name)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
     #[test]
     fn published_targets_map_to_an_artifact_and_a_library() {
         for (target, platform, library) in [
@@ -736,6 +916,126 @@ mod tests {
                 Err(Error::AotEngineNotPublished)
             ));
         }
+    }
+
+    #[test]
+    fn staging_path_is_a_distinct_sibling_of_the_engine_dir() {
+        let dir = PathBuf::from("cache")
+            .join("flutter-engine")
+            .join("abc123")
+            .join("x86_64-unknown-linux-gnu")
+            .join("debug_unopt");
+
+        let staged = staging_path(&dir);
+
+        // Installing is a rename, so the staging directory has to share the
+        // engine directory's parent.
+        assert_eq!(staged.parent(), dir.parent());
+        assert_ne!(staged, dir);
+        let name = staged
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("the staging path is built from a utf-8 format string");
+        assert!(name.starts_with(".debug_unopt.staging-"), "{name}");
+        // Two downloads in one process must not share — and so delete — a
+        // staging directory.
+        assert_ne!(staging_path(&dir), staged);
+    }
+
+    #[test]
+    fn staging_removes_itself_and_whatever_it_held() {
+        let scratch = Scratch::new("staging-drop");
+        let path = scratch.join("work");
+
+        {
+            let staging = Staging::create(&path).unwrap();
+            std::fs::write(staging.path().join("engine.zip"), "half a download").unwrap();
+            assert!(path.is_dir());
+        }
+
+        assert!(!path.exists(), "{} outlived its guard", path.display());
+    }
+
+    #[test]
+    fn staging_discards_what_an_interrupted_run_left() {
+        let scratch = Scratch::new("staging-stale");
+        let path = scratch.join("work");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("engine.zip"), "stale").unwrap();
+
+        let staging = Staging::create(&path).unwrap();
+
+        assert!(!staging.path().join("engine.zip").exists());
+    }
+
+    #[test]
+    fn install_into_a_free_path_moves_the_payload() {
+        let scratch = Scratch::new("install-fresh");
+        let staged = scratch.join("payload");
+        let dest = scratch.join("debug_unopt");
+        let installed = dest.join("libflutter_engine.so");
+
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("libflutter_engine.so"), "engine").unwrap();
+
+        install(&staged, &dest, &installed).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&installed).unwrap(), "engine");
+        assert!(!staged.exists(), "the payload was copied instead of moved");
+    }
+
+    #[test]
+    fn install_replaces_an_incomplete_cache_entry() {
+        let scratch = Scratch::new("install-partial");
+        let staged = scratch.join("payload");
+        let dest = scratch.join("debug_unopt");
+        let installed = dest.join("libflutter_engine.so");
+
+        // What an interrupted run leaves behind: an engine directory with no
+        // library in it, which `rename` on its own refuses to replace.
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("engine.zip"), "interrupted").unwrap();
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("libflutter_engine.so"), "engine").unwrap();
+
+        install(&staged, &dest, &installed).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&installed).unwrap(), "engine");
+        assert!(
+            !dest.join("engine.zip").exists(),
+            "the interrupted run's archive survived into the engine directory"
+        );
+    }
+
+    #[test]
+    fn install_keeps_the_copy_a_concurrent_download_installed() {
+        let scratch = Scratch::new("install-race");
+        let staged = scratch.join("payload");
+        let dest = scratch.join("debug_unopt");
+        let installed = dest.join("libflutter_engine.so");
+
+        // Another process finished first, so `dest` is already complete and may
+        // be in use.
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(&installed, "theirs").unwrap();
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("libflutter_engine.so"), "ours").unwrap();
+
+        install(&staged, &dest, &installed).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&installed).unwrap(), "theirs");
+    }
+
+    #[test]
+    fn archive_missing_library_names_the_library_and_the_url() {
+        let message = Error::ArchiveMissingLibrary {
+            library: "libflutter_engine.so".to_owned(),
+            url: "https://example.invalid/linux-x64-embedder.zip".to_owned(),
+        }
+        .to_string();
+
+        assert!(message.contains("libflutter_engine.so"), "{message}");
+        assert!(message.contains("https://example.invalid"), "{message}");
     }
 
     #[cfg(unix)]

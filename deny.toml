@@ -24,9 +24,28 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-# No ignored advisories. If one has to be added, give it a dated rationale:
-#   ignore = [{ id = "RUSTSEC-0000-0000", reason = "…, revisit YYYY-MM-DD" }]
-ignore = []
+# Give every entry a dated rationale: ignore = [{ id = "RUSTSEC-0000-0000",
+# reason = "…, revisit YYYY-MM-DD" }]
+#
+# The three below are the same advisory three times over: zbus 6.0 absorbed
+# zvariant, zvariant_derive and zbus_names into itself, so the standalone
+# crates are unmaintained by definition rather than defective. They are not
+# `unsound` or `vulnerability` advisories and there is no safe upgrade: we
+# reach them only through dark-light 3.0.0 -> zbus 5.19, dark-light 3.0.0 is
+# its latest release, and it pins zbus 5. flutter-glfw uses dark-light for one
+# thing — the host's light/dark preference on `flutter/settings` — and does
+# not touch the D-Bus wire types itself.
+#
+# Revisit 2026-04-25, or sooner if dark-light cuts a release on zbus 6. If it
+# has not by then, the alternatives are a direct zbus 6 dependency reading
+# `org.freedesktop.portal.Settings.ReadOne("org.freedesktop.appearance",
+# "color-scheme")` (~30 lines, same transitive cost), or dropping the feature
+# and leaving `platformBrightness` at the framework's default.
+ignore = [
+    { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6 as its `wire` module; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
+]
 
 [licenses]
 version = 2

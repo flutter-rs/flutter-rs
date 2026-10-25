@@ -135,6 +135,21 @@ Highlights:
   from the module tree since 0.3 and no longer compiled. Push events to Dart
   with `FlutterEngine::post_message` inside `run_on_platform_thread`.
 
+- `codec::value::to_value` — and so `VecExt::push_as_value`, `MessageChannel::send`/`send_with_result`,
+  `MethodChannel::invoke_method`/`invoke_method_with_result`, `Message::respond` and `MethodCall::respond` —
+  serializes straight into `codec::Value` instead of building a `serde_json::Value` first. Three consequences
+  are visible from Dart: a `u8` sequence becomes `Value::U8List`, so Dart receives a `Uint8List` rather than a
+  `List<int>` and the standard codec writes one byte per byte instead of nine; `i8`/`i16`/`i32`/`u16` become
+  `Value::I32` rather than `Value::I64`; and a non-finite `f64`/`f32` arrives intact instead of silently
+  becoming `Value::Null`. `JSON_CODEC` still writes NaN and the infinities as `null`, which is JSON's limit
+  rather than the codec's.
+- `codec::value::Error` lost its `Json(serde_json::Error)` variant, and the `From<serde_json::Error>` impl with
+  it, because nothing can produce one any more; it gained `NonStringKey` and `Message(String)`.
+- A reply callback handed to `PlatformMessageResponseHandle::new`, `MessageChannel::send_with_result` or
+  `MethodChannel::invoke_method_with_result` is now dropped without being called when the reply never arrives
+  — the send failed, or the engine shut down with the message in flight. It used to leak, so such a handle is
+  now safe to drop at any point.
+
 #### flutter-plugins
 
 - `SettingsPlugin::start_message` now takes the three settings the framework
@@ -158,6 +173,24 @@ Highlights:
 - `IsolatePlugin::new`'s bound is `F: FnOnce() + 'static + Send` (was the
   equivalent `FnOnce() -> ()`).
 
+- `PlatformHandler` requires `exit_application(AppExitType, i32) -> AppExitResponse`. The channel answers
+  `SystemNavigator.pop` and `System.exitApplication` instead of reporting them as not implemented, so an app
+  can finally close itself; `platform::AppExitType` and `platform::AppExitResponse` mirror `ui.AppExitType`
+  and `ui.AppExitResponse`. An unreadable request counts as `Required`: refusing an exit the framework
+  believes it already performed leaves a window the user cannot close.
+- `KeyboardPlugin::new` takes an `Arc<Mutex<dyn KeyboardStateHandler + Send>>`. `getKeyboardState` can only be
+  answered by whatever tracks the keys, and until it is answered `HardwareKeyboard` never installs its
+  handler — so this channel failing means no keyboard input at all.
+- `lifecycle::AppLifecycleState` is new — the five states `dart:ui` defines, in the framework's own order.
+  `LifecyclePlugin::send_state` and `send_app_is_hidden` are new, and the three existing `send_app_is_*`
+  helpers delegate to them.
+- `settings::PlatformBrightness` derives `Copy`, `Clone`, `Debug`, `Default` (`Light`, matching the framework)
+  and `Eq`; `as_str` is public and takes `self` by value.
+- Text editing steps by extended grapheme cluster rather than by Unicode scalar: `backspace`, `delete`,
+  `move_left`, `move_right`, `move_to`, `select_to` and `add_characters` can no longer split "e" + U+0301, a
+  flag, a skin-toned emoji or a ZWJ sequence. Offsets on the wire stay UTF-16 code units, and the composing
+  range is deliberately still clamped to code-unit boundaries, because it is a span the IME owns.
+
 #### flutter-glfw
 
 - `WindowArgs::width` and `WindowArgs::height` are `u32` instead of `i32`, so a
@@ -175,6 +208,17 @@ Highlights:
   still running and the dropping thread is the platform thread.
   `FlutterWindow::shutdown` still works and is equivalent to dropping.
 - The dead `draw` module file is removed. It was never in the module tree.
+
+- `FlutterWindow::run` publishes two channels it never used to touch: the host's light/dark preference on
+  `flutter/settings` (at startup and on every change) and the window's `AppLifecycleState` on
+  `flutter/lifecycle` (at startup and on every focus or iconify event).
+- Key events carry `KeyEvent.character`. GLFW delivers text in a `Char` event that arrives after the `Key`
+  event, so a key press is held back until the next event; a `WindowEventHandler` that claims a `Char` costs
+  the preceding key event its `character`, though the key event itself still goes out.
+- New default-on `brightness` feature. It is what reads the host preference, and it costs `dark-light` plus
+  the zbus stack behind it: ~52 extra transitive crates for one `MediaQuery.platformBrightness` value.
+  `default-features = false` drops them all, and `flutter/settings` is still sent, carrying the framework's
+  own default of `Brightness.light`.
 
 #### flutter-tools
 
@@ -263,12 +307,24 @@ Highlights:
 - Every public item is documented, the crate has crate-level documentation, and
   `#![warn(missing_docs)]` keeps it that way.
 
+- `keyboard::KeyboardStateHandler`, the trait that answers `getKeyboardState` with the keys currently held.
+
 #### flutter-glfw
 
 - `#[non_exhaustive] enum window::RunError { Engine(flutter_engine::RunError) }`,
   implementing `Error` with `From<flutter_engine::RunError>`.
 - `FlutterWindow::engine`, `window`, `create_texture` and `FlutterDesktop::glfw`
   are `#[must_use]`; the crate's public API is documented.
+
+- The host's light/dark preference, read through `dark-light` — the XDG `org.freedesktop.appearance` portal on
+  Linux and the BSDs, the registry on Windows, `NSUserDefaults` on macOS — and followed for the rest of the
+  run on a thread of its own, which posts the settings message back onto the platform thread.
+- Lifecycle tracking: focus and iconify polling mapped onto resumed / inactive / hidden the way the official
+  Linux embedder maps them. `paused` and `detached` are never sent, because `dart:ui` documents both as
+  mobile-only.
+- A pressed-key table, maintained from the same events the embedder translates, so the ids reported to
+  `flutter/keyboard` are the ones the framework already saw. It is drained on focus loss, which also releases
+  every key held at that moment: a key down when the window lost focus used to stay down forever.
 
 #### flutter-tools and flutter-engine-sys
 
@@ -336,9 +392,14 @@ Highlights:
   other `Reader` primitive, and a length prefix is no longer trusted to size a
   `Vec`. A truncated or hostile message is a `DecodeError`, not an out-of-bounds
   read.
-- The platform-message reply callback's user data is boxed and reclaimed at one
-  type, which fixes a segfault on every `invoke_method_with_result` /
-  `send_with_result` reply.
+- The platform-message reply callback is reached through an integer token into
+  a registry rather than through a boxed pointer, which fixes a segfault on
+  every `invoke_method_with_result` / `send_with_result` reply. Because the
+  token is never dereferenced, a baton the engine hands back after its entry was
+  reclaimed is a missed lookup instead of a use-after-free, and a callback whose
+  reply never arrives — the send failed, or the engine shut down with the
+  message in flight — is now dropped instead of leaked for the life of the
+  process.
 - `from_utf8_unchecked` is gone from the JSON and string codecs, and
   `slice::from_raw_parts` handles the engine's documented
   null-pointer-with-size-0 case.
@@ -389,10 +450,13 @@ Highlights:
   `*const i8`, which is a hard compile error on aarch64 where `c_char = u8`.
 - Three GLFW key codes the SDK's own map omits (281 scroll lock, 313 F24, 333
   numpad minus) produce key events.
-- The `flutter/keyboard` plugin answers `getKeyboardState` with null ("no
-  information", which `HardwareKeyboard.syncKeyboardState` handles) instead of
-  an empty `String`-keyed map that could never express the `Map<int, int>` the
-  framework casts to.
+- The `flutter/keyboard` plugin answers `getKeyboardState` with a real Dart
+  `Map<int, int>` of the physical-to-logical ids of the keys actually held,
+  instead of an empty `String`-keyed map that could never express the
+  `Map<int, int>` the framework casts to. A `KeyboardPlugin::default()`, which
+  has no source of keyboard state, still answers null ("no information", which
+  `HardwareKeyboard.syncKeyboardState` handles); flutter-glfw registers one
+  backed by its own pressed-key table.
 - `Clipboard.getData` passes the mime error's text to Dart instead of
   discarding it.
 - The `flutter-rs/dialog` plugin runs its native dialogs on a worker thread, so
@@ -405,6 +469,13 @@ Highlights:
   borrows of the `Value` (`visit_borrowed_str` / `visit_borrowed_bytes`), so
   `from_value::<&str>` works and a byte list is one memcpy instead of a
   per-element `visit_seq`.
+
+#### Text editing
+
+- Deleting or moving across a grapheme cluster no longer takes it apart: "e" + U+0301 took two backspaces, and
+  a flag or a ZWJ emoji several, each leaving the text in a state no Flutter app can produce.
+- `move_up`/`move_down` treat CRLF as one break, so the caret can no longer land between its halves; the break
+  set is Unicode's mandatory breaks rather than `\n` alone.
 
 #### SDK and engine discovery
 
@@ -494,6 +565,26 @@ Highlights:
   (with byte fixtures generated from the real Dart SDK), the UTF-16 text-editing
   model, the pointer-button mask, task priority, the texture registry, error
   display, and the engine callbacks' behaviour when their user data is gone.
+
+### Build, CI and documentation (continued)
+
+- `.github/dependabot.yml` keeps the actions and the cargo dependencies current weekly.
+- `scripts/gen-keymap.py` emits to an explicit path, preserves the hand-maintained tail of
+  `flutter-glfw/src/keymap.rs` instead of overwriting it, and gained a `--check` mode CI runs to catch the
+  keymap drifting from the SDK.
+- `scripts/build-engine.sh` reads the SDK version from `bin/cache/flutter.version.json`, which current SDKs
+  actually ship, instead of the `version` file they dropped — the tag-based fallback had been dead code — and
+  reports a bad flag with a message and exit 2 instead of bash's `unbound variable` abort.
+- `flutter-tools`' engine download stages into a sibling directory and installs with one rename, so an
+  interrupted download can no longer leave a cache entry that looks usable and is not. Concurrent downloads of
+  the same artifact are safe, the archive no longer stays behind, and a new
+  `Error::ArchiveMissingLibrary { library, url }` reports an archive that unpacks without the library.
+- `deny.toml` carries three dated `ignore` entries for RUSTSEC-2026-0370/0371/0372 (`zvariant`, `zbus_names`
+  and `zvariant_derive`, all unmaintained), which enter the graph through `dark-light` -> zbus. They are the
+  reason the `brightness` feature can be turned off.
+- The app template is the embedder's live-verification harness: seven cases that make the host call into Dart
+  and show what it decoded, a `FLUTTER_RS_SELFTEST=1` mode that runs them all and closes the window without a
+  mouse, and a README section saying what the host log must and must not contain.
 
 ## 0.4.0 — unreleased
 

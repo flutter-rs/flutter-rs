@@ -28,6 +28,13 @@ flutter-plugins = { path = "flutter-plugins", version = "0.5.0" }
 bindgen = "0.73"
 crossbeam-channel = "0.5"
 curl = "0.4"
+# `default-features = false` drops its `async-io` feature, which only backs the
+# async `stream()` wrapper flutter-glfw does not use (it takes the blocking
+# `detect()` and the thread-backed `subscribe()`), and with it `zbus/async-io`
+# plus futures-core/futures-channel. Set here rather than on the member,
+# because cargo 1.88/1.95 reject `default-features = false` on an inherited
+# dependency whose workspace entry does not already set it.
+dark-light = { version = "3", default-features = false }
 dirs = "7"
 gl = "0.14"
 glfw = { version = "0.63", default-features = false, features = [
@@ -47,6 +54,7 @@ sys-locale = "0.3"
 thiserror = "2"
 tinyfiledialogs = "3.9"
 unic-locale = "0.9"
+unicode-segmentation = "1.13"
 which = "8"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 

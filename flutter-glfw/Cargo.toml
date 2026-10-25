@@ -21,6 +21,11 @@ documentation = "https://docs.rs/flutter-glfw"
 license.workspace = true
 
 [dependencies]
+# The host's light/dark preference for `flutter/settings`: the XDG appearance
+# portal on Linux and the BSDs, the registry on Windows, `NSUserDefaults` on
+# macOS. The workspace entry turns its default features off; this crate uses
+# only the blocking `detect()` and the thread-backed `subscribe()`.
+dark-light = { workspace = true, optional = true }
 flutter-engine.workspace = true
 # The dialog plugin is registered unconditionally by `FlutterWindow`.
 flutter-plugins = { workspace = true, features = ["dialog"] }
@@ -29,6 +34,17 @@ log.workspace = true
 parking_lot.workspace = true
 sys-locale.workspace = true
 thiserror.workspace = true
+
+[features]
+default = ["brightness"]
+# Read the host's light/dark preference and follow it for the rest of the run.
+# It is on by default because the alternative is telling every app the host
+# wants a light interface, which is wrong on any desktop set to dark — but it
+# costs `dark-light` and, with it, the zbus D-Bus stack: ~66 transitive crates
+# for one `MediaQuery.platformBrightness` value. Build with
+# `default-features = false` to drop them; `flutter/settings` is still sent,
+# carrying the framework's own default of `Brightness.light`.
+brightness = ["dep:dark-light"]
 
 [lints]
 workspace = true

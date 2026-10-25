@@ -41,7 +41,9 @@ use crate::ffi::{
     PointerButtons,
 };
 
-use crate::channel::platform_message::{PlatformMessage, PlatformMessageResponseHandle};
+use crate::channel::platform_message::{
+    PlatformMessage, PlatformMessageResponseHandle, ReplyScope, drain_pending_replies,
+};
 use crate::tasks::TaskRunner;
 use crate::texture_registry::{Texture, TextureRegistry};
 use crossbeam_channel::{Receiver, Sender, unbounded};
@@ -85,6 +87,9 @@ struct FlutterEngineInner {
     /// post-shutdown use observable instead of undefined.
     shut_down: AtomicBool,
     channel_registry: RwLock<ChannelRegistry>,
+    /// This engine's partition of the process-wide table of outstanding
+    /// platform message reply callbacks, which `shutdown` drains.
+    reply_scope: ReplyScope,
     platform_runner: TaskRunner,
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
@@ -109,6 +114,11 @@ impl Drop for FlutterEngineInner {
                 "the last FlutterEngine handle was dropped without calling shutdown(); the engine and its threads are leaked"
             );
         }
+        // `shutdown` already drained these, so this is a no-op on the normal
+        // path. It is the backstop for the path above: without a shutdown
+        // nothing else would ever reclaim an outstanding reply callback, since
+        // the table outlives every engine.
+        drain_pending_replies(self.reply_scope);
     }
 }
 
@@ -276,6 +286,7 @@ impl FlutterEngine {
                 engine_ptr: AtomicPtr::new(ptr::null_mut()),
                 shut_down: AtomicBool::new(false),
                 channel_registry: RwLock::new(ChannelRegistry::new()),
+                reply_scope: ReplyScope::next(),
                 platform_runner: TaskRunner::new(
                     builder
                         .platform_handler
@@ -424,6 +435,12 @@ impl FlutterEngine {
     #[must_use]
     pub fn is_shut_down(&self) -> bool {
         self.inner.shut_down.load(atomic::Ordering::Acquire)
+    }
+
+    /// This engine's partition of the process-wide table of outstanding
+    /// platform message reply callbacks.
+    pub(crate) fn reply_scope(&self) -> ReplyScope {
+        self.inner.reply_scope
     }
 
     /// `true` when it is safe to hand `what` to the embedder API; logs and
@@ -841,7 +858,7 @@ impl FlutterEngine {
         // owns the response handle the message carried, so dropping it at the
         // end of this function releases that handle, which is what the embedder
         // API asks for once the message has been sent.
-        let raw = match message.into_raw() {
+        let mut raw = match message.into_raw() {
             Ok(raw) => raw,
             Err(error) => {
                 log::error!("the channel name contains an interior NUL byte: {error}");
@@ -853,11 +870,18 @@ impl FlutterEngine {
         let result = unsafe {
             flutter_engine_sys::FlutterEngineSendPlatformMessage(self.engine_ptr(), raw.as_ffi())
         };
-        if result != FlutterEngineResult::kSuccess {
+        if result == FlutterEngineResult::kSuccess {
+            // The engine has taken the message and now holds its own reference
+            // to the response object, so it — not the handle below — is what
+            // ends the reply callback.
+            raw.disarm_reply();
+        } else {
             log::error!(
                 "FlutterEngineSendPlatformMessage({}) failed: {result:?}",
                 raw.channel()
             );
+            // `raw` stays armed, so dropping it reclaims the reply callback
+            // the engine will now never deliver.
         }
     }
 
@@ -909,6 +933,16 @@ impl FlutterEngine {
         // still valid, and we are on the platform thread.
         let result = unsafe { flutter_engine_sys::FlutterEngineShutdown(self.engine_ptr()) };
         log_engine_result(result, "FlutterEngineShutdown");
+
+        // `FlutterEngineShutdown` joins the engine's threads and destroys the
+        // response objects it still holds *without* completing them, so from
+        // here on no reply callback can be running, none can arrive, and
+        // `PlatformMessageResponseHandle::new` refuses to register more
+        // (it checks `is_shut_down`, on this same thread). Whatever is left in
+        // the table for this engine is a reply that will never come: reclaim
+        // it rather than leak it, which is what used to happen to every
+        // message that was in flight at shutdown.
+        drain_pending_replies(self.inner.reply_scope);
     }
 
     /// Run the tasks the engine has queued on the platform thread, plus any

@@ -7,6 +7,11 @@
 //! navigation, …) already registered. [`window::FlutterWindow::run`] then owns
 //! the thread until the window closes, translating GLFW's pointer, scroll and
 //! key events into the engine's.
+//!
+//! `run` also reports the things the framework never asks for and would
+//! otherwise default forever: the host's preferred locales, its light/dark
+//! preference (once at startup and again whenever it changes), and the window's
+//! `AppLifecycleState` as it gains and loses focus and visibility.
 
 // Every `unsafe` block here calls into GLFW's C API, which has thread affinity
 // rules no type can express, so each one must say why it is sound; and a

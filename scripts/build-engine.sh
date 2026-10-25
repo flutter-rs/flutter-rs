@@ -49,14 +49,20 @@ JOBS="${JOBS:-$(nproc)}"
 # up to the first non-comment line), with the leading '# ' stripped.
 usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
 
+# Usage errors exit 2 and are reported before the log helpers exist.
+usage_error() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 2; }
+
 # ---- parse flags ----------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --mode) MODE="$2"; shift 2;;
-    --out)  OUT_DIR="$2"; shift 2;;
-    --jobs) JOBS="$2"; shift 2;;
+    # `${2:-}` rather than `$2`: under `set -u` a flag given without a value
+    # would otherwise abort with bash's own "unbound variable" message instead
+    # of the one below.
+    --mode) MODE="${2:-}"; [[ -n "$MODE" ]]    || usage_error "--mode needs a value"; shift 2;;
+    --out)  OUT_DIR="${2:-}"; [[ -n "$OUT_DIR" ]] || usage_error "--out needs a value"; shift 2;;
+    --jobs) JOBS="${2:-}"; [[ -n "$JOBS" ]]    || usage_error "--jobs needs a value"; shift 2;;
     -h|--help) usage; exit 0;;
-    *) echo "unknown argument: $1" >&2; exit 2;;
+    *) usage_error "unknown argument: $1 (try --help)";;
   esac
 done
 
@@ -64,8 +70,11 @@ case "$MODE" in
   release) OUTSUB=host_release;;
   profile) OUTSUB=host_profile;;
   debug)   OUTSUB=host_debug;;
-  *) echo "invalid --mode '$MODE' (use release|profile|debug)" >&2; exit 2;;
+  *) usage_error "invalid --mode '$MODE' (use release|profile|debug)";;
 esac
+
+# Both `gclient sync` and `ninja` take this straight through to -j.
+[[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || usage_error "invalid --jobs '$JOBS' (expected a positive integer)"
 
 log() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }

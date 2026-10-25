@@ -9,6 +9,11 @@
 //! Decoding never panics and never indexes the buffer directly: every read goes
 //! through [`Reader::take`], which bounds-checks against the buffer, so a
 //! truncated or mismatched message is a [`DecodeError`].
+//!
+//! Encoding has one failure of its own, and it does panic: the size prefix is
+//! at most a `u32`, so a string or list longer than `u32::MAX` cannot be
+//! expressed. See [`Writer::write_size`] for why that is a panic rather than
+//! an error.
 
 use std::collections::HashMap;
 
@@ -477,6 +482,18 @@ impl Writer {
     /// # Panics
     ///
     /// Panics for a size above `u32::MAX`, which the format cannot express.
+    ///
+    /// Deliberately not a `Result`: widening it would make every method of
+    /// [`MethodCodec`](super::MethodCodec) and
+    /// [`MessageCodec`](super::MessageCodec) fallible, which is a breaking
+    /// change for every out-of-tree codec and every call site, in exchange for
+    /// a case that means a single platform message of more than four
+    /// gibibytes. The engine copies the whole message into a buffer of its
+    /// own, so a payload that size is a different problem from the one the
+    /// `Result` would report. The panic is also contained: encoding happens
+    /// either on the caller's own thread, where it unwinds normally, or inside
+    /// the engine's platform-message callback, which is wrapped in
+    /// `catch_unwind` so that it cannot cross the `extern "C"` boundary.
     fn write_size(&mut self, n: usize) {
         if n < usize::from(SIZE_U16) {
             self.write_u8(u8::try_from(n).expect("n < 254"));

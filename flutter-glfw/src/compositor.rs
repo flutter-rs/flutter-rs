@@ -503,14 +503,10 @@ impl FlutterCompositorHandler for GlfwCompositor {
             let target = (texture_size.0 as i32, texture_size.1 as i32);
             let desired = (texture_size.0 as f64 / scale, texture_size.1 as f64 / scale);
             let current = (f64::from(settled_size.0), f64::from(settled_size.1));
-            // Let the window lag the content by a few pixels. Resizing on every
-            // animation frame would otherwise commit a new window size ~60
-            // times a second, and each resize briefly leaves the window without
-            // a matching buffer under Xwayland; the compositor shows that as
-            // periodic black flashes. The blit below still fills the window, so
-            // the small difference only scales the content.
-            if (texture_size.0 as f64 - current.0).abs() > 6.0
-                || (texture_size.1 as f64 - current.1).abs() > 6.0
+            // Compare physical pixels; a one-pixel difference is rounding noise
+            // and would otherwise resize the window on every frame.
+            if (texture_size.0 as f64 - current.0).abs() > 2.0
+                || (texture_size.1 as f64 - current.1).abs() > 2.0
             {
                 self.state.set_desired_size(view_id, desired);
                 self.state.wake();

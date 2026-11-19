@@ -22,8 +22,6 @@ use flutter_engine_sys::{
 #[cfg(target_os = "macos")]
 use flutter_engine_sys::{FlutterMetalBackingStore, FlutterMetalTexture};
 use glfw::Context;
-#[cfg(target_os = "macos")]
-use metal::foreign_types::ForeignType;
 use std::cell::Cell;
 use std::ffi::{CString, c_void};
 use std::mem;
@@ -71,7 +69,7 @@ struct SoftwareBackingStore {
 /// One embedder-owned Metal texture handed to the engine as a backing store.
 #[cfg(target_os = "macos")]
 struct MetalBackingStore {
-    texture: metal::Texture,
+    texture: crate::metal::MetalTexture,
     size: (usize, usize),
 }
 
@@ -127,10 +125,8 @@ impl FlutterCompositorHandler for GlfwCompositor {
             let Some(texture) = metal.create_texture(size) else {
                 return false;
             };
+            let texture_ptr = crate::metal::texture_ptr(&texture);
             let backing = Box::into_raw(Box::new(MetalBackingStore { texture, size }));
-            // SAFETY: the pointer came from `Box::into_raw` and the engine hands
-            // it back exactly once in `collect_backing_store`.
-            let texture_ptr = unsafe { (*backing).texture.as_ptr() };
             store.struct_size = mem::size_of::<FlutterBackingStore>();
             store.user_data = ptr::null_mut();
             store.type_ = FlutterBackingStoreType::kFlutterBackingStoreTypeMetal;
@@ -142,7 +138,7 @@ impl FlutterCompositorHandler for GlfwCompositor {
                         texture: FlutterMetalTexture {
                             struct_size: mem::size_of::<FlutterMetalTexture>(),
                             texture_id: view_id,
-                            texture: texture_ptr as *const c_void,
+                            texture: texture_ptr,
                             user_data: backing.cast::<c_void>(),
                             destruction_callback: None,
                         },

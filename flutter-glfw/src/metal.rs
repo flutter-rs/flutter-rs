@@ -6,13 +6,14 @@
 //! drawable on the *same* queue, so the copy is naturally ordered after the
 //! engine's rendering and no explicit event synchronization is required.
 
-use core_graphics_types::geometry::{CGRect, CGSize};
-use metal::foreign_types::ForeignType;
-use metal::objc::runtime::Object;
-use metal::objc::{msg_send, sel, sel_impl};
-use metal::{
-    CommandQueue, Device, MTLBlitOption, MTLOrigin, MTLPixelFormat, MTLResourceOptions, MTLSize,
-    MTLStorageMode, MTLTextureType, MTLTextureUsage, MetalLayer, Texture, TextureDescriptor,
+use objc2::rc::Retained;
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::{class, msg_send};
+use objc2_core_foundation::{CGRect, CGSize};
+use objc2_metal::{
+    MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
+    MTLCreateSystemDefaultDevice, MTLDevice, MTLDrawable, MTLOrigin, MTLPixelFormat,
+    MTLResourceOptions, MTLSize, MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
 };
 use parking_lot::Mutex;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -20,39 +21,45 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::Arc;
 
+/// An engine-owned render target texture.
+pub(crate) type MetalTexture = Retained<ProtocolObject<dyn MTLTexture>>;
+
+/// The raw `id<MTLTexture>` pointer the engine expects in its backing store.
+pub(crate) fn texture_ptr(texture: &MetalTexture) -> *const c_void {
+    Retained::as_ptr(texture).cast()
+}
+
 /// The layer and the last frame presented into it.
 struct ViewLayer {
-    layer: MetalLayer,
+    /// Our `CAMetalLayer`, owned by the `new` reference and retained by its
+    /// superlayer while attached.
+    layer: *mut AnyObject,
     /// The window's `NSView`, as a raw pointer kept alive by the window.
-    ns_view: usize,
+    ns_view: *mut AnyObject,
     /// The last texture the engine presented. The window server can invalidate
     /// a layer's drawable when the window is moved or changes screens, and the
     /// engine does not schedule a new frame for a pure move; keeping the last
     /// texture lets the compositor re-present it on demand.
-    last: Option<Texture>,
+    last: Option<MetalTexture>,
     size: (usize, usize),
 }
 
 pub(crate) struct MetalState {
-    device: Device,
-    queue: CommandQueue,
+    device: Retained<ProtocolObject<dyn MTLDevice>>,
+    queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     layers: Mutex<HashMap<i64, ViewLayer>>,
 }
 
+// SAFETY: Metal objects are documented as safe to use from multiple threads,
+// and the per-view layer map is protected by the mutex. The texture type is not
+// marked `Send + Sync` by the bindings, but a retained texture handle is.
+unsafe impl Send for MetalState {}
+unsafe impl Sync for MetalState {}
+
 impl MetalState {
     pub(crate) fn new() -> Option<Arc<Self>> {
-        let device = Device::system_default()?;
-        let queue = device.new_command_queue();
-        // `metal` owns the objects it gets from `MTLCreateSystemDefaultDevice`
-        // and `newCommandQueue`, but the device is also bridged to the engine
-        // through a plain pointer. Keep an extra reference so an autorelease
-        // pool drain between now and the engine's first command cannot free it
-        // out from under the engine.
-        // SAFETY: both pointers are live Metal objects created just above.
-        unsafe {
-            retain(device.as_ptr() as *mut Object);
-            retain(queue.as_ptr() as *mut Object);
-        }
+        let device = MTLCreateSystemDefaultDevice()?;
+        let queue = device.newCommandQueue()?;
         Some(Arc::new(Self {
             device,
             queue,
@@ -61,20 +68,20 @@ impl MetalState {
     }
 
     pub(crate) fn device_ptr(&self) -> *const c_void {
-        self.device.as_ptr().cast()
+        Retained::as_ptr(&self.device).cast()
     }
 
     pub(crate) fn queue_ptr(&self) -> *const c_void {
-        self.queue.as_ptr().cast()
+        Retained::as_ptr(&self.queue).cast()
     }
 
     /// Attach a `CAMetalLayer` to the window's `NSView`.
     ///
     /// GLFW creates an `NSOpenGLView`; the Metal path never draws through its
-    /// GL context, so replacing the view's layer with a Metal layer is enough.
-    // objc 0.2's macros expand a `cfg(feature = "cargo-clippy")` check into this
-    // crate, where that feature does not exist.
-    #[allow(unexpected_cfgs)]
+    /// GL context. The layer is added as a sublayer of the view's AppKit-owned
+    /// layer instead of replacing it: AppKit swaps out a layer it did not
+    /// create when the window moves, which left the window black. Layers do not
+    /// participate in hit-testing, so input keeps reaching GLFW.
     pub(crate) fn attach_layer(
         &self,
         window: &glfw::PWindow,
@@ -90,42 +97,42 @@ impl MetalState {
             log::error!("window for view {view_id} is not an AppKit window");
             return;
         };
-        let layer = MetalLayer::new();
-        layer.set_device(&self.device);
-        layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
-        // The drawable destination of a blit must be usable as a blit target.
-        layer.set_framebuffer_only(false);
-        layer.set_opaque(true);
-        layer.set_contents_scale(scale);
-        layer.set_drawable_size(CGSize::new(
-            f64::from(size.0.max(1)),
-            f64::from(size.1.max(1)),
-        ));
-        // Add the layer as a sublayer of the view's AppKit-owned layer instead
-        // of replacing that layer: AppKit swaps out a layer it did not create
-        // when the window moves, which left the window black. Layers do not
-        // participate in hit-testing, so input keeps reaching GLFW.
-        //
-        // SAFETY: the view comes from GLFW's live AppKit window and all
-        // messages run on the platform (main) thread.
+        // SAFETY: `new` creates a fresh layer we own; every message below is a
+        // plain property of `CAMetalLayer`/`NSView`/`CALayer`, sent on the
+        // platform (main) thread.
+        let layer: *mut AnyObject = unsafe { msg_send![class!(CAMetalLayer), new] };
+        if layer.is_null() {
+            log::error!("could not create a CAMetalLayer for view {view_id}");
+            return;
+        }
+        let device = Retained::as_ptr(&self.device) as *mut AnyObject;
+        let drawable_size = CGSize::new(f64::from(size.0.max(1)), f64::from(size.1.max(1)));
+        let parent = appkit.ns_view.as_ptr() as *mut AnyObject;
+        // SAFETY: the pointers are live objects; see the comment above.
         unsafe {
-            let parent = appkit.ns_view.as_ptr() as *mut Object;
+            let _: () = msg_send![layer, setDevice: device];
+            let _: () = msg_send![layer, setPixelFormat: MTLPixelFormat::BGRA8Unorm.0];
+            // The drawable destination of a blit must be usable as a blit target.
+            let _: () = msg_send![layer, setFramebufferOnly: false];
+            let _: () = msg_send![layer, setOpaque: true];
+            let _: () = msg_send![layer, setContentsScale: scale];
+            let _: () = msg_send![layer, setDrawableSize: drawable_size];
+
             let _: () = msg_send![parent, setWantsLayer: true];
-            let parent_layer: *mut Object = msg_send![parent, layer];
-            let layer_ptr = layer.as_ptr() as *mut Object;
+            let parent_layer: *mut AnyObject = msg_send![parent, layer];
             let bounds: CGRect = msg_send![parent, bounds];
-            let _: () = msg_send![layer_ptr, setFrame: bounds];
+            let _: () = msg_send![layer, setFrame: bounds];
             if parent_layer.is_null() {
                 log::error!("NSView did not create a backing layer for view {view_id}");
             } else {
-                let _: () = msg_send![parent_layer, addSublayer: layer_ptr];
+                let _: () = msg_send![parent_layer, addSublayer: layer];
             }
         }
         self.layers.lock().insert(
             view_id,
             ViewLayer {
                 layer,
-                ns_view: appkit.ns_view.as_ptr() as usize,
+                ns_view: parent,
                 last: None,
                 size: (size.0.max(1) as usize, size.1.max(1) as usize),
             },
@@ -151,67 +158,64 @@ impl MetalState {
     ///
     /// AppKit can replace the view's own layer when the window moves or changes
     /// screens; the sublayer then has no superlayer anymore, so re-attach it.
-    // objc 0.2's macros expand a `cfg(feature = "cargo-clippy")` check into this
-    // crate, where that feature does not exist.
-    #[allow(unexpected_cfgs)]
     fn refresh_layer(&self, view_id: i64) {
         let (ns_view, layer) = {
             let layers = self.layers.lock();
             let Some(view) = layers.get(&view_id) else {
                 return;
             };
-            (view.ns_view, view.layer.clone())
+            (view.ns_view, view.layer)
         };
         // SAFETY: `ns_view` belongs to the live GLFW window, and this runs on
         // the platform (main) thread.
         unsafe {
-            let parent = ns_view as *mut Object;
-            let bounds: CGRect = msg_send![parent, bounds];
-            let layer_ptr = layer.as_ptr() as *mut Object;
-            let _: () = msg_send![layer_ptr, setFrame: bounds];
-            let parent_layer: *mut Object = msg_send![parent, layer];
+            let bounds: CGRect = msg_send![ns_view, bounds];
+            let _: () = msg_send![layer, setFrame: bounds];
+            let parent_layer: *mut AnyObject = msg_send![ns_view, layer];
             if !parent_layer.is_null() {
-                let superlayer: *mut Object = msg_send![layer_ptr, superlayer];
+                let superlayer: *mut AnyObject = msg_send![layer, superlayer];
                 if superlayer != parent_layer {
                     log::debug!("Metal layer lost its superlayer for view {view_id}; re-adding");
-                    let _: () = msg_send![parent_layer, addSublayer: layer_ptr];
+                    let _: () = msg_send![parent_layer, addSublayer: layer];
                 }
             }
         }
     }
 
-    #[allow(unexpected_cfgs)]
     pub(crate) fn remove_layer(&self, view_id: i64) {
         let Some(view) = self.layers.lock().remove(&view_id) else {
             return;
         };
         // SAFETY: the layer is ours and this runs on the platform (main)
-        // thread. `addSublayer:` retained it there; dropping the `MetalLayer`
-        // releases our own reference.
+        // thread. `removeFromSuperlayer` releases the superlayer's reference;
+        // `release` drops the reference created by `new`.
         unsafe {
-            let _: () = msg_send![view.layer.as_ptr() as *mut Object, removeFromSuperlayer];
+            let _: () = msg_send![view.layer, removeFromSuperlayer];
+            let _: () = msg_send![view.layer, release];
         }
     }
 
     /// A render-target texture for one view's backing store.
-    pub(crate) fn create_texture(&self, size: (usize, usize)) -> Option<Texture> {
-        let descriptor = TextureDescriptor::new();
-        descriptor.set_texture_type(MTLTextureType::D2);
-        descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
-        descriptor.set_width(size.0 as u64);
-        descriptor.set_height(size.1 as u64);
-        descriptor.set_mipmap_level_count(1);
-        descriptor.set_sample_count(1);
-        descriptor.set_usage(MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead);
-        descriptor.set_storage_mode(MTLStorageMode::Private);
-        Some(self.device.new_texture(&descriptor))
+    pub(crate) fn create_texture(&self, size: (usize, usize)) -> Option<MetalTexture> {
+        // SAFETY: the descriptor factory only reads its arguments.
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::BGRA8Unorm,
+                size.0.max(1),
+                size.1.max(1),
+                false,
+            )
+        };
+        descriptor.setUsage(MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead);
+        descriptor.setStorageMode(MTLStorageMode::Private);
+        self.device.newTextureWithDescriptor(&descriptor)
     }
 
     /// Copy `texture` into the drawable of the view's layer.
     pub(crate) fn present(
         &self,
         view_id: i64,
-        texture: &Texture,
+        texture: &MetalTexture,
         size: (usize, usize),
         scale: f64,
     ) -> bool {
@@ -222,57 +226,79 @@ impl MetalState {
             };
             view.last = Some(texture.clone());
             view.size = size;
-            view.layer.clone()
+            view.layer
         };
-        layer.set_contents_scale(scale);
-        layer.set_drawable_size(CGSize::new(size.0.max(1) as f64, size.1.max(1) as f64));
-        let Some(drawable) = layer.next_drawable() else {
+        let drawable_size = CGSize::new(size.0.max(1) as f64, size.1.max(1) as f64);
+        // SAFETY: a layer and its drawable are live Metal/QuartzCore objects,
+        // and this runs on the raster thread, which owns the engine's queue.
+        // The `nextDrawable` and `texture` messages are safe on those objects.
+        let drawable = unsafe {
+            let _: () = msg_send![layer, setContentsScale: scale];
+            let _: () = msg_send![layer, setDrawableSize: drawable_size];
+            let drawable: *mut AnyObject = msg_send![layer, nextDrawable];
+            drawable
+        };
+        if drawable.is_null() {
             // Minimised or occluded: there is nothing to present into.
             log::debug!("no Metal drawable for view {view_id}");
             return true;
+        }
+        // SAFETY: the drawable is a `CAMetalDrawable` and its texture is an
+        // `MTLTexture`; both are live for the duration of this presentation.
+        let drawable_texture = unsafe {
+            let texture: *mut AnyObject = msg_send![drawable, texture];
+            if texture.is_null() {
+                return true;
+            }
+            &*(texture as *const ProtocolObject<dyn MTLTexture>)
         };
-        let command_buffer = self.queue.new_command_buffer();
-        let encoder = command_buffer.new_blit_command_encoder();
+        let Some(command_buffer) = self.queue.commandBuffer() else {
+            return true;
+        };
+        let Some(encoder) = command_buffer.blitCommandEncoder() else {
+            return true;
+        };
         let origin = MTLOrigin { x: 0, y: 0, z: 0 };
         let copy_size = MTLSize {
-            width: size.0 as u64,
-            height: size.1 as u64,
+            width: size.0.max(1),
+            height: size.1.max(1),
             depth: 1,
         };
-        encoder.copy_from_texture(
-            texture,
-            0,
-            0,
-            origin,
-            copy_size,
-            drawable.texture(),
-            0,
-            0,
-            origin,
-        );
-        let dump = encode_dump(&self.device, encoder, drawable.texture(), size);
-        encoder.end_encoding();
-        command_buffer.present_drawable(drawable);
+        // SAFETY: the copy is within the source and destination textures, and
+        // both are alive until the command buffer completes.
+        unsafe {
+            encoder
+                .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                    texture,
+                    0,
+                    0,
+                    origin,
+                    copy_size,
+                    drawable_texture,
+                    0,
+                    0,
+                    origin,
+                );
+        }
+        let dump = encode_dump(&self.device, &encoder, drawable_texture, size);
+        encoder.endEncoding();
+        // SAFETY: the drawable is a live `CAMetalDrawable`.
+        let drawable_ref = unsafe { &*(drawable as *const ProtocolObject<dyn MTLDrawable>) };
+        command_buffer.presentDrawable(drawable_ref);
         command_buffer.commit();
         if let Some(dump) = dump {
             // One-shot verification: the readback is only valid once the GPU
             // has finished the copy, so wait for this frame.
-            command_buffer.wait_until_completed();
+            command_buffer.waitUntilCompleted();
             dump.write();
         }
         true
     }
 }
 
-#[allow(unexpected_cfgs)]
-unsafe fn retain(object: *mut Object) {
-    // SAFETY: `object` is a live Objective-C object; `retain` returns it.
-    let _: *mut Object = unsafe { msg_send![object, retain] };
-}
-
 /// A captured frame waiting for the GPU to finish.
 struct FrameDump {
-    buffer: metal::Buffer,
+    buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
     path: std::path::PathBuf,
     width: usize,
     height: usize,
@@ -287,7 +313,7 @@ impl FrameDump {
         // the command buffer that fills it has completed.
         let pixels = unsafe {
             std::slice::from_raw_parts(
-                self.buffer.contents().cast::<u8>(),
+                self.buffer.contents().as_ptr().cast::<u8>(),
                 bytes_per_row * self.height,
             )
         };
@@ -320,9 +346,9 @@ impl FrameDump {
 /// Temporary verification aid: screenshot capture over SSH is blocked by TCC,
 /// so this proves what the window actually received.
 fn encode_dump(
-    device: &Device,
-    encoder: &metal::BlitCommandEncoderRef,
-    drawable: &metal::TextureRef,
+    device: &ProtocolObject<dyn MTLDevice>,
+    encoder: &ProtocolObject<dyn MTLBlitCommandEncoder>,
+    drawable: &ProtocolObject<dyn MTLTexture>,
     size: (usize, usize),
 ) -> Option<FrameDump> {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -334,26 +360,30 @@ fn encode_dump(
     }
     let (width, height) = (size.0.max(1), size.1.max(1));
     let bytes_per_row = width * 4;
-    let buffer = device.new_buffer(
-        (bytes_per_row * height) as u64,
+    let buffer = device.newBufferWithLength_options(
+        bytes_per_row * height,
         MTLResourceOptions::StorageModeShared,
-    );
-    encoder.copy_from_texture_to_buffer(
-        drawable,
-        0,
-        0,
-        MTLOrigin { x: 0, y: 0, z: 0 },
-        MTLSize {
-            width: width as u64,
-            height: height as u64,
-            depth: 1,
-        },
-        &buffer,
-        0,
-        bytes_per_row as u64,
-        (bytes_per_row * height) as u64,
-        MTLBlitOption::None,
-    );
+    )?;
+    // SAFETY: the copy is within the destination buffer, which is alive until
+    // the command buffer completes.
+    unsafe {
+        encoder
+            .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(
+                drawable,
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                MTLSize {
+                    width,
+                    height,
+                    depth: 1,
+                },
+                &buffer,
+                0,
+                bytes_per_row,
+                bytes_per_row * height,
+            );
+    }
     Some(FrameDump {
         buffer,
         path: std::path::PathBuf::from(path).with_file_name("metal-frame.ppm"),

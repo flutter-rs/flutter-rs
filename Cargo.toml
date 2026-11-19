@@ -46,10 +46,25 @@ image = { version = "0.25", default-features = false }
 indicatif = "0.18"
 libloading = "0.9"
 log = "0.4"
-# macOS-only Metal presentation (`flutter-glfw`). The crate re-exports `objc`
-# and `foreign_types`, so no separate Objective-C dependency is needed.
-core-graphics-types = { version = "0.2", default-features = false }
-metal = "0.33"
+# macOS-only Metal presentation (`flutter-glfw`).
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "CFCGTypes",
+    "objc2",
+] }
+objc2-metal = { version = "0.3", features = [
+    "MTLBlitCommandEncoder",
+    "MTLBuffer",
+    "MTLCommandBuffer",
+    "MTLCommandEncoder",
+    "MTLCommandQueue",
+    "MTLDevice",
+    "MTLDrawable",
+    "MTLPixelFormat",
+    "MTLResource",
+    "MTLTexture",
+    "MTLTypes",
+] }
 parking_lot = "0.12"
 priority-queue = "2"
 raw-window-handle = "0.6"

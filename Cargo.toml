@@ -46,8 +46,13 @@ image = { version = "0.25", default-features = false }
 indicatif = "0.18"
 libloading = "0.9"
 log = "0.4"
+# macOS-only Metal presentation (`flutter-glfw`). The crate re-exports `objc`
+# and `foreign_types`, so no separate Objective-C dependency is needed.
+core-graphics-types = { version = "0.2", default-features = false }
+metal = "0.33"
 parking_lot = "0.12"
 priority-queue = "2"
+raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sys-locale = "0.3"
@@ -56,6 +61,7 @@ tinyfiledialogs = "3.9"
 unic-locale = "0.9"
 unicode-segmentation = "1.13"
 which = "8"
+x11-dl = "2.21"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
@@ -75,6 +81,13 @@ multiple_crate_versions = "allow"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "warn"
+
+# glfw-rs 0.63 leaks every window created with `create_shared`: upstream
+# `Window::drop` skips `glfwDestroyWindow` when `is_shared` is set, leaving the
+# native window and its GL context alive. `vendor/glfw` is the same crate with
+# that guard removed; see vendor/glfw/src/lib.rs.
+[patch.crates-io]
+glfw = { path = "vendor/glfw" }
 
 # Keep unwinding in release: the FFI callbacks are the only place a panic can
 # reach C, and `panic = "abort"` would remove the ability to catch it there.

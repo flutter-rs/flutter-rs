@@ -45,6 +45,7 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6 as its `wire` module; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; reached only via dark-light 3 -> zbus 5, which has no 6.x release to move to. Revisit 2026-04-25." },
+    { id = "RUSTSEC-2024-0436", reason = "paste is a proc-macro crate with no runtime code; it reaches the graph only through the macOS-only metal 0.33 bindings used by the experimental Metal renderer. The maintained alternative is objc2-metal; replacing metal is the planned follow-up. Revisit 2027-06-01." },
 ]
 
 [licenses]

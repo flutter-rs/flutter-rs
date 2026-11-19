@@ -1,0 +1,19 @@
+[package]
+name = "multiple-windows-runner"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone: the flutter-rs workspace has no binary targets, and this example
+# must not make `cargo test --workspace` need a window or an engine library.
+[workspace]
+
+[dependencies]
+env_logger = "0.11"
+flutter-glfw = { path = "../../../flutter-glfw" }
+log = "0.4"
+
+# glfw-rs 0.63 leaks windows created with `create_shared`; flutter-glfw needs
+# shared contexts for its master/resource/view contexts.
+[patch.crates-io]
+glfw = { path = "../../../vendor/glfw" }

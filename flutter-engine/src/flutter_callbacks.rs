@@ -87,9 +87,68 @@ pub extern "C" fn present(user_data: *mut c_void) -> bool {
     // `FlutterEngine::new`, handed back unchanged by the engine.
     unsafe {
         with_engine(user_data, "present", false, |engine| {
-            engine.opengl_handler.swap_buffers()
+            // With a compositor the real presentation happens per view in
+            // `compositor_present_view`; the engine still invokes the renderer's
+            // `present` callback (Skia's `GLContextPresent`), and swapping the
+            // wrong window's buffers there would be a bug. No-op it.
+            if engine.compositor_handler.is_some() {
+                true
+            } else {
+                engine.opengl_handler.swap_buffers()
+            }
         })
     }
+}
+
+/// Present a whole software-rendered surface.
+///
+/// Only used without a compositor. flutter-glfw always installs one, so the
+/// engine presents each view through the compositor handler instead; the
+/// callback exists because the engine refuses a software renderer without it.
+///
+/// # Safety
+///
+/// Called by the engine with pointers it owns; they are ignored here.
+pub unsafe extern "C" fn software_surface_present(
+    _user_data: *mut c_void,
+    _allocation: *const c_void,
+    _row_bytes: usize,
+    _height: usize,
+) -> bool {
+    true
+}
+
+/// The engine validates the Metal drawable callbacks even when a compositor
+/// supplies every texture, so this stub keeps the configuration valid. With a
+/// compositor the engine renders into the embedder's backing stores and never
+/// asks for a drawable.
+///
+/// # Safety
+///
+/// Called by the engine only; the frame info is owned by the engine and unused.
+pub unsafe extern "C" fn metal_get_next_drawable(
+    _user_data: *mut c_void,
+    _frame_info: *const flutter_engine_sys::FlutterFrameInfo,
+) -> flutter_engine_sys::FlutterMetalTexture {
+    flutter_engine_sys::FlutterMetalTexture {
+        struct_size: std::mem::size_of::<flutter_engine_sys::FlutterMetalTexture>(),
+        texture_id: 0,
+        texture: std::ptr::null(),
+        user_data: std::ptr::null_mut(),
+        destruction_callback: None,
+    }
+}
+
+/// See [`metal_get_next_drawable`]: present is never called with a compositor.
+///
+/// # Safety
+///
+/// Called by the engine only; the texture is owned by the engine and unused.
+pub unsafe extern "C" fn metal_present_drawable(
+    _user_data: *mut c_void,
+    _texture: *const flutter_engine_sys::FlutterMetalTexture,
+) -> bool {
+    true
 }
 
 pub extern "C" fn make_current(user_data: *mut c_void) -> bool {
@@ -231,6 +290,119 @@ pub extern "C" fn gl_external_texture_frame(
     }
 }
 
+/// Allocate a per-view backing store through the configured compositor.
+pub extern "C" fn compositor_create_backing_store(
+    config: *const flutter_engine_sys::FlutterBackingStoreConfig,
+    backing_store_out: *mut flutter_engine_sys::FlutterBackingStore,
+    user_data: *mut c_void,
+) -> bool {
+    trace!("compositor_create_backing_store");
+    if config.is_null() || backing_store_out.is_null() {
+        return false;
+    }
+    // SAFETY: the engine owns both structs for the duration of this callback;
+    // `user_data` is the leaked engine weak reference (see `present`).
+    unsafe {
+        with_engine(
+            user_data,
+            "compositor_create_backing_store",
+            false,
+            |engine| {
+                let Some(handler) = engine.compositor_handler.as_ref() else {
+                    return false;
+                };
+                let config = &*config;
+                let size = (
+                    config.size.width.max(0.0) as usize,
+                    config.size.height.max(0.0) as usize,
+                );
+                handler.create_backing_store(config.view_id, size, &mut *backing_store_out)
+            },
+        )
+    }
+}
+
+/// Release a backing store created by [`compositor_create_backing_store`].
+pub extern "C" fn compositor_collect_backing_store(
+    backing_store: *const flutter_engine_sys::FlutterBackingStore,
+    user_data: *mut c_void,
+) -> bool {
+    trace!("compositor_collect_backing_store");
+    if backing_store.is_null() {
+        return false;
+    }
+    // SAFETY: see `compositor_create_backing_store`.
+    unsafe {
+        with_engine(
+            user_data,
+            "compositor_collect_backing_store",
+            false,
+            |engine| {
+                let Some(handler) = engine.compositor_handler.as_ref() else {
+                    return false;
+                };
+                handler.collect_backing_store(&*backing_store);
+                true
+            },
+        )
+    }
+}
+
+/// Composite one view's layers onto its native target.
+pub extern "C" fn compositor_present_view(
+    info: *const flutter_engine_sys::FlutterPresentViewInfo,
+) -> bool {
+    trace!("compositor_present_view");
+    if info.is_null() {
+        return false;
+    }
+    // SAFETY: the engine owns `info` and the layer array for the duration of
+    // this callback, and `info.user_data` is the leaked engine weak reference.
+    unsafe {
+        let info = &*info;
+        with_engine(info.user_data, "compositor_present_view", false, |engine| {
+            let Some(handler) = engine.compositor_handler.as_ref() else {
+                return false;
+            };
+            let layers: Vec<&flutter_engine_sys::FlutterLayer> =
+                if info.layers.is_null() || info.layers_count == 0 {
+                    Vec::new()
+                } else {
+                    std::slice::from_raw_parts(info.layers, info.layers_count)
+                        .iter()
+                        .map(|layer| &**layer)
+                        .collect()
+                };
+            handler.present_view(info.view_id, &layers)
+        })
+    }
+}
+
+/// The framework asked the embedder to move native focus to a view.
+pub extern "C" fn view_focus_change_request(
+    request: *const flutter_engine_sys::FlutterViewFocusChangeRequest,
+    user_data: *mut c_void,
+) {
+    trace!("view_focus_change_request");
+    if request.is_null() {
+        return;
+    }
+    // SAFETY: the engine owns `request` for the duration of the callback, and
+    // `user_data` is the leaked engine weak reference (see `present`).
+    unsafe {
+        let request = &*request;
+        with_engine(user_data, "view_focus_change_request", (), |engine| {
+            let Some(handler) = engine.view_focus_change_handler.as_ref() else {
+                return;
+            };
+            handler(
+                request.view_id,
+                request.state == flutter_engine_sys::FlutterViewFocusState::kFocused,
+            );
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +429,14 @@ mod tests {
         );
         platform_message_callback(ptr::null(), engine);
         root_isolate_create_callback(engine);
+        assert!(!compositor_create_backing_store(
+            ptr::null(),
+            ptr::null_mut(),
+            engine
+        ));
+        assert!(!compositor_collect_backing_store(ptr::null(), engine));
+        assert!(!compositor_present_view(ptr::null()));
+        view_focus_change_request(ptr::null(), engine);
     }
 
     /// Same for the two task-runner callbacks, whose user data is the task

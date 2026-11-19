@@ -1,7 +1,7 @@
 //! Raw FFI bindings to the Flutter engine's embedder API.
 //!
 //! The bindings are generated at build time by `bindgen` from the vendored
-//! `flutter-engine.h` (Flutter 3.47.8), so the declarations here always match
+//! `flutter-engine.h` (Flutter 3.50), so the declarations here always match
 //! the header in this repository rather than whatever engine happens to be
 //! installed. Nothing in this crate is safe to call on its own: the embedder
 //! API has hard threading rules and a panic unwinding out of one of its
@@ -30,16 +30,35 @@ include!(concat!(env!("OUT_DIR"), "/flutter-engine-sys.rs"));
 
 // One declaration for every platform that has an engine build, instead of five
 // identical blocks. The `cfg_attr` keeps targets with no engine at all (wasm32,
-// say) type-checkable, since they never receive the link directive.
+// say) type-checkable, since they never receive the link directive. Apple's
+// official artifact is a framework rather than a dylib; `build.rs` sets
+// `flutter_embedder_framework` when `FLUTTER_ENGINE_LIB_DIR` contains
+// `FlutterEmbedder.framework`.
 #[cfg_attr(
-    any(
-        target_os = "android",
-        target_os = "ios",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "windows"
+    all(
+        any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "macos",
+            target_os = "windows"
+        ),
+        not(flutter_embedder_framework)
     ),
     link(name = "flutter_engine")
+)]
+#[cfg_attr(
+    all(
+        any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "linux",
+            target_os = "macos",
+            target_os = "windows"
+        ),
+        flutter_embedder_framework
+    ),
+    link(name = "FlutterEmbedder", kind = "framework")
 )]
 unsafe extern "C" {}
 
@@ -51,6 +70,19 @@ mod tests {
     ///
     /// Written as one `cfg!`-selected constant so that every target defines it;
     /// a `#[cfg]` ladder left the android/ios test targets failing to compile.
+    /// Apple's framework artifact is addressed through its bundle path when the
+    /// build script detected `FlutterEmbedder.framework`.
+    #[cfg(all(
+        any(target_os = "macos", target_os = "ios"),
+        flutter_embedder_framework
+    ))]
+    const LIB: &str = "FlutterEmbedder.framework/Versions/Current/FlutterEmbedder";
+
+    /// The engine library's file name as the dynamic loader sees it.
+    #[cfg(not(all(
+        any(target_os = "macos", target_os = "ios"),
+        flutter_embedder_framework
+    )))]
     const LIB: &str = if cfg!(any(target_os = "macos", target_os = "ios")) {
         "libflutter_engine.dylib"
     } else if cfg!(target_os = "windows") {

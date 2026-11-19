@@ -34,9 +34,11 @@ This project is a cargo workspace of five crates, layered bottom-up:
   settings, window, dialog, isolate) on top of `flutter-engine`'s channel
   registry. An embedder has to register them; `flutter-glfw` does.
 
-- `flutter-glfw` creates an event loop and a window with GLFW, supplies the GL
-  context, and interfaces with the `flutter-engine` crate. It is the only
-  maintained windowing backend.
+- `flutter-glfw` creates one engine, any number of GLFW windows/views, the GL
+  contexts and the per-view compositor, runs the single event loop, and
+  interfaces with the `flutter-engine` crate. `flutter-glfw/dart` is the
+  matching Dart `WindowingOwner`. It is the only maintained windowing backend;
+  `vendor/glfw` is a one-line patch to glfw 0.63 for `create_shared` windows.
 
     (`flutter-winit` is an unmaintained winit-based alternative. Its sources are
     still tracked, but it has not been ported to winit 0.30 / glutin 0.32, does
@@ -110,10 +112,21 @@ cargo deny check advisories licenses bans sources
 ```
 
 CI additionally compiles the workspace on macOS and checks both MSRV floors. It
-does not run the tests on macOS: the only Apple engine artifact Flutter
-publishes is `FlutterEmbedder.framework` (darwin-x64 only), while the embedder
-links `-lflutter_engine`, and nobody has verified the renaming that would
-bridge the two.
+does not run the tests on macOS: the Apple engine artifact is
+`FlutterEmbedder.framework`, which `flutter-engine-sys` now links as a
+framework, but the runtime path is unverified.
+
+`examples/multiple_windows` is a standalone Flutter project plus a standalone
+Rust runner (its own `[workspace]`), so it is not built by the workspace gate.
+Run it with `examples/multiple_windows/run.sh`; it needs Flutter 3.50 and the
+generic embedder for the SDK's engine revision.
+
+A Windows-gnu cross-check is
+`cargo check --workspace --target x86_64-pc-windows-gnu --no-default-features`
+(with mingw-w64, clang and cmake). The `dialog` feature pulls tinyfiledialogs,
+whose `#include <ShellScalingApi.h>` only resolves case-insensitively on a
+native Windows filesystem; native/MSVC builds and the feature-off cross-check
+are fine.
 
 ## Testing notes
 

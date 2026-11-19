@@ -21,6 +21,7 @@ fn main() {
     println!("cargo::rerun-if-changed=flutter-engine.h");
     println!("cargo::rerun-if-env-changed={ENGINE_LIB_DIR}");
     println!("cargo::rerun-if-env-changed=SDKROOT");
+    println!("cargo::rustc-check-cfg=cfg(flutter_embedder_framework)");
     for var in NDK_VARS {
         println!("cargo::rerun-if-env-changed={var}");
     }
@@ -95,6 +96,22 @@ fn emit_link_search() {
         );
         return;
     }
+
+    // Apple's official artifact is `FlutterEmbedder.framework`, not a
+    // `libflutter_engine.dylib`. Link it as a framework when it is what the
+    // caller pointed us at; the `#[link]` attribute in `src/lib.rs` is gated on
+    // this cfg.
+    let apple = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "macos" || os == "ios");
+    if apple && dir.join("FlutterEmbedder.framework").is_dir() {
+        println!("cargo::rustc-cfg=flutter_embedder_framework");
+        println!("cargo::rustc-link-search=framework={}", dir.display());
+        let dir = dir.display().to_string();
+        if !dir.contains(',') {
+            println!("cargo::rustc-link-arg=-Wl,-rpath,{dir}");
+        }
+        return;
+    }
+
     let dir = dir.display().to_string();
     println!("cargo::rustc-link-search=native={dir}");
 

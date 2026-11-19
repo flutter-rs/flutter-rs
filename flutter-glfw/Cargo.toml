@@ -27,16 +27,34 @@ license.workspace = true
 # only the blocking `detect()` and the thread-backed `subscribe()`.
 dark-light = { workspace = true, optional = true }
 flutter-engine.workspace = true
-# The dialog plugin is registered unconditionally by `FlutterWindow`.
-flutter-plugins = { workspace = true, features = ["dialog"] }
+flutter-engine-sys.workspace = true
+# The dialog plugin is registered unconditionally by `FlutterApp`.
+# `dialog` is a feature here too: tinyfiledialogs' C sources need Windows SDK
+# headers that mingw-w64 does not ship, so a windows-gnu build uses
+# `--no-default-features`.
+flutter-plugins = { workspace = true, default-features = false }
+gl.workspace = true
 glfw.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 sys-locale.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Loaded with dlopen, so it does not add a hard libX11 link dependency.
+x11-dl.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# The macOS engine has no OpenGL backend; Metal is the GPU path and the
+# software renderer remains the fallback.
+core-graphics-types.workspace = true
+metal.workspace = true
+raw-window-handle.workspace = true
+
 [features]
-default = ["brightness"]
+default = ["brightness", "dialog"]
+# Native file dialogs (`flutter-plugins/dialog`, via tinyfiledialogs).
+dialog = ["flutter-plugins/dialog"]
 # Read the host's light/dark preference and follow it for the rest of the run.
 # It is on by default because the alternative is telling every app the host
 # wants a light interface, which is wrong on any desktop set to dark — but it

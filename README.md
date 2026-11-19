@@ -11,9 +11,11 @@ Build Flutter desktop apps in Dart and Rust.
 ## Status
 
 This workspace targets the modern Flutter embedder API and is developed against
-Flutter **3.44 – 3.47.x**; the vendored `flutter-engine-sys/flutter-engine.h` is
-Flutter 3.47.8's `flutter_embedder.h` verbatim, and the test suite is run against
-both 3.47.8's engine (`cf636b1d…`) and 3.44.2's (`77e2e947…`).
+Flutter **3.44 – 3.50.x**; the vendored `flutter-engine-sys/flutter-engine.h` is
+Flutter 3.50's `flutter_embedder.h` verbatim, and the test suite is run against
+both 3.50's engine (`371f7720…`) and 3.47.8's (`cf636b1d…`). The
+`examples/multiple_windows` project runs Flutter's official multi-window
+reference app on the GLFW backend.
 
 The newest release on crates.io is **0.3.5 (2019)**. Everything here is the
 unreleased 0.5.0 work; see [CHANGELOG.md](CHANGELOG.md).
@@ -30,7 +32,8 @@ January 2020 and no longer compiles. There is no replacement CLI: you drive
 | [`flutter-engine-sys`](flutter-engine-sys) | Raw bindgen bindings to the embedder C API. |
 | [`flutter-engine`](flutter-engine) | Safe engine lifecycle, platform-message channels, codecs, task runner, textures. |
 | [`flutter-plugins`](flutter-plugins) | The `flutter/*` system channels: text input, keyboard, clipboard, cursor, locales, settings, … |
-| [`flutter-glfw`](flutter-glfw) | The windowing backend: GLFW window, GL context, event loop. The only maintained one. |
+| [`flutter-glfw`](flutter-glfw) | The windowing backend: one engine, many GLFW windows/views, compositor, event loop. The only maintained one. |
+| `flutter-glfw/dart` | `flutter_glfw_windowing`, the Dart `WindowingOwner` that lets the framework's windowing API drive flutter-glfw. |
 | [`flutter-tools`](flutter-tools) | Finds the Flutter SDK and downloads the matching engine library. |
 
 `flutter-winit` is still in the tree but is unmaintained, does not compile, and
@@ -42,8 +45,9 @@ is `exclude`d from the workspace.
   flutter-engine-sys / flutter-engine / flutter-plugins / flutter-tools;
   flutter-glfw declares 1.95, because glfw 0.63 uses `cfg_select!`.
 - A [Flutter SDK](https://flutter.dev/) on `PATH` (or `FLUTTER_ROOT` set),
-  3.44 – 3.47.x. Newer SDKs may work — the embedder ABI has not moved since
-  3.44 — but have not been tried.
+  3.44 – 3.50.x. The windowing APIs used by `examples/multiple_windows` require
+  Flutter 3.50's framework, but are gated to Flutter's main channel there; the
+  example enables the runtime flag itself (see its README).
 - On Linux, the system packages listed under
   [Building and testing](CONTRIBUTING.md#building-and-testing).
 
@@ -114,33 +118,88 @@ the first run.
 ## Writing an app
 
 The Dart half is an ordinary Flutter project; build its assets with
-`flutter build bundle`. The Rust half opens the window:
+`flutter build bundle`. The Rust half creates one engine and any number of
+windows:
 
 ```rust
-use flutter_glfw::window::{WindowArgs, WindowMode};
+use flutter_glfw::{AppArgs, WindowArgs, WindowMode};
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The thread that calls `init` becomes the engine's platform thread.
     let mut desktop = flutter_glfw::init()?;
 
-    let window = desktop.create_window_with_icu(
-        &WindowArgs {
-            width: 1280,
-            height: 720,
-            title: "My app",
-            mode: WindowMode::Windowed,
-        },
-        PathBuf::from("build/flutter_assets"), // `flutter build bundle` output
-        PathBuf::from("icudtl.dat"),           // from the SDK, or flutter-tools
-        Vec::new(),                            // extra engine switches
-    )?;
+    let mut app_args = AppArgs::new(PathBuf::from("build/flutter_assets"));
+    app_args.icu_data_path = Some(PathBuf::from("icudtl.dat")); // from the SDK
+    let app = desktop.create_app(app_args)?;
 
-    // Owns this thread until the window closes.
-    window.run(None, None)?;
+    // The first window owns the implicit view (0), so `runApp` renders into it.
+    let _window = app.create_window(&WindowArgs {
+        width: 1280,
+        height: 720,
+        title: "My app",
+        mode: WindowMode::Windowed,
+    })?;
+
+    app.run(None, None)?; // owns this thread until the app exits
+    app.shutdown();
     Ok(())
 }
 ```
+
+Channels and plugins are registered on the app, not a window:
+`app.register_channel(...)`, `app.add_plugin(...)`, `app.create_texture()`.
+Windows created *after* `run` get new engine views; `app.create_window` is safe
+to call from platform-thread callbacks.
+
+glfw-rs 0.63 leaks windows created with `create_shared`; this repository vendors
+a one-line fixed copy in `vendor/glfw` and applies it with
+`[patch.crates-io]`. A downstream app must add the same patch (or a fixed
+glfw-rs) or its visible windows will never be destroyed:
+
+```toml
+[patch.crates-io]
+glfw = { path = "path/to/flutter-rs/vendor/glfw" }
+```
+
+### Multi-window
+
+`examples/multiple_windows` runs Flutter's official reference app. It adds
+`lib/main_glfw.dart`, which enables the framework's experimental windowing flag
+at runtime and installs `GlfwWindowingOwner` from `flutter-glfw/dart`. The Dart
+owner talks to the Rust backend through a function-pointer table whose address
+travels as `PlatformDispatcher.engineId`, so no C symbols have to be exported.
+
+```bash
+cd examples/multiple_windows
+./run.sh
+# macOS (the engine has no OpenGL backend there):
+FLUTTER_ROOT=/path/to/flutter-3.50 ./run_macos.sh
+```
+
+The example creates its windows from Dart; the Rust runner only starts the
+engine. The backend uses a compositor with one FBO per view and presents each
+view into its own GLFW window. Window management is best-effort on native
+Wayland (top-level positioning is unavailable); run a Wayland session through
+XWayland (`FLUTTER_GLFW_PLATFORM=x11`) for tooltips, popups and satellites.
+
+Linux is the verified platform. Windows and macOS share the same backend and
+ABI; Windows needs a native build (or a mingw toolchain with the dialog feature
+disabled). macOS was built and run on Apple Silicon: its engine has no OpenGL
+backend. The default there is Metal: the engine renders into `MTLTexture`
+backing stores that the compositor blits into each window's `CAMetalLayer`.
+`FLUTTER_GLFW_RENDERER=software` forces the CPU renderer, whose pixels the
+compositor uploads through the window's GL context. The
+generic macOS embedder is a universal `FlutterEmbedder.framework`; a downstream
+binary still needs `DYLD_FRAMEWORK_PATH` pointing at the directory that holds
+it (the rpath emitted by `flutter-engine-sys` only covers that crate's own
+targets).
+
+Parented dialogs are transient/modal on X11 (`WM_TRANSIENT_FOR` +
+`_NET_WM_STATE_MODAL`), and the backend also drops parent input while any modal
+child exists, so the parent stays blocked on WMs without modality support.
+Satellites keep an absolute offset from their parent and are floating, so fast
+parent moves stay tight and the satellite stays above the parent.
 
 [flutter-app-template](https://github.com/flutter-rs/flutter-app-template) is a
 worked example of the project layout, but ignore its `cargo flutter` commands.
@@ -169,7 +228,7 @@ To contribute to flutter-rs, please see [CONTRIBUTING](CONTRIBUTING.md).
 
 MIT — see [LICENSE](LICENSE).
 
-[flutter-badge]: https://img.shields.io/badge/flutter-v3.44%20--%20v3.47-blueviolet.svg
+[flutter-badge]: https://img.shields.io/badge/flutter-v3.44%20--%20v3.50-blueviolet.svg
 [flutter-url]: https://flutter.dev/
 [crates-badge]: https://img.shields.io/crates/v/flutter-engine.svg
 [crates-url]: https://crates.io/crates/flutter-engine

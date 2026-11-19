@@ -6,7 +6,7 @@ five crates. Dates are the dates of the corresponding git tags.
 ## 0.5.0 — unreleased
 
 The first work on this project in six years. It ports the embedder to the
-modern Flutter engine API (developed against **Flutter 3.44 – 3.47.x**), moves
+modern Flutter engine API (developed against **Flutter 3.44 – 3.50.x**), moves
 the workspace to edition 2024, removes essentially every panic from the FFI
 boundary, fixes two memory-safety bugs in the standard codec, and replaces the
 dead `cargo-flutter` workflow with plain `cargo`.
@@ -36,6 +36,12 @@ Highlights:
 - **Supply chain.** `async-std` (RUSTSEC-2025-0052, unmaintained) is gone, `zip`
   is on 9.x (RUSTSEC-2026-0367), and `cargo deny check advisories licenses bans
   sources` is clean and runs in CI.
+- **Multi-window/multi-view.** `flutter-engine` gains `add_view`/`remove_view`,
+  per-view metrics/pointers/focus and a compositor hook; `flutter-glfw` is now
+  one engine with any number of GLFW windows, a per-view FBO compositor, and a
+  Dart `WindowingOwner` (`flutter-glfw/dart`). Flutter's official
+  `examples/multiple_windows` runs on it (see `examples/multiple_windows`).
+  This replaces the old one-window `FlutterWindow::create`/`run` API.
 
 ### Breaking changes
 
@@ -62,6 +68,58 @@ Highlights:
   flutter-engine, flutter-plugins, flutter-glfw and flutter-tools.
 - `[profile.release]` sets `lto = "thin"` and `codegen-units = 1`. `panic` is
   deliberately left at `unwind`: the FFI panic guards depend on it.
+
+#### flutter-glfw — unified multi-window API
+
+- `FlutterDesktop::create_window` / `create_window_with_icu` and
+  `FlutterWindow::run` are replaced by `FlutterDesktop::create_app`,
+  `FlutterApp::create_window`, `FlutterApp::run` and `FlutterApp::shutdown`.
+  Plugins, channels and textures are registered on the app, not the window.
+  The first window owns the implicit view (`0`); later windows add views.
+- The backend now always uses a compositor: a hidden 1×1 master context and a
+  resource context are created with the engine, each visible window shares
+  them, and every view's layers are blitted from an offscreen FBO into the
+  window's default framebuffer. The legacy single-view
+  `fbo_callback`/`present` renderer path is no longer used by this crate.
+- The crate vendors `glfw` 0.63 in `vendor/glfw`: upstream does not call
+  `glfwDestroyWindow` for windows created with `create_shared`, which leaked
+  every visible window and its context. Downstream apps must add the same
+  `[patch.crates-io]` entry (or depend on a fixed glfw-rs).
+- The Dart package `flutter_glfw_windowing` in `dart/` implements the
+  framework's `WindowingOwner` for regular windows, dialogs, tooltips, popups
+  and satellites. It receives the backend's function table through
+  `PlatformDispatcher.engineId`, so no C symbols or link flags are needed.
+  Sizes/positions cross the ABI in logical pixels; native Wayland cannot
+  position top-level windows (use X11/XWayland for the demo).
+- Parented dialogs are transient/modal on X11 (`WM_TRANSIENT_FOR` plus an
+  EWMH `_NET_WM_STATE_MODAL` client message) and the backend drops parent
+  input while a modal child exists, so modality also holds on WMs without the
+  hint. Satellites track an absolute offset from their parent and are floating,
+  so fast parent moves do not drift and the child stays above the parent.
+- `flutter-engine` keeps the old view-0 `send_window_metrics_event` and
+  `send_pointer_event` methods as compatibility delegates and adds
+  `send_window_metrics_for_view`, `send_pointer_event_for_view`,
+  `send_view_focus_event`, `add_view` and `remove_view`.
+- `flutter-engine-sys` links Apple's `FlutterEmbedder.framework` when
+  `FLUTTER_ENGINE_LIB_DIR` contains it (the official macOS artifact is not a
+  `libflutter_engine.dylib`).
+- The macOS engine ships without an OpenGL backend. `FlutterEngineBuilder` gains
+  `with_software_renderer`; `flutter-glfw` selects it on macOS and its
+  compositor uploads each software backing store into the view's GL context for
+  presentation. The workspace and `examples/multiple_windows` were built and run
+  on Apple Silicon this way.
+- Metal renderer for macOS, now the default there:
+  `FlutterEngineBuilder::with_metal_renderer` takes an
+  `MTLDevice`/`MTLCommandQueue`, and the flutter-glfw compositor hands the engine
+  `MTLTexture` backing stores and copies each presented texture into a
+  `CAMetalLayer` hosted as a sublayer of the window view (AppKit replaces layers
+  it does not own when a window moves). `FLUTTER_GLFW_RENDERER=software` forces
+  the CPU renderer.
+  `FlutterRendererConfig` is now owned by the engine wrapper because the engine
+  reads it when the shell starts, after `FlutterEngine::new` returned. AppKit can
+  replace the view's layer when a window moves, so the compositor caches each
+  view's last frame and re-attaches the layer and re-presents that frame on
+  position/expose/scale events.
 
 #### flutter-engine — engine core
 
@@ -538,10 +596,10 @@ Highlights:
 ### Build, CI and documentation
 
 - The vendored `flutter-engine-sys/flutter-engine.h` is re-vendored from
-  **Flutter 3.47.8** and is byte-identical to that release's
+  **Flutter 3.50** and is byte-identical to that release's
   `flutter_embedder.h`. The delta from the 3.44 header is purely additive
-  (`kFlutterPointerDeviceKindInvertedStylus` and `FlutterPointerStylusButtons`),
-  so the ABI is unchanged across 3.44 – 3.47.x.
+  (pointer device/stylus variants and Vulkan external textures), so the ABI is
+  unchanged across 3.44 – 3.50.x.
 - `.github/workflows/ci.yml` is rewritten. Every action it used was on a
   retired major, it installed `cargo-flutter`, it built `-p flutter-winit`
   (which is no longer a workspace member), and it carried Android and iOS

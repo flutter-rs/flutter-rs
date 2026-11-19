@@ -31,6 +31,7 @@ pub mod ffi;
 mod flutter_callbacks;
 pub mod plugins;
 pub mod tasks;
+pub mod view;
 
 pub mod texture_registry;
 
@@ -39,6 +40,11 @@ use crate::channel::{Channel, ChannelRegistry};
 use crate::ffi::{
     FlutterPointerDeviceKind, FlutterPointerPhase, FlutterPointerSignalKind, PanZoom,
     PointerButtons,
+};
+use crate::view::ViewFocusChangeHandler;
+pub use crate::view::{
+    FlutterCompositorHandler, FlutterViewId, IMPLICIT_VIEW_ID, ViewConstraints, ViewError,
+    WindowMetrics,
 };
 
 use crate::channel::platform_message::{
@@ -55,8 +61,8 @@ use std::os::raw::{c_char, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{self, AtomicBool, AtomicPtr};
-use std::sync::{Arc, Weak};
-use std::time::Instant;
+use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::time::{Duration, Instant};
 use std::{mem, ptr};
 
 /// Re-exports the `json_value!` macro needs to resolve at a foreign call site.
@@ -79,6 +85,10 @@ pub(crate) enum MainThreadCallback {
 
 struct FlutterEngineInner {
     opengl_handler: Box<dyn FlutterOpenGLHandler + Send + Sync>,
+    compositor_handler: Option<Box<dyn FlutterCompositorHandler + Send + Sync>>,
+    view_focus_change_handler: Option<ViewFocusChangeHandler>,
+    /// The value exposed to Dart as `PlatformDispatcher.engineId`.
+    engine_id: i64,
     /// The engine handle. Written once by `FlutterEngineInitialize` (through a
     /// `*mut` the C side owns for the duration of that call) and read from every
     /// thread afterwards, hence the atomic rather than a plain field.
@@ -94,6 +104,13 @@ struct FlutterEngineInner {
     platform_receiver: Receiver<MainThreadCallback>,
     platform_sender: Sender<MainThreadCallback>,
     texture_registry: TextureRegistry,
+    /// The renderer configuration handed to `FlutterEngineInitialize`.
+    ///
+    /// The engine keeps reading it after initialisation (the platform view and
+    /// its Metal surface are created when the shell starts in `run`), so it is
+    /// heap-allocated and owned here. It is freed once the shell has been shut
+    /// down; the leaked-engine path intentionally leaves it alone.
+    renderer_config: AtomicPtr<flutter_engine_sys::FlutterRendererConfig>,
     assets: PathBuf,
     arguments: Vec<String>,
     /// `FlutterProjectArgs` holds raw pointers into these three fields. The
@@ -119,6 +136,16 @@ impl Drop for FlutterEngineInner {
         // nothing else would ever reclaim an outstanding reply callback, since
         // the table outlives every engine.
         drain_pending_replies(self.reply_scope);
+        if self.shut_down.load(atomic::Ordering::Acquire) {
+            let config = self
+                .renderer_config
+                .swap(ptr::null_mut(), atomic::Ordering::AcqRel);
+            if !config.is_null() {
+                // SAFETY: the shell was shut down, so no engine thread can read
+                // the configuration anymore.
+                unsafe { drop(Box::from_raw(config)) };
+            }
+        }
     }
 }
 
@@ -255,6 +282,103 @@ pub(crate) fn log_engine_result(result: FlutterEngineResult, what: &str) {
     }
 }
 
+/// Assign a unique non-zero `engine_id` to engines that did not choose one.
+fn next_engine_id() -> i64 {
+    static NEXT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+    NEXT.fetch_add(1, atomic::Ordering::Relaxed)
+}
+
+/// Completion state shared with an `AddView`/`RemoveView` callback.
+///
+/// The callback may run inline (when the UI and platform runners are merged) or
+/// later on an engine-managed thread, so the state is reference-counted: a
+/// timeout never frees it while the engine can still invoke the callback.
+struct ViewCompletion {
+    done: Mutex<Option<bool>>,
+    cv: Condvar,
+}
+
+impl ViewCompletion {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            done: Mutex::new(None),
+            cv: Condvar::new(),
+        })
+    }
+
+    fn complete(&self, value: bool) {
+        let mut done = match self.done.lock() {
+            Ok(done) => done,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if done.is_none() {
+            *done = Some(value);
+            self.cv.notify_all();
+        }
+    }
+
+    fn wait(&self, timeout: Duration) -> Option<bool> {
+        let done = match self.done.lock() {
+            Ok(done) => done,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let (done, _) = match self
+            .cv
+            .wait_timeout_while(done, timeout, |done| done.is_none())
+        {
+            Ok(result) => result,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *done
+    }
+}
+
+/// Completion callback for `FlutterEngineAddView`.
+///
+/// # Safety
+///
+/// `result` must be the pointer the engine received from `FlutterEngineAddView`;
+/// its `user_data` is the leaked `Arc<ViewCompletion>` created by
+/// [`FlutterEngine::add_view`].
+unsafe extern "C" fn add_view_callback(result: *const flutter_engine_sys::FlutterAddViewResult) {
+    if result.is_null() {
+        return;
+    }
+    // SAFETY: the caller guarantees the pointer and its `user_data`; the result
+    // is only valid for this callback, so copy the fields out immediately.
+    let result = unsafe { &*result };
+    if result.user_data.is_null() {
+        return;
+    }
+    // SAFETY: `user_data` came from `Arc::into_raw(completion.clone())` in
+    // `add_view`; this consumes the callback's strong reference.
+    let completion = unsafe { Arc::from_raw(result.user_data as *const ViewCompletion) };
+    completion.complete(result.added);
+}
+
+/// Completion callback for `FlutterEngineRemoveView`.
+///
+/// # Safety
+///
+/// `result` must be the pointer the engine received from
+/// `FlutterEngineRemoveView`; its `user_data` is the leaked
+/// `Arc<ViewCompletion>` created by [`FlutterEngine::remove_view`].
+unsafe extern "C" fn remove_view_callback(
+    result: *const flutter_engine_sys::FlutterRemoveViewResult,
+) {
+    if result.is_null() {
+        return;
+    }
+    // SAFETY: see `add_view_callback`.
+    let result = unsafe { &*result };
+    if result.user_data.is_null() {
+        return;
+    }
+    // SAFETY: see `add_view_callback`.
+    let completion = unsafe { Arc::from_raw(result.user_data as *const ViewCompletion) };
+    completion.complete(result.removed);
+}
+
 impl FlutterEngine {
     pub(crate) fn new(builder: FlutterEngineBuilder) -> Result<Self, CreateError> {
         // Convert arguments into flutter compatible
@@ -274,6 +398,7 @@ impl FlutterEngine {
         }
 
         let (main_tx, main_rx) = unbounded();
+        let ui_on_platform_thread = builder.ui_on_platform_thread;
 
         // `FlutterEngineInner` is `!Send + !Sync` only because of its channel
         // registry; the `unsafe impl`s above carry that invariant (channels are
@@ -283,6 +408,9 @@ impl FlutterEngine {
         let engine = Self {
             inner: Arc::new(FlutterEngineInner {
                 opengl_handler: builder.opengl_handler.ok_or(CreateError::NoOpenGlHandler)?,
+                compositor_handler: builder.compositor_handler,
+                view_focus_change_handler: builder.view_focus_change_handler,
+                engine_id: builder.engine_id.unwrap_or_else(next_engine_id),
                 engine_ptr: AtomicPtr::new(ptr::null_mut()),
                 shut_down: AtomicBool::new(false),
                 channel_registry: RwLock::new(ChannelRegistry::new()),
@@ -295,6 +423,7 @@ impl FlutterEngine {
                 platform_receiver: main_rx,
                 platform_sender: main_tx,
                 texture_registry: TextureRegistry::new(),
+                renderer_config: AtomicPtr::new(ptr::null_mut()),
                 assets_path: path_to_cstring(&builder.assets)?,
                 icu_data_path: builder
                     .icu_data
@@ -330,10 +459,75 @@ impl FlutterEngine {
             populate_existing_damage: None,
         };
 
-        let renderer_config = flutter_engine_sys::FlutterRendererConfig {
-            type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
-            __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 { open_gl },
+        let renderer_config = match builder.renderer {
+            crate::builder::RendererKind::Software => {
+                // The engine rasterises on the CPU and hands each view's pixels
+                // to the compositor as a software backing store. The surface
+                // callback is only used without a compositor, but the engine
+                // requires it to be present.
+                flutter_engine_sys::FlutterRendererConfig {
+                    type_: flutter_engine_sys::FlutterRendererType::kSoftware,
+                    __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
+                        software: flutter_engine_sys::FlutterSoftwareRendererConfig {
+                            struct_size: mem::size_of::<
+                                flutter_engine_sys::FlutterSoftwareRendererConfig,
+                            >(),
+                            surface_present_callback: Some(
+                                flutter_callbacks::software_surface_present,
+                            ),
+                        },
+                    },
+                }
+            }
+            crate::builder::RendererKind::Metal {
+                device,
+                command_queue,
+            } => {
+                // With a compositor the engine renders into the Metal textures
+                // the compositor creates, so the drawable callbacks are unused;
+                // only the device and the queue are needed.
+                flutter_engine_sys::FlutterRendererConfig {
+                    type_: flutter_engine_sys::FlutterRendererType::kMetal,
+                    __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
+                        metal: flutter_engine_sys::FlutterMetalRendererConfig {
+                            struct_size: mem::size_of::<
+                                flutter_engine_sys::FlutterMetalRendererConfig,
+                            >(),
+                            device: device as *const c_void,
+                            present_command_queue: command_queue as *const c_void,
+                            // The engine validates these even with a
+                            // compositor, but never calls them.
+                            get_next_drawable_callback: Some(
+                                flutter_callbacks::metal_get_next_drawable,
+                            ),
+                            present_drawable_callback: Some(
+                                flutter_callbacks::metal_present_drawable,
+                            ),
+                            external_texture_frame_callback: None,
+                        },
+                    },
+                }
+            }
+            crate::builder::RendererKind::OpenGl => flutter_engine_sys::FlutterRendererConfig {
+                type_: flutter_engine_sys::FlutterRendererType::kOpenGL,
+                __bindgen_anon_1: flutter_engine_sys::FlutterRendererConfig__bindgen_ty_1 {
+                    open_gl,
+                },
+            },
         };
+
+        // The engine also reads this configuration when it creates the shell
+        // in `run`, after this function has returned (the Metal platform view
+        // surface is constructed there), so it lives in `FlutterEngineInner`
+        // rather than on this stack frame.
+        let renderer_config = Box::into_raw(Box::new(renderer_config));
+        inner
+            .renderer_config
+            .store(renderer_config, atomic::Ordering::Release);
+        // SAFETY: `renderer_config` points into the box owned by `inner`, which
+        // outlives the engine handle.
+        let renderer_config: &'static flutter_engine_sys::FlutterRendererConfig =
+            unsafe { &*renderer_config };
 
         // Configure engine threads. The task runner gets a *weak* reference as
         // its user data: a strong one would keep the engine alive forever, and
@@ -357,8 +551,44 @@ impl FlutterEngine {
             platform_task_runner: &platform_task_runner,
             render_task_runner: ptr::null(),
             thread_priority_setter: None,
-            ui_task_runner: ptr::null(),
+            // Merging the UI runner into the platform runner is what makes
+            // synchronous view creation from Dart work: `FlutterEngineAddView`
+            // posts to the UI runner and must complete before the embedder
+            // returns the view id to Dart.
+            ui_task_runner: if ui_on_platform_thread {
+                &platform_task_runner
+            } else {
+                ptr::null()
+            },
         };
+
+        // The engine's user data. Every engine callback upgrades this weak
+        // reference, so it has to outlive the engine and is deliberately
+        // leaked. `runner_ptr` above is the same pattern for the task runner.
+        let inner_ptr = Weak::into_raw(Arc::downgrade(inner)) as *mut c_void;
+
+        // The compositor is copied by the engine during initialisation, but its
+        // `user_data` (the engine weak reference) must outlive the engine. The
+        // callbacks are only installed when a handler was supplied: providing a
+        // compositor switches the engine away from the legacy single-view
+        // rendering path.
+        let compositor =
+            inner
+                .compositor_handler
+                .as_ref()
+                .map(|_| flutter_engine_sys::FlutterCompositor {
+                    struct_size: mem::size_of::<flutter_engine_sys::FlutterCompositor>(),
+                    user_data: inner_ptr,
+                    create_backing_store_callback: Some(
+                        flutter_callbacks::compositor_create_backing_store,
+                    ),
+                    collect_backing_store_callback: Some(
+                        flutter_callbacks::compositor_collect_backing_store,
+                    ),
+                    present_layers_callback: None,
+                    avoid_backing_store_cache: false,
+                    present_view_callback: Some(flutter_callbacks::compositor_present_view),
+                });
 
         // Configure engine.
         // SAFETY: every field of `FlutterProjectArgs` is an integer, bool, raw
@@ -378,14 +608,24 @@ impl FlutterEngine {
         project_args.root_isolate_create_callback =
             Some(flutter_callbacks::root_isolate_create_callback);
         project_args.custom_task_runners = &custom_task_runners;
+        project_args.compositor = compositor
+            .as_ref()
+            .map_or(ptr::null(), |compositor| compositor as *const _);
+        project_args.engine_id = inner.engine_id;
+        project_args.view_focus_change_request_callback =
+            inner.view_focus_change_handler.as_ref().map(|_| {
+                flutter_callbacks::view_focus_change_request
+                    as unsafe extern "C" fn(
+                        *const flutter_engine_sys::FlutterViewFocusChangeRequest,
+                        *mut c_void,
+                    )
+            });
         project_args.shutdown_dart_vm_when_done = true;
         if let Some(icu) = inner.icu_data_path.as_ref() {
             project_args.icu_data_path = icu.as_ptr();
         }
 
-        // Initialise engine. The engine gets a weak reference as its user data,
-        // for the same reason as the task runner above.
-        let inner_ptr = Weak::into_raw(Arc::downgrade(inner)) as *mut c_void;
+        // Initialise engine.
         let mut engine_ptr: flutter_engine_sys::FlutterEngine = ptr::null_mut();
 
         // SAFETY: `renderer_config`, `project_args` and everything they point at
@@ -397,7 +637,7 @@ impl FlutterEngine {
         let result = unsafe {
             flutter_engine_sys::FlutterEngineInitialize(
                 1,
-                &renderer_config,
+                renderer_config,
                 &project_args,
                 inner_ptr,
                 &mut engine_ptr,
@@ -570,40 +810,176 @@ impl FlutterEngine {
         self.post_platform_callback(MainThreadCallback::RenderThread(Box::new(f)));
     }
 
-    /// Tell the engine the window size or device pixel ratio changed.
+    /// Add a view to a running engine.
+    ///
+    /// The engine completes the operation asynchronously; this method waits for
+    /// its completion callback. The wait is safe when the UI and platform
+    /// runners are merged (the callback runs inline) and when they are not (the
+    /// callback runs on an engine thread). A timeout does not free the
+    /// completion state while the engine can still call back.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ViewError::NotPlatformThread`] off the platform thread,
+    /// [`ViewError::ImplicitView`] for id `0`, [`ViewError::InvalidMetrics`] for
+    /// degenerate metrics, [`ViewError::Engine`] when the embedder rejects the
+    /// request, [`ViewError::NotAdded`] when the engine reports failure, and
+    /// [`ViewError::Timeout`] if the callback never arrives.
+    pub fn add_view(
+        &self,
+        view_id: FlutterViewId,
+        metrics: WindowMetrics,
+    ) -> Result<(), ViewError> {
+        if !self.is_platform_thread() {
+            return Err(ViewError::NotPlatformThread);
+        }
+        if view_id == IMPLICIT_VIEW_ID {
+            return Err(ViewError::ImplicitView);
+        }
+        if !self.check_live("add_view") {
+            return Err(ViewError::ShutDown);
+        }
+        let metrics = metrics.to_event(view_id).ok_or(ViewError::InvalidMetrics)?;
+
+        let completion = ViewCompletion::new();
+        let user_data = Arc::into_raw(Arc::clone(&completion)) as *mut c_void;
+        let info = flutter_engine_sys::FlutterAddViewInfo {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterAddViewInfo>(),
+            view_id,
+            view_metrics: &metrics,
+            user_data,
+            add_view_callback: Some(add_view_callback),
+        };
+        // SAFETY: the engine handle is live; `metrics` and the task-runner
+        // descriptions outlive the call, and `user_data` is a leaked strong
+        // reference kept alive by the callback (or reclaimed below on an
+        // immediate failure).
+        let result = unsafe { flutter_engine_sys::FlutterEngineAddView(self.engine_ptr(), &info) };
+        if result != FlutterEngineResult::kSuccess {
+            // SAFETY: `user_data` was produced by `Arc::into_raw` above and the
+            // engine will not invoke the callback after an immediate failure.
+            drop(unsafe { Arc::from_raw(user_data as *const ViewCompletion) });
+            log_engine_result(result, "FlutterEngineAddView");
+            return Err(ViewError::Engine(result as i32));
+        }
+        match completion.wait(Duration::from_secs(5)) {
+            Some(true) => Ok(()),
+            Some(false) => Err(ViewError::NotAdded),
+            None => {
+                log::error!("FlutterEngineAddView({view_id}) did not complete within 5s");
+                Err(ViewError::Timeout)
+            }
+        }
+    }
+
+    /// Remove a view from a running engine.
+    ///
+    /// The engine completes the operation asynchronously. Its callback is posted
+    /// to the raster thread after the view's layers are collected, so this can
+    /// take a frame. The implicit view (`0`) cannot be removed.
+    ///
+    /// # Errors
+    ///
+    /// See [`add_view`](Self::add_view); removal reports
+    /// [`ViewError::NotRemoved`] instead of `NotAdded`.
+    pub fn remove_view(&self, view_id: FlutterViewId) -> Result<(), ViewError> {
+        if !self.is_platform_thread() {
+            return Err(ViewError::NotPlatformThread);
+        }
+        if view_id == IMPLICIT_VIEW_ID {
+            return Err(ViewError::ImplicitView);
+        }
+        if !self.check_live("remove_view") {
+            return Err(ViewError::ShutDown);
+        }
+
+        let completion = ViewCompletion::new();
+        let user_data = Arc::into_raw(Arc::clone(&completion)) as *mut c_void;
+        let info = flutter_engine_sys::FlutterRemoveViewInfo {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterRemoveViewInfo>(),
+            view_id,
+            user_data,
+            remove_view_callback: Some(remove_view_callback),
+        };
+        // SAFETY: as in `add_view`; `info` is only borrowed for this call.
+        let result =
+            unsafe { flutter_engine_sys::FlutterEngineRemoveView(self.engine_ptr(), &info) };
+        if result != FlutterEngineResult::kSuccess {
+            // SAFETY: see `add_view`.
+            drop(unsafe { Arc::from_raw(user_data as *const ViewCompletion) });
+            log_engine_result(result, "FlutterEngineRemoveView");
+            return Err(ViewError::Engine(result as i32));
+        }
+        match completion.wait(Duration::from_secs(5)) {
+            Some(true) => Ok(()),
+            Some(false) => Err(ViewError::NotRemoved),
+            None => {
+                log::error!("FlutterEngineRemoveView({view_id}) did not complete within 5s");
+                Err(ViewError::Timeout)
+            }
+        }
+    }
+
+    /// Tell the engine which view has native focus.
+    ///
+    /// The engine routes keyboard events to the focused view, so an embedder
+    /// must send this when a window gains or loses focus.
     ///
     /// # Panics
     ///
     /// Panics if called from a thread other than the platform thread.
-    pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
+    pub fn send_view_focus_event(&self, view_id: FlutterViewId, focused: bool) {
         assert!(
             self.is_platform_thread(),
-            "send_window_metrics_event must be called on the platform thread"
+            "send_view_focus_event must be called on the platform thread"
         );
-        if !self.check_live("send_window_metrics_event") {
+        if !self.check_live("send_view_focus_event") {
             return;
         }
 
-        // A full literal rather than `mem::zeroed()`, so an engine header that
-        // grows a field breaks the build instead of sending a zero.
-        let event = flutter_engine_sys::FlutterWindowMetricsEvent {
-            struct_size: mem::size_of::<flutter_engine_sys::FlutterWindowMetricsEvent>(),
-            width,
-            height,
-            pixel_ratio,
-            left: 0,
-            top: 0,
-            physical_view_inset_top: 0.0,
-            physical_view_inset_right: 0.0,
-            physical_view_inset_bottom: 0.0,
-            physical_view_inset_left: 0.0,
-            display_id: 0,
-            view_id: 0,
-            has_constraints: false,
-            min_width_constraint: 0,
-            min_height_constraint: 0,
-            max_width_constraint: 0,
-            max_height_constraint: 0,
+        let event = flutter_engine_sys::FlutterViewFocusEvent {
+            struct_size: mem::size_of::<flutter_engine_sys::FlutterViewFocusEvent>(),
+            view_id,
+            state: if focused {
+                flutter_engine_sys::FlutterViewFocusState::kFocused
+            } else {
+                flutter_engine_sys::FlutterViewFocusState::kUnfocused
+            },
+            direction: flutter_engine_sys::FlutterViewFocusDirection::kUndefined,
+        };
+        // SAFETY: the engine handle is live and `event` outlives the platform-
+        // thread-only call.
+        let result = unsafe {
+            flutter_engine_sys::FlutterEngineSendViewFocusEvent(self.engine_ptr(), &event)
+        };
+        log_engine_result(result, "FlutterEngineSendViewFocusEvent");
+    }
+
+    /// Tell the engine the window size or device pixel ratio of a view changed.
+    ///
+    /// Returns `false` when the metrics are degenerate (0×0, non-finite ratio)
+    /// or outside their constraints. A 0×0 framebuffer is what GLFW reports for
+    /// an iconified window; callers should skip the update instead of sending
+    /// it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from a thread other than the platform thread.
+    pub fn send_window_metrics_for_view(
+        &self,
+        view_id: FlutterViewId,
+        metrics: WindowMetrics,
+    ) -> bool {
+        assert!(
+            self.is_platform_thread(),
+            "send_window_metrics_for_view must be called on the platform thread"
+        );
+        if !self.check_live("send_window_metrics_for_view") {
+            return false;
+        }
+        let Some(event) = metrics.to_event(view_id) else {
+            log::error!("ignoring invalid window metrics for view {view_id}: {metrics:?}");
+            return false;
         };
         // SAFETY: the engine handle is live and `event` outlives the call, which
         // the embedder documents as platform-thread only.
@@ -611,6 +987,23 @@ impl FlutterEngine {
             flutter_engine_sys::FlutterEngineSendWindowMetricsEvent(self.engine_ptr(), &event)
         };
         log_engine_result(result, "FlutterEngineSendWindowMetricsEvent");
+        result == FlutterEngineResult::kSuccess
+    }
+
+    /// Tell the engine the window size or device pixel ratio changed.
+    ///
+    /// This is the implicit-view (`0`) compatibility form; use
+    /// [`send_window_metrics_for_view`](Self::send_window_metrics_for_view) for
+    /// any other view.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from a thread other than the platform thread.
+    pub fn send_window_metrics_event(&self, width: usize, height: usize, pixel_ratio: f64) {
+        self.send_window_metrics_for_view(
+            IMPLICIT_VIEW_ID,
+            WindowMetrics::tight(width, height, pixel_ratio),
+        );
     }
 
     /// Send a pointer event to the engine.
@@ -625,15 +1018,49 @@ impl FlutterEngine {
     /// [`FlutterPointerSignalKind::Scale`]; pass `None` for an ordinary
     /// pointer event, which sends the neutral [`PanZoom::default`].
     ///
+    /// This is the implicit-view (`0`) compatibility form.
+    ///
     /// # Panics
     ///
     /// Panics if called from a thread other than the platform thread.
-    // One argument per field of `FlutterPointerEvent` that an embedder is
-    // expected to fill; grouping them into a struct would be a better API but
-    // is a change for its own commit.
     #[allow(clippy::too_many_arguments)]
     pub fn send_pointer_event(
         &self,
+        device: i32,
+        phase: FlutterPointerPhase,
+        position: (f64, f64),
+        signal_kind: FlutterPointerSignalKind,
+        scroll_delta: (f64, f64),
+        device_kind: FlutterPointerDeviceKind,
+        buttons: impl Into<PointerButtons>,
+        pan_zoom: Option<PanZoom>,
+    ) {
+        self.send_pointer_event_for_view(
+            IMPLICIT_VIEW_ID,
+            device,
+            phase,
+            position,
+            signal_kind,
+            scroll_delta,
+            device_kind,
+            buttons,
+            pan_zoom,
+        );
+    }
+
+    /// Send a pointer event to a specific view.
+    ///
+    /// See [`send_pointer_event`](Self::send_pointer_event) for the semantics of
+    /// the arguments; this form is what a multi-window embedder uses so the
+    /// event is routed to the window that produced it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from a thread other than the platform thread.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_pointer_event_for_view(
+        &self,
+        view_id: FlutterViewId,
         device: i32,
         phase: FlutterPointerPhase,
         (x, y): (f64, f64),
@@ -645,9 +1072,9 @@ impl FlutterEngine {
     ) {
         assert!(
             self.is_platform_thread(),
-            "send_pointer_event must be called on the platform thread"
+            "send_pointer_event_for_view must be called on the platform thread"
         );
-        if !self.check_live("send_pointer_event") {
+        if !self.check_live("send_pointer_event_for_view") {
             return;
         }
 
@@ -679,7 +1106,7 @@ impl FlutterEngine {
             pan_y: pan_zoom.pan.1,
             scale: pan_zoom.scale,
             rotation: pan_zoom.rotation,
-            view_id: 0,
+            view_id,
             pressure: 0.0,
             pressure_min: 0.0,
             pressure_max: 0.0,

@@ -11,9 +11,9 @@ use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{class, msg_send};
 use objc2_core_foundation::{CGRect, CGSize};
 use objc2_metal::{
-    MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
-    MTLCreateSystemDefaultDevice, MTLDevice, MTLDrawable, MTLOrigin, MTLPixelFormat,
-    MTLResourceOptions, MTLSize, MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
+    MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCreateSystemDefaultDevice, MTLDevice,
+    MTLDrawable, MTLOrigin, MTLPixelFormat, MTLSize, MTLStorageMode, MTLTexture,
+    MTLTextureDescriptor, MTLTextureUsage,
 };
 use parking_lot::Mutex;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -280,114 +280,11 @@ impl MetalState {
                     origin,
                 );
         }
-        let dump = encode_dump(&self.device, &encoder, drawable_texture, size);
         encoder.endEncoding();
         // SAFETY: the drawable is a live `CAMetalDrawable`.
         let drawable_ref = unsafe { &*(drawable as *const ProtocolObject<dyn MTLDrawable>) };
         command_buffer.presentDrawable(drawable_ref);
         command_buffer.commit();
-        if let Some(dump) = dump {
-            // One-shot verification: the readback is only valid once the GPU
-            // has finished the copy, so wait for this frame.
-            command_buffer.waitUntilCompleted();
-            dump.write();
-        }
         true
     }
-}
-
-/// A captured frame waiting for the GPU to finish.
-struct FrameDump {
-    buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    path: std::path::PathBuf,
-    width: usize,
-    height: usize,
-}
-
-impl FrameDump {
-    fn write(self) {
-        use std::io::Write;
-
-        let bytes_per_row = self.width * 4;
-        // SAFETY: the buffer is shared storage with exactly this length, and
-        // the command buffer that fills it has completed.
-        let pixels = unsafe {
-            std::slice::from_raw_parts(
-                self.buffer.contents().as_ptr().cast::<u8>(),
-                bytes_per_row * self.height,
-            )
-        };
-        let Ok(mut file) = std::fs::File::create(&self.path) else {
-            return;
-        };
-        if write!(file, "P6\n{} {}\n255\n", self.width, self.height).is_err() {
-            return;
-        }
-        // BGRA8888 in memory; PPM wants RGB. Metal rows start at the top.
-        let mut row = Vec::with_capacity(self.width * 3);
-        for y in 0..self.height {
-            row.clear();
-            for x in 0..self.width {
-                let offset = (y * self.width + x) * 4;
-                row.push(pixels[offset + 2]);
-                row.push(pixels[offset + 1]);
-                row.push(pixels[offset]);
-            }
-            if file.write_all(&row).is_err() {
-                return;
-            }
-        }
-        log::info!("dumped Metal frame to {}", self.path.display());
-    }
-}
-
-/// Read the presented drawable back once when `FLUTTER_GLFW_DUMP_FRAME` is set.
-///
-/// Temporary verification aid: screenshot capture over SSH is blocked by TCC,
-/// so this proves what the window actually received.
-fn encode_dump(
-    device: &ProtocolObject<dyn MTLDevice>,
-    encoder: &ProtocolObject<dyn MTLBlitCommandEncoder>,
-    drawable: &ProtocolObject<dyn MTLTexture>,
-    size: (usize, usize),
-) -> Option<FrameDump> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    static DUMPED: AtomicBool = AtomicBool::new(false);
-    let path = std::env::var_os("FLUTTER_GLFW_DUMP_FRAME")?;
-    if DUMPED.swap(true, Ordering::Relaxed) {
-        return None;
-    }
-    let (width, height) = (size.0.max(1), size.1.max(1));
-    let bytes_per_row = width * 4;
-    let buffer = device.newBufferWithLength_options(
-        bytes_per_row * height,
-        MTLResourceOptions::StorageModeShared,
-    )?;
-    // SAFETY: the copy is within the destination buffer, which is alive until
-    // the command buffer completes.
-    unsafe {
-        encoder
-            .copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toBuffer_destinationOffset_destinationBytesPerRow_destinationBytesPerImage(
-                drawable,
-                0,
-                0,
-                MTLOrigin { x: 0, y: 0, z: 0 },
-                MTLSize {
-                    width,
-                    height,
-                    depth: 1,
-                },
-                &buffer,
-                0,
-                bytes_per_row,
-                bytes_per_row * height,
-            );
-    }
-    Some(FrameDump {
-        buffer,
-        path: std::path::PathBuf::from(path).with_file_name("metal-frame.ppm"),
-        width,
-        height,
-    })
 }

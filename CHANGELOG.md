@@ -101,6 +101,10 @@ Highlights:
   input while a modal child exists, so modality also holds on WMs without the
   hint. Satellites track an absolute offset from their parent and are floating,
   so fast parent moves do not drift and the child stays above the parent.
+  Tooltip, popup and satellite anchors arrive in the parent's content
+  coordinates; the owner translates them into global screen coordinates before
+  running `WindowPositioner.placeWindow`, which otherwise clamps the anchor to
+  the parent's top-left corner.
 - `flutter-engine` keeps the old view-0 `send_window_metrics_event` and
   `send_pointer_event` methods as compatibility delegates and adds
   `send_window_metrics_for_view`, `send_pointer_event_for_view`,

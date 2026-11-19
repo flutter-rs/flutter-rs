@@ -217,6 +217,19 @@ class GlfwWindowingOwner extends WindowingOwner {
     return Rect.fromLTWH(area.x, area.y, area.width, area.height);
   }
 
+  /// Converts an anchor rectangle from the parent's content coordinates to
+  /// global screen coordinates.
+  ///
+  /// The framework hands tooltip, popup and satellite controllers an
+  /// `anchorRect` in the parent's coordinate space, but
+  /// [WindowPositioner.placeWindow] expects every rectangle in the same global
+  /// space as [parentRect]. Passing a local rectangle straight through makes
+  /// the positioner clamp its anchor point to the parent's top-left edge, so
+  /// the child is placed at the parent's origin instead of at the anchor.
+  Rect _globalAnchorRect(BaseWindowController parent, Rect anchorRect) {
+    return anchorRect.shift(_parentRect(parent).topLeft);
+  }
+
   Offset _place({
     required Size childSize,
     required Rect anchorRect,
@@ -226,6 +239,8 @@ class GlfwWindowingOwner extends WindowingOwner {
     return positioner
         .placeWindow(
           childSize: childSize,
+          // `anchorRect` is already in global coordinates: callers either pass
+          // a parent rect or a local rect through [_globalAnchorRect].
           anchorRect: anchorRect,
           parentRect: _parentRect(parent),
           displayRect: _displayRect(),
@@ -338,7 +353,7 @@ class GlfwWindowingOwner extends WindowingOwner {
     );
     final Offset position = _place(
       childSize: childSize,
-      anchorRect: anchorRect,
+      anchorRect: _globalAnchorRect(parent, anchorRect),
       parent: parent,
       positioner: positioner,
     );
@@ -384,7 +399,7 @@ class GlfwWindowingOwner extends WindowingOwner {
     );
     final Offset position = _place(
       childSize: childSize,
-      anchorRect: anchorRect,
+      anchorRect: _globalAnchorRect(parent, anchorRect),
       parent: parent,
       positioner: positioner,
     );
@@ -434,12 +449,15 @@ class GlfwWindowingOwner extends WindowingOwner {
     );
     final int parentViewId = parent.rootView.viewId;
     final bool logicalCoordinates = _api.usesLogicalScreenCoordinates();
+    final Rect logicalParentRect = _parentRect(parent);
     final Offset? position = logicalCoordinates
         ? initialPositioner
               .placeWindow(
                 childSize: effective,
-                anchorRect: initialAnchorRect ?? _parentRect(parent),
-                parentRect: _parentRect(parent),
+                anchorRect: initialAnchorRect == null
+                    ? logicalParentRect
+                    : initialAnchorRect.shift(logicalParentRect.topLeft),
+                parentRect: logicalParentRect,
                 displayRect: _displayRect(),
               )
               .topLeft
@@ -806,11 +824,12 @@ class _GlfwTooltipWindowController extends TooltipWindowController
     if (positioner != null) {
       _positioner = positioner;
     }
+    final Rect parentRect = owner._parentRect(parent);
     final Offset position = _positioner
         .placeWindow(
           childSize: contentSize,
-          anchorRect: _anchorRect,
-          parentRect: owner._parentRect(parent),
+          anchorRect: _anchorRect.shift(parentRect.topLeft),
+          parentRect: parentRect,
           displayRect: owner._displayRect(),
         )
         .topLeft;
@@ -884,11 +903,12 @@ class _GlfwPopupWindowController extends PopupWindowController
     if (positioner != null) {
       _positioner = positioner;
     }
+    final Rect parentRect = owner._parentRect(parent);
     final Offset position = _positioner
         .placeWindow(
           childSize: contentSize,
-          anchorRect: _anchorRect,
-          parentRect: owner._parentRect(parent),
+          anchorRect: _anchorRect.shift(parentRect.topLeft),
+          parentRect: parentRect,
           displayRect: owner._displayRect(),
         )
         .topLeft;

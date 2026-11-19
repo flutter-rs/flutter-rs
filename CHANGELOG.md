@@ -89,8 +89,13 @@ Highlights:
   framework's `WindowingOwner` for regular windows, dialogs, tooltips, popups
   and satellites. It receives the backend's function table through
   `PlatformDispatcher.engineId`, so no C symbols or link flags are needed.
-  Sizes/positions cross the ABI in logical pixels; native Wayland cannot
-  position top-level windows (use X11/XWayland for the demo).
+  Its `GlfwWindowingBinding` creates the binding and installs the owner in one
+  step; apps should use it instead of assigning `windowingOwner` after
+  `WidgetsFlutterBinding.ensureInitialized()`, because on Windows the default
+  binding builds a native `WindowingOwnerWin32` first and the generic embedder
+  does not export the symbols it needs. Sizes/positions cross the ABI in
+  logical pixels; native Wayland cannot position top-level windows (use
+  X11/XWayland for the demo).
 - Parented dialogs are transient/modal on X11 (`WM_TRANSIENT_FOR` plus an
   EWMH `_NET_WM_STATE_MODAL` client message) and the backend drops parent
   input while a modal child exists, so modality also holds on WMs without the

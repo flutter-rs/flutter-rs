@@ -6,4 +6,4 @@
 library;
 
 export 'src/api.dart' show GlfwWindowingApi;
-export 'src/windowing.dart' show GlfwWindowingOwner;
+export 'src/windowing.dart' show GlfwWindowingBinding, GlfwWindowingOwner;

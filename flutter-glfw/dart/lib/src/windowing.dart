@@ -12,9 +12,11 @@ import 'dart:ui' show Display;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart' show BoxConstraints;
+import 'package:flutter/src/foundation/_features.dart' show isWindowingEnabled;
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/src/widgets/_window_positioner.dart';
-import 'package:flutter/widgets.dart' show Offset, Rect, Size, WidgetsBinding;
+import 'package:flutter/widgets.dart'
+    show Offset, Rect, Size, WidgetsBinding, WidgetsFlutterBinding;
 
 import 'api.dart';
 
@@ -31,15 +33,40 @@ const double _defaultWindowHeight = 300;
 const double _defaultPopupWidth = 240;
 const double _defaultPopupHeight = 120;
 
-/// The GLFW windowing owner.
+/// A [WidgetsFlutterBinding] that installs a [GlfwWindowingOwner] while it
+/// initializes.
 ///
-/// Install it once, after `WidgetsFlutterBinding.ensureInitialized()` and
-/// before `runWidget`:
+/// Use this instead of `WidgetsFlutterBinding.ensureInitialized()` in an app
+/// started by flutter-glfw:
 ///
 /// ```dart
-/// isWindowingEnabled = true;
-/// WidgetsBinding.instance.windowingOwner = GlfwWindowingOwner();
+/// void main() {
+///   GlfwWindowingBinding();
+///   runApp(const App());
+/// }
 /// ```
+///
+/// Assigning `WidgetsBinding.instance.windowingOwner` after the default
+/// binding has initialized is too late on Windows. The default binding asks
+/// `createWindowingOwner` for the platform owner before user code runs, and on
+/// Windows that is a `WindowingOwnerWin32`, which needs native symbols only
+/// Flutter's own Windows embedder exports. The generic embedder flutter-glfw
+/// loads does not, so the binding throws before the assignment can happen.
+class GlfwWindowingBinding extends WidgetsFlutterBinding {
+  @override
+  WindowingOwner createWindowingOwner() {
+    isWindowingEnabled = true;
+
+    return GlfwWindowingOwner();
+  }
+}
+
+/// The GLFW windowing owner.
+///
+/// [GlfwWindowingBinding] installs it, which is the supported way to enable
+/// windowing in an app started by flutter-glfw. Assigning it to
+/// `WidgetsBinding.instance.windowingOwner` by hand only works on platforms
+/// whose default owner has no native dependency (Linux and macOS).
 ///
 /// The owner reads the Rust function table from
 /// `PlatformDispatcher.engineId`, so it only works in an app started by
@@ -462,8 +489,8 @@ class GlfwWindowingOwner extends WindowingOwner {
               initialAnchorRect.width * scale,
               initialAnchorRect.height * scale,
             );
-      final ({double x, double y, double width, double height}) display =
-          _api.getMonitorWorkareaPhysical();
+      final ({double x, double y, double width, double height}) display = _api
+          .getMonitorWorkareaPhysical();
       final Rect placed = initialPositioner.placeWindow(
         childSize: Size(childSize.width, childSize.height),
         anchorRect: anchorRect,

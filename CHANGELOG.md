@@ -108,6 +108,9 @@ Highlights:
   compositor uploads each software backing store into the view's GL context for
   presentation. The workspace and `examples/multiple_windows` were built and run
   on Apple Silicon this way.
+- Impeller is the engine's rasteriser on the macOS Metal path
+  (`--enable-impeller` is added automatically; pass
+  `--enable-impeller=false` through `AppArgs.engine_args` to keep Skia).
 - Metal renderer for macOS, now the default there:
   `FlutterEngineBuilder::with_metal_renderer` takes an
   `MTLDevice`/`MTLCommandQueue`, and the flutter-glfw compositor hands the engine

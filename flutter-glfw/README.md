@@ -32,11 +32,12 @@ it into the window's context. The crate vendors a one-line patch to glfw-rs
 `create_shared`.
 
 The macOS engine has no OpenGL backend, so there the app uses Metal by default:
-the engine renders into embedder-owned `MTLTexture` backing stores and the
-compositor copies them into a per-view `CAMetalLayer` on the shared command
-queue. `FLUTTER_GLFW_RENDERER=software` switches to the CPU renderer, whose
-pixels are uploaded into the window's GL context before the same blit. The
-official macOS artifact is a universal `FlutterEmbedder.framework`.
+the engine renders (through Impeller) into embedder-owned `MTLTexture` backing
+stores and the compositor copies them into a per-view `CAMetalLayer` on the
+shared command queue. `FLUTTER_GLFW_RENDERER=software` switches to the CPU
+renderer, whose pixels are uploaded into the window's GL context before the
+same blit; `--enable-impeller=false` keeps Skia on the Metal path. The official
+macOS artifact is a universal `FlutterEmbedder.framework`.
 
 ### Multi-window from Dart
 

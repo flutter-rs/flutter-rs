@@ -27,10 +27,12 @@ On macOS:
 FLUTTER_ROOT=$HOME/development/flutter-3.50.0 ./run_macos.sh
 ```
 
-The macOS engine has no OpenGL backend, so the app uses Metal by default: the
-engine renders into `MTLTexture` backing stores and the compositor presents them
-through each window's `CAMetalLayer`. `FLUTTER_GLFW_RENDERER=software` forces the
-CPU renderer, which uploads each view through the window's GL context. The
+The macOS engine has no OpenGL backend, so the app uses Metal + Impeller by
+default: the engine renders into `MTLTexture` backing stores and the compositor
+presents them through each window's `CAMetalLayer`.
+`FLUTTER_GLFW_RENDERER=software` forces the CPU renderer, which uploads each view
+through the window's GL context; `FLUTTER_ENGINE_ARGS=--enable-impeller=false`
+keeps Skia on the Metal path. The
 script downloads the universal `FlutterEmbedder.framework` into `.engine/` when
 `FLUTTER_ENGINE_LIB_DIR` does not already point at one, and runs the binary with
 `DYLD_FRAMEWORK_PATH` set (the rpath emitted by `flutter-engine-sys` only covers

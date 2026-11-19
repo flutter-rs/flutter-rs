@@ -186,10 +186,12 @@ XWayland (`FLUTTER_GLFW_PLATFORM=x11`) for tooltips, popups and satellites.
 Linux is the verified platform. Windows and macOS share the same backend and
 ABI; Windows needs a native build (or a mingw toolchain with the dialog feature
 disabled). macOS was built and run on Apple Silicon: its engine has no OpenGL
-backend. The default there is Metal: the engine renders into `MTLTexture`
-backing stores that the compositor blits into each window's `CAMetalLayer`.
-`FLUTTER_GLFW_RENDERER=software` forces the CPU renderer, whose pixels the
-compositor uploads through the window's GL context. The
+backend. The default there is Metal with Impeller: the engine renders into
+`MTLTexture` backing stores that the compositor blits into each window's
+`CAMetalLayer`. `FLUTTER_GLFW_RENDERER=software` forces the CPU renderer, whose
+pixels the compositor uploads through the window's GL context, and passing
+`--enable-impeller=false` (through `AppArgs.engine_args`) keeps Skia on the
+Metal path. The
 generic macOS embedder is a universal `FlutterEmbedder.framework`; a downstream
 binary still needs `DYLD_FRAMEWORK_PATH` pointing at the directory that holds
 it (the rpath emitted by `flutter-engine-sys` only covers that crate's own

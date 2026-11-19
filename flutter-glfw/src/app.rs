@@ -1057,6 +1057,18 @@ impl FlutterApp {
         let compositor_kind = CompositorKind::OpenGl;
         let compositor = GlfwCompositor::new(Arc::clone(&render), compositor_kind);
 
+        // Impeller is the engine's rasteriser on macOS when the Metal path is
+        // active (it renders into the same textures); pass `--enable-impeller=false`
+        // through AppArgs to keep Skia.
+        #[cfg(target_os = "macos")]
+        let mut engine_args = args.engine_args;
+        #[cfg(target_os = "macos")]
+        if metal.is_some() && !engine_args.iter().any(|arg| arg.contains("impeller")) {
+            engine_args.push("--enable-impeller".to_owned());
+        }
+        #[cfg(not(target_os = "macos"))]
+        let engine_args = args.engine_args;
+
         let mut builder = FlutterEngineBuilder::new()
             .with_platform_handler(platform_task_handler.clone())
             .with_opengl(opengl_handler)
@@ -1064,7 +1076,7 @@ impl FlutterApp {
             .with_ui_on_platform_thread()
             .with_engine_id(crate::windowing::api_address())
             .with_asset_path(args.assets_path)
-            .with_args(args.engine_args);
+            .with_args(engine_args);
         #[cfg(target_os = "macos")]
         match &metal {
             Some(metal) => {

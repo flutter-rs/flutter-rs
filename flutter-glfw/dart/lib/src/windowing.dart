@@ -569,6 +569,42 @@ mixin _GlfwCommon on ChangeNotifier implements _GlfwController {
     notifyListeners();
   }
 
+  /// The last position requested for an anchored child window.
+  Offset? _lastAnchoredPosition;
+
+  /// Positions this window at [anchorRect], which is in the parent's content
+  /// coordinates.
+  ///
+  /// Tooltip and popup windows shrink-wrap to their content, so their final
+  /// size is only known after the first frame. Recomputing on every geometry
+  /// event, and skipping an identical target, keeps the window centred on its
+  /// anchor as the content settles without fighting the window manager's
+  /// echo of our own set-position request.
+  void placeAtAnchor({
+    required BaseWindowController parent,
+    required Rect anchorRect,
+    required WindowPositioner positioner,
+  }) {
+    final Size size = contentSize;
+    if (size.width <= 0 || size.height <= 0) {
+      return;
+    }
+    final Rect parentRect = owner._parentRect(parent);
+    final Offset position = positioner
+        .placeWindow(
+          childSize: size,
+          anchorRect: anchorRect.shift(parentRect.topLeft),
+          parentRect: parentRect,
+          displayRect: owner._displayRect(),
+        )
+        .topLeft;
+    if (position == _lastAnchoredPosition) {
+      return;
+    }
+    _lastAnchoredPosition = position;
+    api.setPosition(viewId, position.dx, position.dy);
+  }
+
   @override
   void handleDestroyedEvent() {
     _finishDestroy();
@@ -824,16 +860,23 @@ class _GlfwTooltipWindowController extends TooltipWindowController
     if (positioner != null) {
       _positioner = positioner;
     }
-    final Rect parentRect = owner._parentRect(parent);
-    final Offset position = _positioner
-        .placeWindow(
-          childSize: contentSize,
-          anchorRect: _anchorRect.shift(parentRect.topLeft),
-          parentRect: parentRect,
-          displayRect: owner._displayRect(),
-        )
-        .topLeft;
-    api.setPosition(viewId, position.dx, position.dy);
+    placeAtAnchor(
+      parent: parent,
+      anchorRect: _anchorRect,
+      positioner: _positioner,
+    );
+  }
+
+  @override
+  void notifyGeometryChanged() {
+    // The window shrink-wraps to its content after the first frame, so its
+    // final height is only known here. Re-place it as the size settles.
+    placeAtAnchor(
+      parent: parent,
+      anchorRect: _anchorRect,
+      positioner: _positioner,
+    );
+    super.notifyGeometryChanged();
   }
 
   @override
@@ -903,16 +946,21 @@ class _GlfwPopupWindowController extends PopupWindowController
     if (positioner != null) {
       _positioner = positioner;
     }
-    final Rect parentRect = owner._parentRect(parent);
-    final Offset position = _positioner
-        .placeWindow(
-          childSize: contentSize,
-          anchorRect: _anchorRect.shift(parentRect.topLeft),
-          parentRect: parentRect,
-          displayRect: owner._displayRect(),
-        )
-        .topLeft;
-    api.setPosition(viewId, position.dx, position.dy);
+    placeAtAnchor(
+      parent: parent,
+      anchorRect: _anchorRect,
+      positioner: _positioner,
+    );
+  }
+
+  @override
+  void notifyGeometryChanged() {
+    placeAtAnchor(
+      parent: parent,
+      anchorRect: _anchorRect,
+      positioner: _positioner,
+    );
+    super.notifyGeometryChanged();
   }
 
   @override

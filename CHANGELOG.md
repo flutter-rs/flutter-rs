@@ -104,7 +104,9 @@ Highlights:
   Tooltip, popup and satellite anchors arrive in the parent's content
   coordinates; the owner translates them into global screen coordinates before
   running `WindowPositioner.placeWindow`, which otherwise clamps the anchor to
-  the parent's top-left corner.
+  the parent's top-left corner. Tooltips and popups also re-place themselves
+  when their shrink-wrapped content resizes, so they stay centred on the anchor
+  instead of using the default initial size.
 - `flutter-engine` keeps the old view-0 `send_window_metrics_event` and
   `send_pointer_event` methods as compatibility delegates and adds
   `send_window_metrics_for_view`, `send_pointer_event_for_view`,

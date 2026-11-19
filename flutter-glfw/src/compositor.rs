@@ -73,6 +73,27 @@ struct MetalBackingStore {
     size: (usize, usize),
 }
 
+/// Release a Metal backing store when the engine no longer needs it.
+///
+/// The Impeller Metal surface invokes `FlutterMetalTexture::destruction_callback`
+/// unconditionally (it does not check for null), so this must always be
+/// supplied. The engine owns the store from `create_backing_store` until this
+/// callback runs; `collect_backing_store` intentionally does not free it.
+///
+/// # Safety
+///
+/// Called by the engine exactly once with the `user_data` from
+/// `create_backing_store`'s `FlutterMetalTexture`.
+#[cfg(target_os = "macos")]
+unsafe extern "C" fn destroy_metal_backing_store(user_data: *mut c_void) {
+    if user_data.is_null() {
+        return;
+    }
+    // SAFETY: the pointer came from `Box::into_raw` in
+    // `create_backing_store` and the engine promises to call this once.
+    unsafe { drop(Box::from_raw(user_data as *mut MetalBackingStore)) };
+}
+
 /// How the engine's frames reach the window.
 pub(crate) enum CompositorKind {
     /// Engine renders into an FBO in the master GL context; presentation blits
@@ -140,7 +161,7 @@ impl FlutterCompositorHandler for GlfwCompositor {
                             texture_id: view_id,
                             texture: texture_ptr,
                             user_data: backing.cast::<c_void>(),
-                            destruction_callback: None,
+                            destruction_callback: Some(destroy_metal_backing_store),
                         },
                     },
                 },
@@ -293,23 +314,10 @@ impl FlutterCompositorHandler for GlfwCompositor {
             }
             #[cfg(target_os = "macos")]
             FlutterBackingStoreType::kFlutterBackingStoreTypeMetal => {
-                // SAFETY: as above, for the Metal backing store's `user_data`.
-                let backing = unsafe {
-                    store
-                        .__bindgen_anon_1
-                        .metal
-                        .__bindgen_anon_1
-                        .texture
-                        .user_data
-                };
-                if backing.is_null() {
-                    return;
-                }
-                // SAFETY: the pointer came from `Box::into_raw` and the engine
-                // promises to collect each store exactly once. Dropping it
-                // releases our reference to the texture; any command buffer
-                // still using it keeps it alive until it completes.
-                unsafe { drop(Box::from_raw(backing as *mut MetalBackingStore)) };
+                // Metal stores are released by their `destruction_callback`
+                // (Impeller calls it unconditionally and may still hold the
+                // wrapped texture after this collect). Freeing here would be a
+                // use-after-free when that callback runs.
             }
             FlutterBackingStoreType::kFlutterBackingStoreTypeOpenGL => {
                 // SAFETY: as above, for the OpenGL `user_data` field.

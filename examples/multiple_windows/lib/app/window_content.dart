@@ -11,6 +11,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'dialog_window_content.dart';
+import 'modal_child_barrier.dart';
 import 'models.dart';
 import 'popup_button.dart';
 import 'rotated_wire_cube.dart';
@@ -51,43 +52,52 @@ class _WindowContentState extends State<WindowContent> {
     final Size windowSize = WindowScope.contentSizeOf(context);
 
     return MaterialApp(
-      home: IntrinsicWidth(
-        child: Material(
-          child: Column(
-            mainAxisSize: .min,
-            children: [
-              AppBar(title: const Text('Regular Window')),
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisSize: .min,
-                  children: [
-                    Column(
-                      mainAxisSize: .min,
-                      children: [RotatedWireCube(cubeColor: cubeColor)],
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      mainAxisSize: .min,
-                      children: [
-                        _WindowCreationButtons(windowController: widget.windowController),
-                        const SizedBox(height: 20),
-                        TooltipButton(parentController: widget.windowController),
-                        const SizedBox(height: 20),
-                        PopupButton(parentController: widget.windowController),
-                        const SizedBox(height: 20),
-                        Text(
-                          'View #${widget.windowController.rootView.viewId}\n'
-                          'Size: ${windowSize.width.toStringAsFixed(1)}\u00D7${windowSize.height.toStringAsFixed(1)}\n'
-                          'Device Pixel Ratio: $dpr',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ],
+      home: ModalChildBarrier(
+        parent: widget.windowController,
+        child: IntrinsicWidth(
+          child: Material(
+            child: Column(
+              mainAxisSize: .min,
+              children: [
+                AppBar(title: const Text('Regular Window')),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisSize: .min,
+                    children: [
+                      Column(
+                        mainAxisSize: .min,
+                        children: [RotatedWireCube(cubeColor: cubeColor)],
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        mainAxisSize: .min,
+                        children: [
+                          _WindowCreationButtons(
+                            windowController: widget.windowController,
+                          ),
+                          const SizedBox(height: 20),
+                          TooltipButton(
+                            parentController: widget.windowController,
+                          ),
+                          const SizedBox(height: 20),
+                          PopupButton(
+                            parentController: widget.windowController,
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'View #${widget.windowController.rootView.viewId}\n'
+                            'Size: ${windowSize.width.toStringAsFixed(1)}\u00D7${windowSize.height.toStringAsFixed(1)}\n'
+                            'Device Pixel Ratio: $dpr',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -124,7 +134,8 @@ class _WindowCreationButtons extends StatelessWidget {
 
             entry = WindowEntry(
               controller: controller,
-              builder: (BuildContext context) => WindowContent(windowController: controller),
+              builder: (BuildContext context) =>
+                  WindowContent(windowController: controller),
             );
             windowRegistry.register(entry);
           },
@@ -181,7 +192,8 @@ class _WindowCreationButtons extends StatelessWidget {
 
             entry = WindowEntry(
               controller: controller,
-              builder: (BuildContext context) => SatelliteWindowContent(controller: controller),
+              builder: (BuildContext context) =>
+                  SatelliteWindowContent(controller: controller),
             );
             windowRegistry.register(entry);
           },

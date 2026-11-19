@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'dialog_window_content.dart';
 import 'dialog_window_edit_dialog.dart';
+import 'modal_child_barrier.dart';
 import 'models.dart';
 import 'popup_button.dart';
 import 'popup_window_edit_dialog.dart';
@@ -28,30 +29,35 @@ class MainWindow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Multi Window Reference App')),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 60,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(child: _WindowsTable(mainWindow: controller)),
-                ),
-              ],
+    return ModalChildBarrier(
+      parent: controller,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Multi Window Reference App')),
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 60,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: _WindowsTable(mainWindow: controller),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            flex: 40,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [Expanded(child: _WindowCreatorCard())],
+            Expanded(
+              flex: 40,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [Expanded(child: _WindowCreatorCard())],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -95,7 +101,10 @@ class _WindowsTable extends StatelessWidget {
     );
   }
 
-  List<DataRow> _buildRows(WindowRegistry windowRegistry, BuildContext context) {
+  List<DataRow> _buildRows(
+    WindowRegistry windowRegistry,
+    BuildContext context,
+  ) {
     final List<DataRow> rows = [];
     for (final WindowEntry entry in windowRegistry.windows) {
       final BaseWindowController controller = entry.controller;
@@ -105,9 +114,15 @@ class _WindowsTable extends StatelessWidget {
     return rows;
   }
 
-  void _showWindowEditDialog(BaseWindowController controller, BuildContext context) {
+  void _showWindowEditDialog(
+    BaseWindowController controller,
+    BuildContext context,
+  ) {
     return switch (controller) {
-      final WindowController regular => showWindowEditDialog(context: context, controller: regular),
+      final WindowController regular => showWindowEditDialog(
+        context: context,
+        controller: regular,
+      ),
       final DialogWindowController dialog => showDialogWindowEditDialog(
         context: context,
         controller: dialog,
@@ -120,10 +135,8 @@ class _WindowsTable extends StatelessWidget {
         context: context,
         controller: popup,
       ),
-      final SatelliteWindowController satellite => showSatelliteWindowEditDialog(
-        context: context,
-        controller: satellite,
-      ),
+      final SatelliteWindowController satellite =>
+        showSatelliteWindowEditDialog(context: context, controller: satellite),
     };
   }
 
@@ -147,12 +160,21 @@ class _WindowsTable extends StatelessWidget {
           showBottomBorder: true,
           columns: const [
             DataColumn(
-              label: SizedBox(width: 20, child: Text('ID', style: TextStyle(fontSize: 16))),
+              label: SizedBox(
+                width: 20,
+                child: Text('ID', style: TextStyle(fontSize: 16)),
+              ),
             ),
             DataColumn(
-              label: SizedBox(width: 120, child: Text('Type', style: TextStyle(fontSize: 16))),
+              label: SizedBox(
+                width: 120,
+                child: Text('Type', style: TextStyle(fontSize: 16)),
+              ),
             ),
-            DataColumn(label: SizedBox(width: 20, child: Text('')), numeric: true),
+            DataColumn(
+              label: SizedBox(width: 20, child: Text('')),
+              numeric: true,
+            ),
           ],
           rows: _buildRows(windowRegistry, context),
         );
@@ -194,14 +216,16 @@ class _WindowCreatorCard extends StatelessWidget {
                           controller = WindowController.shrinkWrap(
                             resizable: windowSettings.regularResizable,
                             delegate: CallbackWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Regular',
                           );
                         } else {
                           controller = WindowController(
                             delegate: CallbackWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Regular',
                             size: windowSettings.regularSize,
@@ -228,14 +252,16 @@ class _WindowCreatorCard extends StatelessWidget {
                           controller = DialogWindowController.shrinkWrap(
                             resizable: windowSettings.dialogResizable,
                             delegate: CallbackDialogWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Modeless Dialog',
                           );
                         } else {
                           controller = DialogWindowController(
                             delegate: CallbackDialogWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Modeless Dialog',
                             size: windowSettings.dialogSize,
@@ -245,7 +271,9 @@ class _WindowCreatorCard extends StatelessWidget {
                         entry = WindowEntry(
                           controller: controller,
                           builder: (BuildContext context) =>
-                              DialogWindowContent(dialogWindowController: controller),
+                              DialogWindowContent(
+                                dialogWindowController: controller,
+                              ),
                         );
                         windowRegistry.register(entry);
                       },
@@ -260,7 +288,8 @@ class _WindowCreatorCard extends StatelessWidget {
                           controller = DialogWindowController.shrinkWrap(
                             resizable: windowSettings.dialogResizable,
                             delegate: CallbackDialogWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Modal Dialog',
                             parent: windowController,
@@ -268,7 +297,8 @@ class _WindowCreatorCard extends StatelessWidget {
                         } else {
                           controller = DialogWindowController(
                             delegate: CallbackDialogWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Modal Dialog',
                             size: windowSettings.dialogSize,
@@ -279,7 +309,9 @@ class _WindowCreatorCard extends StatelessWidget {
                         entry = WindowEntry(
                           controller: controller,
                           builder: (BuildContext context) =>
-                              DialogWindowContent(dialogWindowController: controller),
+                              DialogWindowContent(
+                                dialogWindowController: controller,
+                              ),
                         );
                         windowRegistry.register(entry);
                       },
@@ -296,7 +328,8 @@ class _WindowCreatorCard extends StatelessWidget {
                           controller = SatelliteWindowController.shrinkWrap(
                             resizable: windowSettings.satelliteResizable,
                             delegate: CallbackSatelliteWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Satellite',
                             parent: windowController,
@@ -305,7 +338,8 @@ class _WindowCreatorCard extends StatelessWidget {
                         } else {
                           controller = SatelliteWindowController(
                             delegate: CallbackSatelliteWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
+                              onDestroyed: () =>
+                                  windowRegistry.unregister(entry),
                             ),
                             title: 'Satellite',
                             size: windowSettings.satelliteSize,

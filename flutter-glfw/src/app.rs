@@ -1370,6 +1370,10 @@ impl FlutterApp {
             parent: request.parent,
             modal: request.modal,
             shrink_wrap: request.shrink_wrap,
+            shrink_wrap_max: (
+                (width * scale).round() as usize,
+                (height * scale).round() as usize,
+            ),
             logical_size: (width, height),
             position: (0, 0),
             follow_position: (0, 0),

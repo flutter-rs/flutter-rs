@@ -147,6 +147,35 @@ impl WindowRequest {
     }
 }
 
+/// The largest loose maximum reported for a view whose content sizes itself.
+///
+/// Tooltips and popups are override-redirect windows that show intrinsic,
+/// animated content: they need a bound they will never plausibly reach so the
+/// window can grow with its content.
+const MAX_LOOSE_SIZE: usize = 16_384;
+
+/// The physical size a shrink-wrapped view's loose metrics may allow.
+///
+/// The framework fills a finite loose maximum: `Overlay` (and therefore every
+/// `MaterialApp`) lays out at `constraints.biggest`, so a large bound makes
+/// ordinary content lay out at that bound. A window that is meant to size to
+/// its content must therefore report a bound it could actually have: the size
+/// it was created with. Content that sizes itself still shrinks the window
+/// below that bound, and the bound follows a window the user enlarged.
+///
+/// Tooltips and popups are exempt: their content is intrinsic and animates, so
+/// they keep [`MAX_LOOSE_SIZE`.
+fn shrink_wrap_bound(
+    kind: WindowKind,
+    initial: (usize, usize),
+    framebuffer: (usize, usize),
+) -> (usize, usize) {
+    if kind.is_floating() {
+        return (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE);
+    }
+    (initial.0.max(framebuffer.0), initial.1.max(framebuffer.1))
+}
+
 /// One native window and the input state that belongs to it alone.
 pub(crate) struct WindowRecord {
     pub view_id: i64,
@@ -157,6 +186,15 @@ pub(crate) struct WindowRecord {
     /// A modal dialog blocks input to `parent`.
     pub modal: bool,
     pub shrink_wrap: bool,
+    /// The physical size a shrink-wrapped view may grow to.
+    ///
+    /// Loose metrics need a finite maximum, but whatever bound is reported is
+    /// also the size the framework lets its content fill: `Overlay` (and
+    /// therefore `MaterialApp`) lays out at `constraints.biggest` whenever that
+    /// is finite. A large constant bound would make an ordinary window's
+    /// content 16384×16384 pixels instead of the size its content asks for.
+    /// See [`shrink_wrap_bound`].
+    pub shrink_wrap_max: (usize, usize),
     pub logical_size: (f64, f64),
     pub position: (i32, i32),
     /// The position the embedder last asked the window manager to put this
@@ -234,7 +272,15 @@ impl WindowRecord {
         let height = self.framebuffer_size.1.max(0) as usize;
         let ratio = if self.scale > 0.0 { self.scale } else { 1.0 };
         if self.shrink_wrap {
-            WindowMetrics::loose(width.max(1), height.max(1), ratio, 16_384, 16_384)
+            let (max_width, max_height) =
+                shrink_wrap_bound(self.kind, self.shrink_wrap_max, (width, height));
+            WindowMetrics::loose(
+                width.max(1),
+                height.max(1),
+                ratio,
+                max_width.max(1),
+                max_height.max(1),
+            )
         } else {
             WindowMetrics::tight(width, height, ratio)
         }
@@ -624,5 +670,45 @@ mod tests {
         // one we asked for, so the base ends up where it should be.
         assert!(!observe_position((20, 20), &mut follow, &mut requested));
         assert_eq!(follow, (20, 20));
+    }
+
+    #[test]
+    fn shrink_wrap_bound_keeps_regular_windows_at_their_own_size() {
+        // A MaterialApp lays out at whichever finite bound it is given, so the
+        // bound must be the window the user asked for, not a huge constant.
+        assert_eq!(
+            shrink_wrap_bound(WindowKind::Regular, (800, 600), (800, 600)),
+            (800, 600)
+        );
+    }
+
+    #[test]
+    fn shrink_wrap_bound_grows_with_a_user_resize() {
+        assert_eq!(
+            shrink_wrap_bound(WindowKind::Dialog, (800, 600), (1200, 900)),
+            (1200, 900)
+        );
+    }
+
+    #[test]
+    fn shrink_wrap_bound_keeps_room_after_the_window_shrank() {
+        // Content that sized itself smaller can grow back to the original
+        // bound instead of being pinned to the last frame's size.
+        assert_eq!(
+            shrink_wrap_bound(WindowKind::Satellite, (800, 600), (300, 200)),
+            (800, 600)
+        );
+    }
+
+    #[test]
+    fn floating_windows_keep_room_to_animate() {
+        assert_eq!(
+            shrink_wrap_bound(WindowKind::Tooltip, (240, 100), (240, 100)),
+            (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE)
+        );
+        assert_eq!(
+            shrink_wrap_bound(WindowKind::Popup, (240, 100), (240, 100)),
+            (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE)
+        );
     }
 }

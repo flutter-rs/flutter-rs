@@ -112,6 +112,13 @@ Highlights:
   Under Xwayland the old order committed a buffer for the previous size on
   every animation frame, which the compositor showed as black flashes while an
   animating popup changed size.
+- Tooltips, popups and satellites carry the EWMH window type that matches their
+  role and are `WM_TRANSIENT_FOR` their parent. Tooltips and popups are
+  override-redirect, like the official Linux embedder's GTK popups, so tiling
+  extensions such as PaperWM manage only regular windows; they stack above
+  their parent instead of every window and are hidden with it. Windows are now
+  created hidden and mapped after these hints are set. A popup takes keyboard
+  focus on click and hands it back to its parent when it closes.
 - `flutter-engine` keeps the old view-0 `send_window_metrics_event` and
   `send_pointer_event` methods as compatibility delegates and adds
   `send_window_metrics_for_view`, `send_pointer_event_for_view`,

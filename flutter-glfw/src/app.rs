@@ -14,7 +14,8 @@ use crate::render::RenderState;
 use crate::window::{
     BY_WORD_MODIFIER_KEY, CreateError, FUNCTION_MODIFIER_KEY, FlutterWindow, LifecycleTracker,
     PreparedPointer, RunError, SCROLL_SPEED, SELECT_MODIFIER_KEY, TEXT_SCALE_FACTOR,
-    USE_24_HOUR_FORMAT, WindowArgs, WindowMode, WindowRecord, WindowRequest, move_or_hover,
+    USE_24_HOUR_FORMAT, WindowArgs, WindowKind, WindowMode, WindowRecord, WindowRequest,
+    move_or_hover,
 };
 use flutter_engine::FlutterEngine;
 use flutter_engine::builder::FlutterEngineBuilder;
@@ -788,6 +789,12 @@ impl AppState {
                         return;
                     };
                     record.mouse_tracker.insert(button, action);
+                    // A popup is override-redirect, so the window manager will
+                    // not focus it on click. Take keyboard focus explicitly so
+                    // its text fields and shortcuts work.
+                    if action == glfw::Action::Press && record.kind == WindowKind::Popup {
+                        record.window.lock().focus();
+                    }
                     if !record.pointer_added {
                         return;
                     }
@@ -918,7 +925,8 @@ impl AppState {
             metal.remove_layer(view_id);
         }
         self.focused.clear(view_id);
-        if self.focused_view.get() == Some(view_id) {
+        let was_focused = self.focused_view.get() == Some(view_id);
+        if was_focused {
             self.focused_view.set(None);
         }
         if let Some(record) = record {
@@ -926,6 +934,18 @@ impl AppState {
             self.retired_windows
                 .borrow_mut()
                 .push(Arc::clone(&record.window));
+            // A focused child (for example a clicked popup) hands keyboard
+            // focus back to its parent when it closes.
+            if was_focused && let Some(parent_id) = record.parent {
+                let parent = self
+                    .windows
+                    .borrow()
+                    .get(&parent_id)
+                    .map(|record| Arc::clone(&record.window));
+                if let Some(parent) = parent {
+                    parent.lock().focus();
+                }
+            }
         }
         self.emit_event(view_id, event::DESTROYED, 0.0, 0.0);
     }
@@ -1223,8 +1243,16 @@ impl FlutterApp {
         glfw.window_hint(glfw::WindowHint::Resizable(
             request.resizable || request.shrink_wrap,
         ));
-        glfw.window_hint(glfw::WindowHint::Floating(request.floating));
-        glfw.window_hint(glfw::WindowHint::Visible(true));
+        // Tooltips and popups belong to their parent: they must not stay above
+        // every other window. `WM_TRANSIENT_FOR` below keeps them above the
+        // parent and lets the window manager hide them with it.
+        glfw.window_hint(glfw::WindowHint::Floating(
+            request.floating && !matches!(request.kind, WindowKind::Tooltip | WindowKind::Popup),
+        ));
+        // Create hidden and map in `window.show()` after the EWMH hints are in
+        // place, so the window manager reads `_NET_WM_WINDOW_TYPE` and
+        // `WM_TRANSIENT_FOR` when it first manages the window.
+        glfw.window_hint(glfw::WindowHint::Visible(false));
 
         let (width, height) = request.logical_size();
         let (mut window, receiver) = {
@@ -1287,9 +1315,16 @@ impl FlutterApp {
         // absence of any size hints to choose a size of their own.
         window.set_size_limits(Some(1), Some(1), None, None);
         window.set_title(&request.title);
-        if request.modal
-            && let Some(parent_id) = request.parent
-        {
+        if matches!(request.kind, WindowKind::Tooltip | WindowKind::Popup) {
+            set_x11_override_redirect(&window, &state.glfw);
+        }
+        set_x11_window_type(&window, &state.glfw, request.kind);
+        // Every parented window (dialogs, tooltips, popups, satellites) is a
+        // transient of its parent: the window manager keeps it above the
+        // parent and hides it together with the parent. Tiling extensions such
+        // as PaperWM only manage non-transient `_NET_WM_WINDOW_TYPE_NORMAL`
+        // windows, so this also keeps child windows out of their layouts.
+        if let Some(parent_id) = request.parent {
             let parent = state
                 .windows
                 .borrow()
@@ -1329,6 +1364,7 @@ impl FlutterApp {
         let window = Arc::new(Mutex::new(window));
         let mut record = WindowRecord {
             view_id,
+            kind: request.kind,
             window: Arc::clone(&window),
             receiver,
             parent: request.parent,
@@ -1705,6 +1741,92 @@ impl AppState {
             .is_some_and(|engine| engine.is_platform_thread())
     }
 }
+
+/// Tag a window with the EWMH type that matches its role.
+///
+/// Without a type every window is `_NET_WM_WINDOW_TYPE_NORMAL`, so tiling
+/// window managers and extensions treat tooltips, popups and satellites as
+/// ordinary windows to tile. Setting the type (and `WM_TRANSIENT_FOR`, see
+/// [`set_x11_transient`]) keeps them out of those layouts.
+#[cfg(target_os = "linux")]
+fn set_x11_window_type(window: &glfw::PWindow, glfw: &glfw::Glfw, kind: WindowKind) {
+    let name = match kind {
+        WindowKind::Regular => return,
+        WindowKind::Dialog => c"_NET_WM_WINDOW_TYPE_DIALOG",
+        WindowKind::Tooltip => c"_NET_WM_WINDOW_TYPE_TOOLTIP",
+        WindowKind::Popup => c"_NET_WM_WINDOW_TYPE_POPUP_MENU",
+        WindowKind::Satellite => c"_NET_WM_WINDOW_TYPE_UTILITY",
+    };
+    let Ok(xlib) = x11_dl::xlib::Xlib::open() else {
+        return;
+    };
+    let display = glfw.get_x11_display() as *mut x11_dl::xlib::Display;
+    let window = window.get_x11_window() as x11_dl::xlib::Window;
+    if display.is_null() || window == 0 {
+        return;
+    }
+    // SAFETY: `display` is GLFW's live Xlib connection, `window` belongs to it,
+    // and the property is written before the window is mapped.
+    unsafe {
+        let type_atom = (xlib.XInternAtom)(display, c"_NET_WM_WINDOW_TYPE".as_ptr(), 0);
+        let value_atom = (xlib.XInternAtom)(display, name.as_ptr(), 0);
+        if type_atom == 0 || value_atom == 0 {
+            return;
+        }
+        let atoms = [value_atom];
+        (xlib.XChangeProperty)(
+            display,
+            window,
+            type_atom,
+            x11_dl::xlib::XA_ATOM,
+            32,
+            x11_dl::xlib::PropModeReplace,
+            atoms.as_ptr().cast(),
+            1,
+        );
+        (xlib.XFlush)(display);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn set_x11_window_type(_window: &glfw::PWindow, _glfw: &glfw::Glfw, _kind: WindowKind) {}
+
+/// Create a tooltip or popup as an override-redirect window.
+///
+/// The official Linux embedder creates these as GTK popups, and Xwayland turns
+/// an override-redirect window into a surface attached to its parent. That is
+/// what keeps them out of window managers' layouts (PaperWM only manages
+/// `_NET_WM_WINDOW_TYPE_NORMAL` windows), makes them stack above their parent
+/// instead of every window, and hides them with the parent. It must happen
+/// before the window is mapped.
+#[cfg(target_os = "linux")]
+fn set_x11_override_redirect(window: &glfw::PWindow, glfw: &glfw::Glfw) {
+    let Ok(xlib) = x11_dl::xlib::Xlib::open() else {
+        return;
+    };
+    let display = glfw.get_x11_display() as *mut x11_dl::xlib::Display;
+    let window = window.get_x11_window() as x11_dl::xlib::Window;
+    if display.is_null() || window == 0 {
+        return;
+    }
+    // SAFETY: `display` is GLFW's live Xlib connection, `window` belongs to it
+    // and is still unmapped, which is the only time its override-redirect
+    // attribute may be changed.
+    unsafe {
+        let mut attributes: x11_dl::xlib::XSetWindowAttributes = std::mem::zeroed();
+        attributes.override_redirect = 1;
+        (xlib.XChangeWindowAttributes)(
+            display,
+            window,
+            x11_dl::xlib::CWOverrideRedirect,
+            &mut attributes,
+        );
+        (xlib.XFlush)(display);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn set_x11_override_redirect(_window: &glfw::PWindow, _glfw: &glfw::Glfw) {}
 
 /// Mark a dialog as transient-for its parent on X11. GLFW has no portable
 /// modality API; the WM enforces `_NET_WM_STATE_MODAL` for the client.

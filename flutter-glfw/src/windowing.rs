@@ -215,6 +215,7 @@ pub unsafe extern "C" fn create_window(params: *const FgWindowParams) -> i64 {
             (400.0, 300.0)
         };
     let request = WindowRequest {
+        kind,
         title: title_from(params.title),
         width: if params.flags & FLAG_HAS_SIZE != 0 {
             params.width.max(1.0)

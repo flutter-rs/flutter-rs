@@ -105,6 +105,7 @@ impl WindowKind {
 /// Everything the window factory needs; the public [`WindowArgs`] and the
 /// Dart windowing ABI both build one of these.
 pub(crate) struct WindowRequest {
+    pub kind: WindowKind,
     pub title: String,
     pub width: f64,
     pub height: f64,
@@ -122,6 +123,7 @@ pub(crate) struct WindowRequest {
 impl WindowRequest {
     pub(crate) fn regular(args: &WindowArgs<'_>) -> Self {
         Self {
+            kind: WindowKind::Regular,
             title: args.title.to_owned(),
             width: f64::from(args.width),
             height: f64::from(args.height),
@@ -148,6 +150,7 @@ impl WindowRequest {
 /// One native window and the input state that belongs to it alone.
 pub(crate) struct WindowRecord {
     pub view_id: i64,
+    pub kind: WindowKind,
     pub window: Arc<Mutex<glfw::PWindow>>,
     pub receiver: glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
     pub parent: Option<i64>,

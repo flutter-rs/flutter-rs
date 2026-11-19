@@ -107,6 +107,12 @@ Highlights:
   the parent's top-left corner. Tooltips and popups also re-place themselves
   when their shrink-wrapped content resizes, so they stay centred on the anchor
   instead of using the default initial size.
+- Shrink-wrapped views resize the native window before the frame is presented
+  and wait for the `FramebufferSize` event, instead of resizing after the swap.
+  Under Xwayland the old order committed a buffer for the previous size on
+  every animation frame, which the compositor showed as black flashes while an
+  animating popup changed size. The window may lag the animated content by a
+  few pixels so it is not resized sixty times a second.
 - `flutter-engine` keeps the old view-0 `send_window_metrics_event` and
   `send_pointer_event` methods as compatibility delegates and adds
   `send_window_metrics_for_view`, `send_pointer_event_for_view`,

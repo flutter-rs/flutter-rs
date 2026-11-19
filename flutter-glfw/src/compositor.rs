@@ -27,6 +27,7 @@ use std::ffi::{CString, c_void};
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::time::Duration;
 
 thread_local! {
     /// `gl`'s function pointers are thread-local; load them once on the raster
@@ -349,12 +350,12 @@ impl FlutterCompositorHandler for GlfwCompositor {
     }
 
     fn present_view(&self, view_id: FlutterViewId, layers: &[&FlutterLayer]) -> bool {
-        let Some((context, framebuffer_size, scale, shrink_wrap)) = ({
+        let Some((context, settled_size, scale, shrink_wrap)) = ({
             let views = self.state.views.lock();
             views.get(&view_id).map(|view| {
                 (
                     Arc::clone(&view.context),
-                    view.framebuffer_size,
+                    view.settled_size,
                     view.scale,
                     view.shrink_wrap,
                 )
@@ -490,6 +491,41 @@ impl FlutterCompositorHandler for GlfwCompositor {
 
         let mut saved_read = 0;
         let mut saved_draw = 0;
+
+        // Keep the buffer we are about to swap the same size as the window. The
+        // window is resized on the platform thread; if we blit before the
+        // resize reaches the drawable, the swap presents an old-size buffer for
+        // a new-size window and the compositor shows black until the next
+        // frame. Shrink-wrapped tooltips and popups change size every frame
+        // while their content animates, so request the resize first, wait for
+        // it to land, and blit at the size the window actually has.
+        if shrink_wrap && scale.is_finite() && scale > 0.0 {
+            let target = (texture_size.0 as i32, texture_size.1 as i32);
+            let desired = (texture_size.0 as f64 / scale, texture_size.1 as f64 / scale);
+            let current = (f64::from(settled_size.0), f64::from(settled_size.1));
+            // Let the window lag the content by a few pixels. Resizing on every
+            // animation frame would otherwise commit a new window size ~60
+            // times a second, and each resize briefly leaves the window without
+            // a matching buffer under Xwayland; the compositor shows that as
+            // periodic black flashes. The blit below still fills the window, so
+            // the small difference only scales the content.
+            if (texture_size.0 as f64 - current.0).abs() > 6.0
+                || (texture_size.1 as f64 - current.1).abs() > 6.0
+            {
+                self.state.set_desired_size(view_id, desired);
+                self.state.wake();
+                if !self
+                    .state
+                    .wait_for_size(view_id, target, Duration::from_millis(10))
+                {
+                    log::debug!(
+                        "view {view_id}: window did not reach the {}x{} texture size before present",
+                        target.0,
+                        target.1
+                    );
+                }
+            }
+        }
         // SAFETY: a context is current; the framebuffer names are written by
         // `GetIntegerv` and the temporary framebuffer is created and deleted
         // in this context.
@@ -508,8 +544,8 @@ impl FlutterCompositorHandler for GlfwCompositor {
                 0,
             );
 
-            let destination_width = framebuffer_size.0.max(texture_size.0 as i32).max(1);
-            let destination_height = framebuffer_size.1.max(texture_size.1 as i32).max(1);
+            let destination_width = settled_size.0.max(texture_size.0 as i32).max(1);
+            let destination_height = settled_size.1.max(texture_size.1 as i32).max(1);
             gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
             // Software surfaces are top-down, but a texture upload puts their
             // first row at the texture's bottom; invert the source rectangle so
@@ -542,18 +578,6 @@ impl FlutterCompositorHandler for GlfwCompositor {
         }
 
         context.swap_buffers();
-
-        if shrink_wrap && scale.is_finite() && scale > 0.0 {
-            let desired = (texture_size.0 as f64 / scale, texture_size.1 as f64 / scale);
-            let current = (f64::from(framebuffer_size.0), f64::from(framebuffer_size.1));
-            // Compare physical pixels; a one-pixel difference is rounding noise
-            // and would otherwise resize the window on every frame.
-            if (texture_size.0 as f64 - current.0).abs() > 2.0
-                || (texture_size.1 as f64 - current.1).abs() > 2.0
-            {
-                self.state.set_desired_size(view_id, desired);
-            }
-        }
 
         true
     }

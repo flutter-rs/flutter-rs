@@ -642,6 +642,9 @@ impl AppState {
         match event {
             glfw::WindowEvent::FramebufferSize(_, _) => {
                 self.send_metrics(view_id);
+                if let Some(render) = self.render() {
+                    render.mark_size_settled(view_id);
+                }
                 #[cfg(target_os = "macos")]
                 self.represent_metal_view(view_id);
             }
@@ -1468,6 +1471,15 @@ impl FlutterApp {
         state.watch_platform_brightness();
 
         let mut glfw = state.glfw.clone();
+        // The compositor asks the platform thread to apply shrink-wrap sizes
+        // from the raster thread; `post_empty_event` wakes `wait_events` so the
+        // request is picked up promptly instead of waiting for the next event.
+        if let Some(render) = state.render() {
+            let wake_glfw = Arc::new(Mutex::new(glfw::ThreadSafeGlfw::from(&mut glfw)));
+            render.set_wake(move || {
+                wake_glfw.lock().post_empty_event();
+            });
+        }
         while !state.quit.get()
             && !state.quit_flag.load(Ordering::Relaxed)
             && !(state.had_windows.get() && state.windows.borrow().is_empty())

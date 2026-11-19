@@ -176,6 +176,71 @@ fn shrink_wrap_bound(
     (initial.0.max(framebuffer.0), initial.1.max(framebuffer.1))
 }
 
+/// Whether the window's native X11 window still exists.
+///
+/// GLFW does not report a window that another client destroyed (a window
+/// manager force-closing an unresponsive application, or `xdotool
+/// windowclose`): its `DestroyNotify` handler is empty, so no event reaches the
+/// application. The window then stays in the window map with a dead X
+/// resource, and the next GLFW query on it — `glfwGetWindowAttrib`,
+/// `glfwGetWindowSize` and friends all call `XGetWindowAttributes` — raises
+/// `BadWindow`. Xlib's default error handler turns that into `exit(1)`, which
+/// is exactly what closing a window must never do.
+///
+/// X reports the same error for the probe itself, so run it under an error
+/// handler that only records whether it fired. The probe is a synchronous
+/// round trip and is flushed before the previous handler goes back, so no
+/// unrelated request can be attributed to it.
+#[cfg(target_os = "linux")]
+pub(crate) fn native_window_alive(window: &glfw::PWindow, glfw: &glfw::Glfw) -> bool {
+    use std::ffi::c_int;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static SAW_ERROR: AtomicBool = AtomicBool::new(false);
+
+    unsafe extern "C" fn note_error(
+        _display: *mut x11_dl::xlib::Display,
+        _event: *mut x11_dl::xlib::XErrorEvent,
+    ) -> c_int {
+        SAW_ERROR.store(true, Ordering::Relaxed);
+        0
+    }
+
+    if glfw.get_platform() != glfw::Platform::X11 {
+        return true;
+    }
+    let Ok(xlib) = x11_dl::xlib::Xlib::open() else {
+        return true;
+    };
+    let display = glfw.get_x11_display() as *mut x11_dl::xlib::Display;
+    let handle = window.get_x11_window() as x11_dl::xlib::Window;
+    if display.is_null() || handle == 0 {
+        return false;
+    }
+    SAW_ERROR.store(false, Ordering::Relaxed);
+    // SAFETY: `display` is GLFW's live Xlib connection and `handle` is a window
+    // that was created on it. Both calls take a valid display; the attributes
+    // buffer is a live, zero-initialized out-parameter. The handler is restored
+    // before returning, so no later error is swallowed.
+    unsafe {
+        let previous = (xlib.XSetErrorHandler)(Some(note_error));
+        let mut attributes: x11_dl::xlib::XWindowAttributes = std::mem::zeroed();
+        let status = (xlib.XGetWindowAttributes)(display, handle, &mut attributes);
+        (xlib.XSync)(display, x11_dl::xlib::False);
+        (xlib.XSetErrorHandler)(previous);
+        status != 0 && !SAW_ERROR.load(Ordering::Relaxed)
+    }
+}
+
+/// Whether the window's native handle still exists.
+///
+/// Only X11 loses windows behind the embedder's back; elsewhere the platform
+/// owns the handle for as long as the window exists.
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn native_window_alive(_window: &glfw::PWindow, _glfw: &glfw::Glfw) -> bool {
+    true
+}
+
 /// One native window and the input state that belongs to it alone.
 pub(crate) struct WindowRecord {
     pub view_id: i64,

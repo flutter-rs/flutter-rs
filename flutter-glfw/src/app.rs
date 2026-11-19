@@ -15,7 +15,7 @@ use crate::window::{
     BY_WORD_MODIFIER_KEY, CreateError, FUNCTION_MODIFIER_KEY, FlutterWindow, LifecycleTracker,
     PreparedPointer, RunError, SCROLL_SPEED, SELECT_MODIFIER_KEY, TEXT_SCALE_FACTOR,
     USE_24_HOUR_FORMAT, WindowArgs, WindowKind, WindowMode, WindowRecord, WindowRequest,
-    move_or_hover,
+    move_or_hover, native_window_alive,
 };
 use flutter_engine::FlutterEngine;
 use flutter_engine::builder::FlutterEngineBuilder;
@@ -489,7 +489,9 @@ impl AppState {
             let windows = self.windows.borrow();
             let visible = windows.values().any(|record| {
                 let window = record.window.lock();
-                window.is_visible() && !window.is_iconified()
+                native_window_alive(&window, &self.glfw)
+                    && window.is_visible()
+                    && !window.is_iconified()
             });
             (visible, focused)
         };
@@ -610,6 +612,29 @@ impl AppState {
     }
 
     fn handle_glfw_event(&self, view_id: i64, event: glfw::WindowEvent) {
+        // GLFW keeps delivering events it queued before another client
+        // destroyed the window, and the state queries below then raise
+        // `BadWindow`; Xlib's default error handler answers that by exiting the
+        // process. A window that is gone has nothing to report, so retire it —
+        // `destroy_window` skips its native calls and tells the Dart owner, the
+        // same way a close request does.
+        if matches!(
+            event,
+            glfw::WindowEvent::FramebufferSize(_, _)
+                | glfw::WindowEvent::Refresh
+                | glfw::WindowEvent::ContentScale(_, _)
+                | glfw::WindowEvent::Size(_, _)
+                | glfw::WindowEvent::Focus(_)
+        ) && self
+            .windows
+            .borrow()
+            .get(&view_id)
+            .is_some_and(|record| !native_window_alive(&record.window.lock(), &self.glfw))
+        {
+            log::debug!("view {view_id}: window no longer exists; retiring it");
+            self.destroy_window(view_id);
+            return;
+        }
         self.mark_mapped(view_id);
         self.apply_pending_positions(view_id);
         if let Some(modal_child) = self.modal_child(view_id) {
@@ -930,7 +955,13 @@ impl AppState {
             self.focused_view.set(None);
         }
         if let Some(record) = record {
-            record.window.lock().hide();
+            // A window the window system already destroyed has no native
+            // handle left to hide or query; touching it would be an X protocol
+            // error. Its view still has to go, so only the native calls are
+            // skipped.
+            if native_window_alive(&record.window.lock(), &self.glfw) {
+                record.window.lock().hide();
+            }
             self.retired_windows
                 .borrow_mut()
                 .push(Arc::clone(&record.window));
@@ -1691,6 +1722,7 @@ impl FlutterApp {
     }
 
     fn shutdown_inner(&self) {
+        ignore_dead_windows_on_teardown(&self.state.glfw);
         // Stop the windowing ABI from reaching this app before its engine and
         // windows are torn down.
         CURRENT_APP.with(|app| *app.borrow_mut() = None);
@@ -1905,6 +1937,64 @@ fn set_x11_transient(_child: &glfw::PWindow, _parent: &glfw::PWindow, _glfw: &gl
 
 #[cfg(not(target_os = "linux"))]
 fn set_x11_modal_state(_child: &glfw::PWindow, _glfw: &glfw::Glfw) {}
+
+/// Stop `BadWindow` from terminating the process once teardown starts.
+///
+/// A window that the window system destroyed behind the embedder's back still
+/// has to go through `glfwDestroyWindow` so GLFW forgets it, and the X requests
+/// inside that call fail with `BadWindow`. Xlib's default error handler prints
+/// the error and calls `exit(1)`, which turns closing a window into a failed
+/// process. Teardown wants such a window gone and it already is, so ignore
+/// exactly that error for the rest of the process; every other error goes to
+/// the handler Xlib had installed.
+#[cfg(target_os = "linux")]
+fn ignore_dead_windows_on_teardown(glfw: &glfw::Glfw) {
+    use std::ffi::c_int;
+    use std::sync::Mutex;
+
+    type Handler =
+        unsafe extern "C" fn(*mut x11_dl::xlib::Display, *mut x11_dl::xlib::XErrorEvent) -> c_int;
+
+    static PREVIOUS: Mutex<Option<Handler>> = Mutex::new(None);
+
+    unsafe extern "C" fn handler(
+        display: *mut x11_dl::xlib::Display,
+        event: *mut x11_dl::xlib::XErrorEvent,
+    ) -> c_int {
+        // SAFETY: Xlib passes a live error event to its handler, or null when
+        // it has none to describe.
+        if !event.is_null() && unsafe { (*event).error_code } == x11_dl::xlib::BadWindow {
+            return 0;
+        }
+        let previous = *PREVIOUS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match previous {
+            // SAFETY: this is the handler `XSetErrorHandler` returned when ours
+            // was installed, so it is the one Xlib would have called.
+            Some(previous) => unsafe { previous(display, event) },
+            None => 0,
+        }
+    }
+
+    if glfw.get_platform() != glfw::Platform::X11 || glfw.get_x11_display().is_null() {
+        return;
+    }
+    let Ok(xlib) = x11_dl::xlib::Xlib::open() else {
+        return;
+    };
+    // SAFETY: GLFW is initialised, so `display` is a live Xlib connection and
+    // changing its process-wide error handler is safe here.
+    unsafe {
+        let previous = (xlib.XSetErrorHandler)(Some(handler));
+        *PREVIOUS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = previous;
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ignore_dead_windows_on_teardown(_glfw: &glfw::Glfw) {}
 
 #[cfg(feature = "brightness")]
 fn brightness_from(mode: dark_light::Mode) -> PlatformBrightness {

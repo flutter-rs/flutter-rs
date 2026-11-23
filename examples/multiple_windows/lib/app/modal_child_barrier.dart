@@ -37,15 +37,17 @@ class ModalChildBarrier extends StatelessWidget {
           return controller is DialogWindowController &&
               controller.parent == parent;
         });
-        if (!isModalOpen) {
-          return child!;
-        }
-
+        // Keep the stack in place whether or not a modal is open: returning
+        // the child bare first and wrapping it later would replace the widget
+        // at this position, remount the whole window content, and drop the
+        // state that owns the other windows' views (a popup would lose its
+        // content while its native window stayed on screen).
         return Stack(
           fit: StackFit.expand,
           children: <Widget>[
             child!,
-            const ModalBarrier(color: Colors.black54, dismissible: false),
+            if (isModalOpen)
+              const ModalBarrier(color: Colors.black54, dismissible: false),
           ],
         );
       },

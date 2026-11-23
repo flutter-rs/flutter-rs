@@ -54,6 +54,24 @@ const double _defaultPopupHeight = 120;
 /// loads does not, so the binding throws before the assignment can happen.
 class GlfwWindowingBinding extends WidgetsFlutterBinding {
   @override
+  void initInstances() {
+    super.initInstances();
+
+    // The flag has to be on before `windowingOwner` can even be read: both the
+    // getter and the setter assert it on SDKs that gate the API.
+    isWindowingEnabled = true;
+
+    // Flutter 3.50 has no overridable `createWindowingOwner` hook: its
+    // `initInstances` calls the top-level `createDefaultWindowingOwner`
+    // directly, which hands back an unsupported owner because the flag is
+    // still off. Replace that placeholder with ours. On newer SDKs the
+    // override below has already installed it, and this is a no-op.
+    if (windowingOwner is! GlfwWindowingOwner) {
+      windowingOwner = GlfwWindowingOwner();
+    }
+  }
+
+  @override
   WindowingOwner createWindowingOwner() {
     isWindowingEnabled = true;
 

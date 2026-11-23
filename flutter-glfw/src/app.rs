@@ -637,12 +637,12 @@ impl AppState {
         }
         self.mark_mapped(view_id);
         self.apply_pending_positions(view_id);
-        if let Some(modal_child) = self.modal_child(view_id) {
+        if let Some(blocking_modal) = self.blocking_modal(view_id) {
             if matches!(&event, glfw::WindowEvent::Focus(true)) {
                 let window = self
                     .windows
                     .borrow()
-                    .get(&modal_child)
+                    .get(&blocking_modal)
                     .map(|record| Arc::clone(&record.window));
                 if let Some(window) = window {
                     window.lock().focus();
@@ -788,9 +788,9 @@ impl AppState {
                         return;
                     };
                     record.cursor_pos = (x, y);
-                    if !record.pointer_added {
-                        return;
-                    }
+                    // A popup can appear right under the cursor and never see
+                    // a `CursorEnter`; `prepare_pointer_events` synthesizes the
+                    // `Add` this pointer needs, so do not require one here.
                     let buttons = record.pressed_buttons();
                     record.prepare_pointer_events(
                         move_or_hover(buttons),
@@ -820,10 +820,17 @@ impl AppState {
                     if action == glfw::Action::Press && record.kind == WindowKind::Popup {
                         record.window.lock().focus();
                     }
-                    if !record.pointer_added {
-                        return;
-                    }
-                    let (x, y) = record.cursor_pos;
+                    // A window that appears under the cursor never gets a
+                    // `CursorEnter`, so its `cursor_pos` is still the one it
+                    // was created with. Ask the window where the press landed
+                    // and let `prepare_pointer_events` synthesize the `Add`.
+                    let (x, y) = if record.pointer_added {
+                        record.cursor_pos
+                    } else {
+                        let position = record.window.lock().get_cursor_pos();
+                        record.cursor_pos = position;
+                        position
+                    };
                     let phase = if action == glfw::Action::Press {
                         flutter_engine::ffi::FlutterPointerPhase::Down
                     } else {
@@ -914,12 +921,37 @@ impl AppState {
         }
     }
 
-    fn modal_child(&self, view_id: i64) -> Option<i64> {
-        self.windows
-            .borrow()
-            .values()
-            .find(|record| record.modal && record.parent == Some(view_id))
-            .map(|record| record.view_id)
+    /// The modal dialog that blocks input to `view_id`, if any.
+    ///
+    /// A modal dialog blocks its parent window and every window that belongs
+    /// to it: tooltips, popups and satellites are separate native windows, so
+    /// the parent's modal has to block them too, not only the parent itself.
+    fn blocking_modal(&self, view_id: i64) -> Option<i64> {
+        let windows = self.windows.borrow();
+        // The window itself and its ancestors. A modal that belongs to one of
+        // them blocks this window; a modal that is on the chain (the window
+        // itself or one of its parents) is the one asking, not the blocker.
+        let mut chain = Vec::new();
+        let mut current = Some(view_id);
+        while let Some(id) = current {
+            // A window tree is acyclic, but an orphaned record must not hang
+            // the event loop if one ever points at itself.
+            if chain.contains(&id) || chain.len() > windows.len() {
+                break;
+            }
+            chain.push(id);
+            current = windows.get(&id).and_then(|record| record.parent);
+        }
+        chain.iter().find_map(|id| {
+            windows
+                .values()
+                .find(|candidate| {
+                    candidate.modal
+                        && candidate.parent == Some(*id)
+                        && !chain.contains(&candidate.view_id)
+                })
+                .map(|modal| modal.view_id)
+        })
     }
 
     pub(crate) fn destroy_window(&self, view_id: i64) {
@@ -955,6 +987,7 @@ impl AppState {
             self.focused_view.set(None);
         }
         if let Some(record) = record {
+            detach_from_parent(&record.window.lock());
             // A window the window system already destroyed has no native
             // handle left to hide or query; touching it would be an X protocol
             // error. Its view still has to go, so only the native calls are
@@ -1317,6 +1350,12 @@ impl FlutterApp {
             }
         };
         glfw.default_window_hints();
+        // Start polling before the window is mapped. A parented window can take
+        // keyboard focus as soon as it is ordered above a key parent, and
+        // `glfw` discards callbacks whose polling was still off: the focus
+        // event that marks the view focused would be lost, leaving the view
+        // unable to focus its text fields.
+        Self::enable_window_polling(&mut window);
         // GLFW's window sizes and positions are in screen coordinates. On X11
         // and Windows those are physical pixels while the framework sizes and
         // positions windows in logical pixels; scale by the content scale. The
@@ -1362,7 +1401,7 @@ impl FlutterApp {
                 .get(&parent_id)
                 .map(|record| Arc::clone(&record.window));
             if let Some(parent) = parent {
-                set_x11_transient(&window, &parent.lock(), &state.glfw);
+                attach_to_parent(&window, &parent.lock(), &state.glfw);
             }
         }
         window.show();
@@ -1460,7 +1499,6 @@ impl FlutterApp {
 
         state.windows.borrow_mut().insert(view_id, record);
         state.had_windows.set(true);
-        Self::enable_polling(&window);
 
         Ok(FlutterWindow::new(
             Rc::downgrade(&self.state),
@@ -1470,7 +1508,10 @@ impl FlutterApp {
     }
 
     fn enable_polling(window: &Arc<Mutex<glfw::PWindow>>) {
-        let mut window = window.lock();
+        Self::enable_window_polling(&mut window.lock());
+    }
+
+    fn enable_window_polling(window: &mut glfw::PWindow) {
         window.set_char_polling(true);
         window.set_cursor_pos_polling(true);
         window.set_cursor_enter_polling(true);
@@ -1783,7 +1824,7 @@ impl AppState {
 /// Without a type every window is `_NET_WM_WINDOW_TYPE_NORMAL`, so tiling
 /// window managers and extensions treat tooltips, popups and satellites as
 /// ordinary windows to tile. Setting the type (and `WM_TRANSIENT_FOR`, see
-/// [`set_x11_transient`]) keeps them out of those layouts.
+/// [`attach_to_parent`]) keeps them out of those layouts.
 #[cfg(target_os = "linux")]
 fn set_x11_window_type(window: &glfw::PWindow, glfw: &glfw::Glfw, kind: WindowKind) {
     let name = match kind {
@@ -1864,10 +1905,52 @@ fn set_x11_override_redirect(window: &glfw::PWindow, glfw: &glfw::Glfw) {
 #[cfg(not(target_os = "linux"))]
 fn set_x11_override_redirect(_window: &glfw::PWindow, _glfw: &glfw::Glfw) {}
 
-/// Mark a dialog as transient-for its parent on X11. GLFW has no portable
-/// modality API; the WM enforces `_NET_WM_STATE_MODAL` for the client.
+/// Tie a child window to its parent so it stacks directly above it.
+///
+/// The window stays at the parent's level: it is above the parent, not above
+/// every window of every application.
+#[cfg(target_os = "macos")]
+pub(crate) fn attach_to_parent(child: &glfw::PWindow, parent: &glfw::PWindow, _glfw: &glfw::Glfw) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    let child_window = child.get_cocoa_window() as *mut AnyObject;
+    let parent_window = parent.get_cocoa_window() as *mut AnyObject;
+    if child_window.is_null() || parent_window.is_null() {
+        return;
+    }
+    // SAFETY: both pointers are live `NSWindow`s owned by GLFW, and this runs
+    // on the main thread. `NSWindowAbove` (1) orders the child above its
+    // parent and makes AppKit move it with the parent.
+    unsafe {
+        let _: () = msg_send![parent_window, addChildWindow: child_window, ordered: 1isize];
+    }
+}
+
+/// Detach a window from its AppKit parent, if it has one.
+#[cfg(target_os = "macos")]
+pub(crate) fn detach_from_parent(window: &glfw::PWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    let window = window.get_cocoa_window() as *mut AnyObject;
+    if window.is_null() {
+        return;
+    }
+    // SAFETY: `window` is a live `NSWindow` owned by GLFW; `parentWindow` may
+    // return nil, which the null check below tolerates.
+    unsafe {
+        let parent: *mut AnyObject = msg_send![window, parentWindow];
+        if !parent.is_null() {
+            let _: () = msg_send![parent, removeChildWindow: window];
+        }
+    }
+}
+
+/// Mark a child window as transient-for its parent on X11. GLFW has no
+/// portable modality API; the WM enforces `_NET_WM_STATE_MODAL` for the client.
 #[cfg(target_os = "linux")]
-fn set_x11_transient(child: &glfw::PWindow, parent: &glfw::PWindow, glfw: &glfw::Glfw) {
+fn attach_to_parent(child: &glfw::PWindow, parent: &glfw::PWindow, glfw: &glfw::Glfw) {
     let Ok(xlib) = x11_dl::xlib::Xlib::open() else {
         return;
     };
@@ -1932,8 +2015,11 @@ fn set_x11_modal_state(child: &glfw::PWindow, glfw: &glfw::Glfw) {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
-fn set_x11_transient(_child: &glfw::PWindow, _parent: &glfw::PWindow, _glfw: &glfw::Glfw) {}
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn attach_to_parent(_child: &glfw::PWindow, _parent: &glfw::PWindow, _glfw: &glfw::Glfw) {}
+
+#[cfg(not(target_os = "macos"))]
+fn detach_from_parent(_window: &glfw::PWindow) {}
 
 #[cfg(not(target_os = "linux"))]
 fn set_x11_modal_state(_child: &glfw::PWindow, _glfw: &glfw::Glfw) {}

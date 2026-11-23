@@ -116,9 +116,66 @@ pub(crate) struct GlfwCompositor {
     kind: CompositorKind,
 }
 
+/// The logical window size a shrink-wrapped view needs for `texture_size`
+/// physical pixels, or `None` when the window already has it.
+///
+/// Sizes are compared in physical pixels: a difference of one or two pixels is
+/// rounding noise and would otherwise resize the window on every frame.
+fn shrink_wrap_target(
+    texture_size: (usize, usize),
+    scale: f64,
+    settled_size: (i32, i32),
+) -> Option<(f64, f64)> {
+    if !scale.is_finite() || scale <= 0.0 {
+        return None;
+    }
+    let current = (f64::from(settled_size.0), f64::from(settled_size.1));
+    if (texture_size.0 as f64 - current.0).abs() <= 2.0
+        && (texture_size.1 as f64 - current.1).abs() <= 2.0
+    {
+        return None;
+    }
+
+    Some((texture_size.0 as f64 / scale, texture_size.1 as f64 / scale))
+}
+
 impl GlfwCompositor {
     pub(crate) fn new(state: Arc<RenderState>, kind: CompositorKind) -> Self {
         Self { state, kind }
+    }
+
+    /// Ask the platform thread to resize a shrink-wrapped view to its content
+    /// size, and wait (bounded) for the resize to land.
+    ///
+    /// The window is resized on the platform thread; presenting before the
+    /// resize reaches the drawable shows an old-size buffer in a new-size
+    /// window. Shrink-wrapped tooltips and popups change size every frame while
+    /// their content animates, so request the resize first, wait for it to
+    /// land, and present at the size the window actually has. Every renderer
+    /// goes through this, so the window follows the content on Metal too.
+    fn resize_shrink_wrapped(
+        &self,
+        view_id: FlutterViewId,
+        texture_size: (usize, usize),
+        scale: f64,
+        settled_size: (i32, i32),
+    ) {
+        let Some(desired) = shrink_wrap_target(texture_size, scale, settled_size) else {
+            return;
+        };
+        let target = (texture_size.0 as i32, texture_size.1 as i32);
+        self.state.set_desired_size(view_id, desired);
+        self.state.wake();
+        if !self
+            .state
+            .wait_for_size(view_id, target, Duration::from_millis(10))
+        {
+            log::debug!(
+                "view {view_id}: window did not reach the {}x{} texture size before present",
+                target.0,
+                target.1
+            );
+        }
     }
 
     fn with_master_current<R>(&self, f: impl FnOnce() -> R) -> R {
@@ -405,6 +462,9 @@ impl FlutterCompositorHandler for GlfwCompositor {
             }
             // SAFETY: as above.
             let backing = unsafe { &*(user_data as *const MetalBackingStore) };
+            if shrink_wrap {
+                self.resize_shrink_wrapped(view_id, backing.size, scale, settled_size);
+            }
             return metal.present(view_id, &backing.texture, backing.size, scale);
         }
 
@@ -492,35 +552,11 @@ impl FlutterCompositorHandler for GlfwCompositor {
         let mut saved_read = 0;
         let mut saved_draw = 0;
 
-        // Keep the buffer we are about to swap the same size as the window. The
-        // window is resized on the platform thread; if we blit before the
-        // resize reaches the drawable, the swap presents an old-size buffer for
-        // a new-size window and the compositor shows black until the next
-        // frame. Shrink-wrapped tooltips and popups change size every frame
-        // while their content animates, so request the resize first, wait for
-        // it to land, and blit at the size the window actually has.
-        if shrink_wrap && scale.is_finite() && scale > 0.0 {
-            let target = (texture_size.0 as i32, texture_size.1 as i32);
-            let desired = (texture_size.0 as f64 / scale, texture_size.1 as f64 / scale);
-            let current = (f64::from(settled_size.0), f64::from(settled_size.1));
-            // Compare physical pixels; a one-pixel difference is rounding noise
-            // and would otherwise resize the window on every frame.
-            if (texture_size.0 as f64 - current.0).abs() > 2.0
-                || (texture_size.1 as f64 - current.1).abs() > 2.0
-            {
-                self.state.set_desired_size(view_id, desired);
-                self.state.wake();
-                if !self
-                    .state
-                    .wait_for_size(view_id, target, Duration::from_millis(10))
-                {
-                    log::debug!(
-                        "view {view_id}: window did not reach the {}x{} texture size before present",
-                        target.0,
-                        target.1
-                    );
-                }
-            }
+        // Keep the buffer we are about to swap the same size as the window, so
+        // an animated shrink-wrapped view is laid out at its new size on the
+        // next frame instead of the previous one.
+        if shrink_wrap {
+            self.resize_shrink_wrapped(view_id, texture_size, scale, settled_size);
         }
         // SAFETY: a context is current; the framebuffer names are written by
         // `GetIntegerv` and the temporary framebuffer is created and deleted
@@ -576,5 +612,42 @@ impl FlutterCompositorHandler for GlfwCompositor {
         context.swap_buffers();
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shrink_wrap_target;
+
+    #[test]
+    fn matching_size_does_not_resize() {
+        assert_eq!(shrink_wrap_target((480, 240), 2.0, (480, 240)), None);
+    }
+
+    #[test]
+    fn rounding_noise_does_not_resize() {
+        assert_eq!(shrink_wrap_target((480, 240), 2.0, (478, 239)), None);
+    }
+
+    #[test]
+    fn content_size_becomes_logical_window_size() {
+        assert_eq!(
+            shrink_wrap_target((480, 152), 2.0, (480, 240)),
+            Some((240.0, 76.0))
+        );
+    }
+
+    #[test]
+    fn shrinking_content_resizes_too() {
+        assert_eq!(
+            shrink_wrap_target((240, 76), 2.0, (480, 240)),
+            Some((120.0, 38.0))
+        );
+    }
+
+    #[test]
+    fn invalid_scale_is_ignored() {
+        assert_eq!(shrink_wrap_target((480, 240), 0.0, (480, 240)), None);
+        assert_eq!(shrink_wrap_target((480, 240), f64::NAN, (480, 240)), None);
     }
 }

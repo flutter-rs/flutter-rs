@@ -654,14 +654,40 @@ pub unsafe extern "C" fn set_event_callback(callback: *mut c_void, user_data: *m
 /// Callable from the platform thread only; the ABI guarantees that.
 pub unsafe extern "C" fn set_parent(view_id: i64, parent: i64) -> i32 {
     with_app(-1, |state| {
-        let mut windows = state.windows.borrow_mut();
-        match windows.get_mut(&view_id) {
-            Some(record) => {
-                record.parent = (parent >= 0).then_some(parent);
-                0
+        let (window, previous, new_parent) = {
+            let mut windows = state.windows.borrow_mut();
+            let Some(record) = windows.get_mut(&view_id) else {
+                return -1;
+            };
+            let window = Arc::clone(&record.window);
+            let previous = record.parent;
+            let new_parent = (parent >= 0).then_some(parent);
+            record.parent = new_parent;
+            (window, previous, new_parent)
+        };
+        // On macOS the parent relationship is an AppKit child-window link, so
+        // it has to move with the record. Other platforms keep the window
+        // manager's transient hint from creation.
+        #[cfg(target_os = "macos")]
+        if previous != new_parent {
+            let target = new_parent.and_then(|id| {
+                state
+                    .windows
+                    .borrow()
+                    .get(&id)
+                    .map(|record| Arc::clone(&record.window))
+            });
+            let child = window.lock();
+            crate::app::detach_from_parent(&child);
+            if let Some(target) = target {
+                crate::app::attach_to_parent(&child, &target.lock(), &state.glfw);
             }
-            None => -1,
         }
+        // The parent link only needs AppKit calls on macOS; elsewhere the
+        // window manager keeps the transient hint from window creation.
+        #[cfg(not(target_os = "macos"))]
+        let _ = (window, previous, new_parent);
+        0
     })
 }
 

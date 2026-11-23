@@ -11,9 +11,9 @@ use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{class, msg_send};
 use objc2_core_foundation::{CGRect, CGSize};
 use objc2_metal::{
-    MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCreateSystemDefaultDevice, MTLDevice,
-    MTLDrawable, MTLOrigin, MTLPixelFormat, MTLSize, MTLStorageMode, MTLTexture,
-    MTLTextureDescriptor, MTLTextureUsage,
+    MTLBlitCommandEncoder, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
+    MTLCreateSystemDefaultDevice, MTLDevice, MTLDrawable, MTLOrigin, MTLPixelFormat, MTLSize,
+    MTLStorageMode, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
 };
 use parking_lot::Mutex;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -127,6 +127,12 @@ impl MetalState {
             } else {
                 let _: () = msg_send![parent_layer, addSublayer: layer];
             }
+            // The window is resized on the platform thread, so a frame can be
+            // presented into a window that grew after the sublayer's frame was
+            // last set; the strip the window just gained would show the window
+            // background (black) until `refresh_layer` runs. Let the layer
+            // track the view instead: `kCALayerWidthSizable | kCALayerHeightSizable`.
+            let _: () = msg_send![layer, setAutoresizingMask: 18u32];
         }
         self.layers.lock().insert(
             view_id,

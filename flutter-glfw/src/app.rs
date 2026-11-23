@@ -15,7 +15,7 @@ use crate::window::{
     BY_WORD_MODIFIER_KEY, CreateError, FUNCTION_MODIFIER_KEY, FlutterWindow, LifecycleTracker,
     PreparedPointer, RunError, SCROLL_SPEED, SELECT_MODIFIER_KEY, TEXT_SCALE_FACTOR,
     USE_24_HOUR_FORMAT, WindowArgs, WindowKind, WindowMode, WindowRecord, WindowRequest,
-    move_or_hover, native_window_alive,
+    centered_position, move_or_hover, native_window_alive,
 };
 use flutter_engine::FlutterEngine;
 use flutter_engine::builder::FlutterEngineBuilder;
@@ -207,6 +207,25 @@ pub(crate) struct AppState {
     pub(crate) main_tx: Sender<MainThreadFn>,
     pub(crate) main_rx: Receiver<MainThreadFn>,
     pub(crate) platform_task_handler: Arc<GlfwPlatformTaskHandler>,
+    /// Whether the engine's platform tasks are already running on this thread.
+    ///
+    /// The macOS resize callback pumps them from inside AppKit's tracking loop;
+    /// a task may resize a window, whose framebuffer callback fires
+    /// synchronously and would try to pump again. Re-entering the task runner
+    /// deadlocks, so a nested pump is skipped.
+    pub(crate) pumping_platform_tasks: Cell<bool>,
+    /// Whether the embedder is creating or resizing a window.
+    ///
+    /// AppKit posts the resize notification synchronously, so the callback can
+    /// fire in the middle of `create_window_inner` or `apply_desired_sizes` —
+    /// while the engine is already laying out or the window is locked. Neither
+    /// the metrics nor the task pump may run then; the queued event handles the
+    /// size once the embedder is back in its event loop.
+    pub(crate) embedder_busy: Cell<bool>,
+    /// When the resize callback last pumped the engine, so a burst of AppKit
+    /// resize notifications is coalesced into one frame per display refresh.
+    #[cfg(target_os = "macos")]
+    pub(crate) last_resize_pump: Cell<Option<Instant>>,
     pub(crate) plugins: RwLock<PluginRegistrar>,
     pub(crate) focused: Arc<FocusedWindow>,
     pub(crate) quit_flag: Arc<AtomicBool>,
@@ -218,7 +237,82 @@ pub(crate) struct AppState {
     pub(crate) logical_screen_coordinates: bool,
 }
 
+/// Clears [`AppState::embedder_busy`] when it goes out of scope.
+struct BusyGuard<'a> {
+    flag: &'a Cell<bool>,
+    was_busy: bool,
+}
+
+impl<'a> BusyGuard<'a> {
+    fn enter(flag: &'a Cell<bool>) -> Self {
+        let was_busy = flag.replace(true);
+        Self { flag, was_busy }
+    }
+}
+
+impl Drop for BusyGuard<'_> {
+    fn drop(&mut self) {
+        self.flag.set(self.was_busy);
+    }
+}
+
+/// Keep the engine ticking while AppKit runs a tracking loop.
+///
+/// A live resize runs on AppKit's side in `NSEventTrackingRunLoopMode`: the
+/// event loop is blocked, so the vsync/animation tasks never run and the
+/// content freezes whenever the pointer pauses mid-drag. A 60 Hz timer in the
+/// tracking mode pumps the engine exactly while such a loop is up.
+#[cfg(target_os = "macos")]
+fn install_tracking_timer(state: &Rc<AppState>) {
+    use objc2_core_foundation::{CFRunLoop, CFRunLoopTimer, CFRunLoopTimerContext, CFString};
+    use std::ffi::c_void;
+
+    unsafe extern "C-unwind" fn fired(_timer: *mut CFRunLoopTimer, info: *mut c_void) {
+        // SAFETY: `info` is the leaked `Weak<AppState>` created below; the
+        // timer lives for the process lifetime and only calls this on the main
+        // thread.
+        let weak = unsafe { &*(info as *const Weak<AppState>) };
+        if let Some(state) = weak.upgrade() {
+            state.tick_during_tracking();
+        }
+    }
+
+    let context_info = Box::into_raw(Box::new(Rc::downgrade(state)));
+    let mut context = CFRunLoopTimerContext {
+        version: 0,
+        info: context_info.cast(),
+        retain: None,
+        release: None,
+        copyDescription: None,
+    };
+    // SAFETY: the timer is added to the process's run loop and never
+    // invalidated; the leaked context outlives it. The callout only touches the
+    // `Weak<AppState>` above.
+    unsafe {
+        let Some(timer) =
+            CFRunLoopTimer::new(None, 0.0, 1.0 / 60.0, 0, 0, Some(fired), &mut context)
+        else {
+            return;
+        };
+        let Some(run_loop) = CFRunLoop::current() else {
+            return;
+        };
+        let mode = CFString::from_static_str("NSEventTrackingRunLoopMode");
+        run_loop.add_timer(Some(&timer), Some(&mode));
+    }
+}
+
 impl AppState {
+    /// Advance the engine while AppKit's tracking loop blocks the event loop.
+    #[cfg(target_os = "macos")]
+    fn tick_during_tracking(&self) {
+        if self.embedder_busy.get() {
+            return;
+        }
+        self.pump_platform_tasks();
+        self.apply_desired_sizes();
+    }
+
     pub(crate) fn coordinate_scale(&self, scale: f64) -> f64 {
         if self.logical_screen_coordinates {
             1.0
@@ -231,11 +325,30 @@ impl AppState {
         self.engine.borrow().clone()
     }
 
+    /// Run the engine's platform tasks unless they are already running.
+    ///
+    /// The macOS resize callback pumps them from inside AppKit's tracking loop,
+    /// where the event loop cannot. A task may open or resize a window, whose
+    /// resize callback fires synchronously and would otherwise pump again;
+    /// re-entering the task runner deadlocks.
+    pub(crate) fn pump_platform_tasks(&self) -> Option<Instant> {
+        if self.pumping_platform_tasks.replace(true) {
+            return None;
+        }
+        let _busy = BusyGuard::enter(&self.embedder_busy);
+        let next_task_time = self
+            .engine()
+            .and_then(|engine| engine.execute_platform_tasks());
+        self.pumping_platform_tasks.set(false);
+        next_task_time
+    }
+
     fn render(&self) -> Option<Arc<RenderState>> {
         self.render.borrow().clone()
     }
 
     fn send_metrics(&self, view_id: i64) {
+        let _busy = BusyGuard::enter(&self.embedder_busy);
         let Some(engine) = self.engine() else {
             return;
         };
@@ -253,6 +366,42 @@ impl AppState {
             if let Some(record) = windows.get(&view_id) {
                 render.update_metrics(view_id, record.framebuffer_size, record.scale);
             }
+        }
+    }
+
+    /// Send metrics computed from a window-size callback.
+    ///
+    /// macOS runs a nested tracking loop while the user drags a window edge, so
+    /// the event loop does not drain GLFW events until the drag ends and the
+    /// content would freeze at its old size. GLFW calls the framebuffer-size
+    /// callback inside that loop; sending the metrics from there lets the
+    /// framework lay the window out while the user drags.
+    ///
+    /// It must not query the window: GLFW is holding it for the callback, and
+    /// locking it here would alias that borrow. The callback supplies the
+    /// framebuffer size, and the scale comes from the callback's window.
+    #[cfg(target_os = "macos")]
+    fn send_metrics_from_size(&self, view_id: i64, framebuffer: (i32, i32), scale: f64) {
+        let Some(engine) = self.engine() else {
+            return;
+        };
+        let scale = scale.max(0.01);
+        let metrics = {
+            let mut windows = self.windows.borrow_mut();
+            let Some(record) = windows.get_mut(&view_id) else {
+                return;
+            };
+            record.framebuffer_size = framebuffer;
+            record.scale = scale;
+            record.logical_size = (
+                f64::from(framebuffer.0) / scale,
+                f64::from(framebuffer.1) / scale,
+            );
+            record.metrics()
+        };
+        engine.send_window_metrics_for_view(view_id, metrics);
+        if let Some(render) = self.render() {
+            render.update_metrics(view_id, framebuffer, scale);
         }
     }
 
@@ -667,6 +816,44 @@ impl AppState {
 
         match event {
             glfw::WindowEvent::FramebufferSize(_, _) => {
+                // The content size a resizable shrink-wrapped window asked for
+                // has landed: from here the user owns the window size, so stop
+                // tracking the content and report tight metrics. The content
+                // size also becomes the window's minimum — shrinking below it
+                // can only produce a layout that does not fit, and the
+                // framework shows an overflow indicator.
+                let handed_off = {
+                    let mut windows = self.windows.borrow_mut();
+                    match windows.get_mut(&view_id) {
+                        Some(record)
+                            if record.shrink_wrap
+                                && record.follow_content
+                                && record.content_size_requested.is_some() =>
+                        {
+                            record.follow_content = false;
+                            let content = record.content_size_requested.take();
+                            let scale = record.coordinate_scale();
+                            content.map(|(width, height)| {
+                                (
+                                    Arc::clone(&record.window),
+                                    (
+                                        (width * scale).round().max(1.0) as u32,
+                                        (height * scale).round().max(1.0) as u32,
+                                    ),
+                                )
+                            })
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some((window, (min_width, min_height))) = handed_off {
+                    if let Some(render) = self.render() {
+                        render.set_follow_content(view_id, false);
+                    }
+                    window
+                        .lock()
+                        .set_size_limits(Some(min_width), Some(min_height), None, None);
+                }
                 self.send_metrics(view_id);
                 if let Some(render) = self.render() {
                     render.mark_size_settled(view_id);
@@ -1026,31 +1213,68 @@ impl AppState {
     }
 
     fn apply_desired_sizes(&self) {
+        let _busy = BusyGuard::enter(&self.embedder_busy);
         let Some(render) = self.render() else {
             return;
         };
         let view_ids: Vec<i64> = self.windows.borrow().keys().copied().collect();
         for view_id in view_ids {
             if let Some((width, height)) = render.take_desired_size(view_id) {
-                let window = self
-                    .windows
-                    .borrow()
-                    .get(&view_id)
-                    .map(|record| record.window.clone());
-                if let Some(window) = window {
-                    let scale = self
-                        .windows
-                        .borrow()
-                        .get(&view_id)
-                        .map_or(1.0, |record| record.coordinate_scale());
-                    let mut window = window.lock();
-                    window.set_size(
-                        (width * scale).round() as i32,
-                        (height * scale).round() as i32,
-                    );
-                    drop(window);
-                    self.send_metrics(view_id);
+                let (window, scale, recenter) = {
+                    let windows = self.windows.borrow();
+                    let Some(record) = windows.get(&view_id) else {
+                        continue;
+                    };
+                    let scale = record.coordinate_scale();
+                    // A dialog is centred against the size it was created with.
+                    // Keep it centred on its parent while it still follows its
+                    // content; once a resizable dialog hands sizing over, the
+                    // user may put it wherever they like.
+                    let recenter = if record.kind == WindowKind::Dialog
+                        && record.shrink_wrap
+                        && record.follow_content
+                    {
+                        record
+                            .parent
+                            .and_then(|parent_id| windows.get(&parent_id))
+                            .map(|parent| {
+                                let parent_scale = parent.coordinate_scale();
+                                centered_position(
+                                    parent.position,
+                                    (
+                                        parent.logical_size.0 * parent_scale,
+                                        parent.logical_size.1 * parent_scale,
+                                    ),
+                                    (width * scale, height * scale),
+                                )
+                            })
+                    } else {
+                        None
+                    };
+                    (Arc::clone(&record.window), scale, recenter)
+                };
+                let mut window = window.lock();
+                window.set_size(
+                    (width * scale).round() as i32,
+                    (height * scale).round() as i32,
+                );
+                if let Some((x, y)) = recenter {
+                    window.set_pos(x, y);
                 }
+                drop(window);
+                // A resizable shrink-wrapped window follows its content
+                // only until the first content size is applied. Arm the
+                // handoff here and complete it when the window reports the
+                // new framebuffer size; flipping now would read the old
+                // size and lay the content out against it.
+                if let Some(record) = self.windows.borrow_mut().get_mut(&view_id)
+                    && record.shrink_wrap
+                    && record.resizable
+                    && record.follow_content
+                {
+                    record.content_size_requested = Some((width, height));
+                }
+                self.send_metrics(view_id);
             }
         }
     }
@@ -1233,6 +1457,10 @@ impl FlutterApp {
             main_tx,
             main_rx,
             platform_task_handler,
+            pumping_platform_tasks: Cell::new(false),
+            embedder_busy: Cell::new(false),
+            #[cfg(target_os = "macos")]
+            last_resize_pump: Cell::new(None),
             plugins: RwLock::new(plugins),
             focused,
             quit_flag,
@@ -1281,6 +1509,7 @@ impl FlutterApp {
         request: WindowRequest,
     ) -> Result<FlutterWindow, CreateError> {
         let state = &self.state;
+        let _busy = BusyGuard::enter(&state.embedder_busy);
         let running = state.running.get();
         let view_id = if running {
             let id = state.next_view_id.get();
@@ -1356,6 +1585,45 @@ impl FlutterApp {
         // event that marks the view focused would be lost, leaving the view
         // unable to focus its text fields.
         Self::enable_window_polling(&mut window);
+        #[cfg(target_os = "macos")]
+        {
+            // AppKit runs a nested tracking loop while the user drags a window
+            // edge, so the event loop does not drain GLFW's polling receiver
+            // until the drag ends and the content freezes at its old size.
+            // GLFW calls this callback from inside that loop, so the framework
+            // can follow the drag instead of catching up afterwards.
+            let state = Rc::downgrade(&self.state);
+            window.set_framebuffer_size_callback(move |window, width, height| {
+                if let Some(state) = state.upgrade() {
+                    // The notification is synchronous, so this can fire while
+                    // the embedder is creating or resizing a window. Leave that
+                    // to the event loop then.
+                    if state.embedder_busy.get() {
+                        return;
+                    }
+                    let _busy = BusyGuard::enter(&state.embedder_busy);
+                    // AppKit can post these far more often than the display
+                    // refreshes. Laying out for every notification leaves the
+                    // engine with a backlog that drains for seconds after the
+                    // drag, so keep at most one frame per refresh.
+                    let now = Instant::now();
+                    if state.last_resize_pump.get().is_some_and(|last| {
+                        now.duration_since(last) < std::time::Duration::from_millis(16)
+                    }) {
+                        return;
+                    }
+                    state.last_resize_pump.set(Some(now));
+                    let scale = f64::from(window.get_content_scale().0);
+                    state.send_metrics_from_size(view_id, (width, height), scale);
+                    // The engine schedules the frame through the platform task
+                    // runner, which normally runs in the event loop below. That
+                    // loop is blocked while the tracking loop is up, so run the
+                    // tasks here; otherwise the layout never reaches the
+                    // raster thread until the drag ends.
+                    state.pump_platform_tasks();
+                }
+            });
+        }
         // GLFW's window sizes and positions are in screen coordinates. On X11
         // and Windows those are physical pixels while the framework sizes and
         // positions windows in logical pixels; scale by the content scale. The
@@ -1440,10 +1708,9 @@ impl FlutterApp {
             parent: request.parent,
             modal: request.modal,
             shrink_wrap: request.shrink_wrap,
-            shrink_wrap_max: (
-                (width * scale).round() as usize,
-                (height * scale).round() as usize,
-            ),
+            resizable: request.resizable,
+            follow_content: request.shrink_wrap,
+            content_size_requested: None,
             logical_size: (width, height),
             position: (0, 0),
             follow_position: (0, 0),
@@ -1484,6 +1751,7 @@ impl FlutterApp {
                 record.framebuffer_size,
                 record.scale,
                 record.shrink_wrap,
+                record.follow_content,
             );
         }
 
@@ -1592,13 +1860,13 @@ impl FlutterApp {
                 wake_glfw.lock().post_empty_event();
             });
         }
+        #[cfg(target_os = "macos")]
+        install_tracking_timer(state);
         while !state.quit.get()
             && !state.quit_flag.load(Ordering::Relaxed)
             && !(state.had_windows.get() && state.windows.borrow().is_empty())
         {
-            let next_task_time = state
-                .engine()
-                .and_then(|engine| engine.execute_platform_tasks());
+            let next_task_time = state.pump_platform_tasks();
 
             let callbacks: Vec<MainThreadFn> = state.main_rx.try_iter().collect();
             for mut cb in callbacks {
@@ -1649,7 +1917,35 @@ impl FlutterApp {
                     };
                     glfw::flush_messages(&record.receiver).collect()
                 };
-                for (_, event) in events {
+                // A live resize queues one size/refresh event per step, and the
+                // tracking loop also lets cursor positions pile up while the
+                // event loop is blocked. The resize callback already sent the
+                // metrics for the size in progress, and only the latest size and
+                // pointer position matter: replaying the whole trail after the
+                // drag makes the app stall for seconds.
+                let last_framebuffer = events.iter().rposition(|(_, event)| {
+                    matches!(event, glfw::WindowEvent::FramebufferSize(_, _))
+                });
+                let last_cursor = events
+                    .iter()
+                    .rposition(|(_, event)| matches!(event, glfw::WindowEvent::CursorPos(_, _)));
+                let last_size = events
+                    .iter()
+                    .rposition(|(_, event)| matches!(event, glfw::WindowEvent::Size(_, _)));
+                let last_refresh = events
+                    .iter()
+                    .rposition(|(_, event)| matches!(event, glfw::WindowEvent::Refresh));
+                for (index, (_, event)) in events.into_iter().enumerate() {
+                    let superseded = match event {
+                        glfw::WindowEvent::FramebufferSize(_, _) => Some(index) != last_framebuffer,
+                        glfw::WindowEvent::CursorPos(_, _) => Some(index) != last_cursor,
+                        glfw::WindowEvent::Size(_, _) => Some(index) != last_size,
+                        glfw::WindowEvent::Refresh => Some(index) != last_refresh,
+                        _ => false,
+                    };
+                    if superseded {
+                        continue;
+                    }
                     let run_default_handler = if let Some(custom_handler) = &mut custom_handler {
                         custom_handler(self, view_id, event.clone())
                     } else {

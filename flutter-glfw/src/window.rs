@@ -151,29 +151,39 @@ impl WindowRequest {
 ///
 /// Tooltips and popups are override-redirect windows that show intrinsic,
 /// animated content: they need a bound they will never plausibly reach so the
-/// window can grow with its content.
+/// window can grow with its content. A shrink-wrapped view that still follows
+/// its content gets the same bound, because the Dart binding lays its root
+/// render object out with unbounded constraints; the bound only has to admit
+/// the frame the framework measured.
 const MAX_LOOSE_SIZE: usize = 16_384;
 
-/// The physical size a shrink-wrapped view's loose metrics may allow.
+/// The view metrics for one window in `width` × `height` physical pixels.
 ///
-/// The framework fills a finite loose maximum: `Overlay` (and therefore every
-/// `MaterialApp`) lays out at `constraints.biggest`, so a large bound makes
-/// ordinary content lay out at that bound. A window that is meant to size to
-/// its content must therefore report a bound it could actually have: the size
-/// it was created with. Content that sizes itself still shrinks the window
-/// below that bound, and the bound follows a window the user enlarged.
-///
-/// Tooltips and popups are exempt: their content is intrinsic and animates, so
-/// they keep [`MAX_LOOSE_SIZE`.
-fn shrink_wrap_bound(
-    kind: WindowKind,
-    initial: (usize, usize),
-    framebuffer: (usize, usize),
-) -> (usize, usize) {
-    if kind.is_floating() {
-        return (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE);
+/// A view that still follows its content reports a loose maximum that only has
+/// to admit the frame the framework measured; the Dart binding lays the root
+/// render object out with unbounded constraints, so the content never fills
+/// the bound. Once a resizable window stops following — the user owns its size
+/// from then on — the view is tight like any other resizable window, so the
+/// content fills exactly the window and no stale larger size leaves a black
+/// remainder.
+fn view_metrics(
+    shrink_wrap: bool,
+    follow_content: bool,
+    width: usize,
+    height: usize,
+    ratio: f64,
+) -> WindowMetrics {
+    if shrink_wrap && follow_content {
+        WindowMetrics::loose(
+            width.max(1),
+            height.max(1),
+            ratio,
+            MAX_LOOSE_SIZE,
+            MAX_LOOSE_SIZE,
+        )
+    } else {
+        WindowMetrics::tight(width, height, ratio)
     }
-    (initial.0.max(framebuffer.0), initial.1.max(framebuffer.1))
 }
 
 /// Whether the window's native X11 window still exists.
@@ -251,15 +261,18 @@ pub(crate) struct WindowRecord {
     /// A modal dialog blocks input to `parent`.
     pub modal: bool,
     pub shrink_wrap: bool,
-    /// The physical size a shrink-wrapped view may grow to.
+    /// Whether the user may resize this window.
+    pub resizable: bool,
+    /// Whether the view still follows its content size.
     ///
-    /// Loose metrics need a finite maximum, but whatever bound is reported is
-    /// also the size the framework lets its content fill: `Overlay` (and
-    /// therefore `MaterialApp`) lays out at `constraints.biggest` whenever that
-    /// is finite. A large constant bound would make an ordinary window's
-    /// content 16384×16384 pixels instead of the size its content asks for.
-    /// See [`shrink_wrap_bound`].
-    pub shrink_wrap_max: (usize, usize),
+    /// True for every shrink-wrapped view at creation. A resizable
+    /// shrink-wrapped window stops following once the first content size has
+    /// been applied, because from then on the user controls its size.
+    pub follow_content: bool,
+    /// The logical content size the embedder asked the window manager for, if
+    /// its `FramebufferSize` event has not arrived yet. Its arrival ends the
+    /// initial content sizing for a resizable window.
+    pub content_size_requested: Option<(f64, f64)>,
     pub logical_size: (f64, f64),
     pub position: (i32, i32),
     /// The position the embedder last asked the window manager to put this
@@ -336,19 +349,7 @@ impl WindowRecord {
         let width = self.framebuffer_size.0.max(0) as usize;
         let height = self.framebuffer_size.1.max(0) as usize;
         let ratio = if self.scale > 0.0 { self.scale } else { 1.0 };
-        if self.shrink_wrap {
-            let (max_width, max_height) =
-                shrink_wrap_bound(self.kind, self.shrink_wrap_max, (width, height));
-            WindowMetrics::loose(
-                width.max(1),
-                height.max(1),
-                ratio,
-                max_width.max(1),
-                max_height.max(1),
-            )
-        } else {
-            WindowMetrics::tight(width, height, ratio)
-        }
+        view_metrics(self.shrink_wrap, self.follow_content, width, height, ratio)
     }
 
     pub(crate) fn pressed_buttons(&self) -> PointerButtons {
@@ -448,6 +449,22 @@ pub(crate) fn observe_position(
         *follow_position = position;
     }
     acknowledged
+}
+
+/// The screen position that centres a child of `child_size` in `parent`.
+///
+/// Both sizes are in screen coordinates. Used to keep a content-sized dialog
+/// centred on its parent after the embedder resizes it away from the size it
+/// was created with.
+pub(crate) fn centered_position(
+    parent: (i32, i32),
+    parent_size: (f64, f64),
+    child_size: (f64, f64),
+) -> (i32, i32) {
+    (
+        (f64::from(parent.0) + (parent_size.0 - child_size.0) / 2.0).round() as i32,
+        (f64::from(parent.1) + (parent_size.1 - child_size.1) / 2.0).round() as i32,
+    )
 }
 
 /// A pointer event ready to be sent to the engine.
@@ -738,42 +755,42 @@ mod tests {
     }
 
     #[test]
-    fn shrink_wrap_bound_keeps_regular_windows_at_their_own_size() {
-        // A MaterialApp lays out at whichever finite bound it is given, so the
-        // bound must be the window the user asked for, not a huge constant.
+    fn following_views_admit_the_frame_the_framework_measured() {
+        // While a view follows its content the framework lays it out with
+        // unbounded constraints and reports the content size back, so the
+        // maximum must not be the window's current (creation) size: 400×300
+        // would reject the 459×408 frame the content asks for.
+        let metrics = view_metrics(true, true, 400, 300, 1.0);
         assert_eq!(
-            shrink_wrap_bound(WindowKind::Regular, (800, 600), (800, 600)),
-            (800, 600)
+            metrics,
+            WindowMetrics::loose(400, 300, 1.0, MAX_LOOSE_SIZE, MAX_LOOSE_SIZE)
         );
     }
 
     #[test]
-    fn shrink_wrap_bound_grows_with_a_user_resize() {
+    fn handed_off_views_fill_exactly_their_window() {
+        // Once a resizable window takes over sizing, a loose maximum larger
+        // than the window would lay the content out at that maximum and leave
+        // a black remainder (or crop it). Tight metrics fill the window.
         assert_eq!(
-            shrink_wrap_bound(WindowKind::Dialog, (800, 600), (1200, 900)),
-            (1200, 900)
+            view_metrics(true, false, 218, 272, 1.0),
+            WindowMetrics::tight(218, 272, 1.0)
         );
     }
 
     #[test]
-    fn shrink_wrap_bound_keeps_room_after_the_window_shrank() {
-        // Content that sized itself smaller can grow back to the original
-        // bound instead of being pinned to the last frame's size.
+    fn ordinary_views_are_tight() {
         assert_eq!(
-            shrink_wrap_bound(WindowKind::Satellite, (800, 600), (300, 200)),
-            (800, 600)
+            view_metrics(false, false, 800, 600, 1.0),
+            WindowMetrics::tight(800, 600, 1.0)
         );
     }
 
     #[test]
-    fn floating_windows_keep_room_to_animate() {
+    fn centered_position_centers_in_the_parent() {
         assert_eq!(
-            shrink_wrap_bound(WindowKind::Tooltip, (240, 100), (240, 100)),
-            (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE)
-        );
-        assert_eq!(
-            shrink_wrap_bound(WindowKind::Popup, (240, 100), (240, 100)),
-            (MAX_LOOSE_SIZE, MAX_LOOSE_SIZE)
+            centered_position((100, 200), (800.0, 600.0), (218.0, 272.0)),
+            (391, 364)
         );
     }
 }

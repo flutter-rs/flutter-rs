@@ -35,22 +35,39 @@ class DialogWindowContent extends StatelessWidget {
                     children: [
                       ElevatedButton(
                         onPressed: () {
-                          final WindowRegistry windowRegistry = WindowRegistry.of(context);
+                          final WindowRegistry windowRegistry =
+                              WindowRegistry.of(context);
 
                           late final WindowEntry entry;
-                          final controller = DialogWindowController(
-                            delegate: CallbackDialogWindowControllerDelegate(
-                              onDestroyed: () => windowRegistry.unregister(entry),
-                            ),
-                            title: 'Modal Dialog',
-                            size: windowSettings.dialogSize,
-                            parent: dialogWindowController,
-                          );
+                          final DialogWindowController controller;
+                          if (windowSettings.dialogShrinkWrap) {
+                            controller = DialogWindowController.shrinkWrap(
+                              resizable: windowSettings.dialogResizable,
+                              delegate: CallbackDialogWindowControllerDelegate(
+                                onDestroyed: () =>
+                                    windowRegistry.unregister(entry),
+                              ),
+                              title: 'Modal Dialog',
+                              parent: dialogWindowController,
+                            );
+                          } else {
+                            controller = DialogWindowController(
+                              delegate: CallbackDialogWindowControllerDelegate(
+                                onDestroyed: () =>
+                                    windowRegistry.unregister(entry),
+                              ),
+                              title: 'Modal Dialog',
+                              size: windowSettings.dialogSize,
+                              parent: dialogWindowController,
+                            );
+                          }
 
                           entry = WindowEntry(
                             controller: controller,
                             builder: (BuildContext context) =>
-                                DialogWindowContent(dialogWindowController: controller),
+                                DialogWindowContent(
+                                  dialogWindowController: controller,
+                                ),
                           );
                           windowRegistry.register(entry);
                         },
@@ -60,8 +77,11 @@ class DialogWindowContent extends StatelessWidget {
                       ListenableBuilder(
                         listenable: dialogWindowController,
                         builder: (BuildContext context, Widget? _) {
-                          final double dpr = MediaQuery.of(context).devicePixelRatio;
-                          final Size windowSize = WindowScope.contentSizeOf(context);
+                          final double dpr = MediaQuery.of(context)
+                              .devicePixelRatio;
+                          final Size windowSize = WindowScope.contentSizeOf(
+                            context,
+                          );
                           return Text(
                             'View ID: ${dialogWindowController.rootView.viewId}\n'
                             'Parent View ID: ${dialogWindowController.parent?.rootView.viewId ?? "None"}\n'

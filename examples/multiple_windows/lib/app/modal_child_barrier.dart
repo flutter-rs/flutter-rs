@@ -42,12 +42,21 @@ class ModalChildBarrier extends StatelessWidget {
         // at this position, remount the whole window content, and drop the
         // state that owns the other windows' views (a popup would lose its
         // content while its native window stayed on screen).
+        //
+        // `passthrough` passes the incoming constraints straight to [child].
+        // A shrink-wrapped view lays this out with unbounded constraints, so
+        // the stack still sizes itself to the content; a window the user has
+        // resized lays it out tightly, so the content fills the window instead
+        // of leaving a transparent margin. The barrier is positioned to fill
+        // whichever area the stack ends up with.
         return Stack(
-          fit: StackFit.expand,
+          fit: StackFit.passthrough,
           children: <Widget>[
             child!,
             if (isModalOpen)
-              const ModalBarrier(color: Colors.black54, dismissible: false),
+              const Positioned.fill(
+                child: ModalBarrier(color: Colors.black54, dismissible: false),
+              ),
           ],
         );
       },

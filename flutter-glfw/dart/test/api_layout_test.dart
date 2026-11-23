@@ -9,7 +9,7 @@ void main() {
   });
 
   test('FgWindowingApi layout matches the Rust repr(C) table', () {
-    // version + size (8 bytes) followed by 20 function pointers.
-    expect(sizeOf<FgWindowingApi>(), 8 + 25 * sizeOf<Pointer<Void>>());
+    // version + size (8 bytes) followed by 27 function pointers.
+    expect(sizeOf<FgWindowingApi>(), 8 + 27 * sizeOf<Pointer<Void>>());
   });
 }

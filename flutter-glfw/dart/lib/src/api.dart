@@ -148,6 +148,8 @@ final class FgWindowingApi extends Struct {
   external Pointer<NativeFunction<_GetSizeC>> getSizePhysical;
   external Pointer<NativeFunction<_WorkAreaC>> getMonitorWorkareaPhysical;
   external Pointer<NativeFunction<_SetPositionC>> setPositionPhysical;
+  external Pointer<NativeFunction<_GetBoolC>> followsContent;
+  external Pointer<NativeFunction<_GetBoolC>> isShrinkWrapped;
 }
 
 /// The Dart-facing wrapper around the native windowing table.
@@ -173,12 +175,14 @@ class GlfwWindowingApi {
       _getMonitorWorkarea = api.getMonitorWorkarea.asFunction(),
       _setEventCallback = api.setEventCallback.asFunction(),
       _setParent = api.setParent.asFunction(),
-      _usesLogicalScreenCoordinates =
-          api.usesLogicalScreenCoordinates.asFunction(),
+      _usesLogicalScreenCoordinates = api.usesLogicalScreenCoordinates
+          .asFunction(),
       _getPositionPhysical = api.getPositionPhysical.asFunction(),
       _getSizePhysical = api.getSizePhysical.asFunction(),
       _getMonitorWorkareaPhysical = api.getMonitorWorkareaPhysical.asFunction(),
-      _setPositionPhysical = api.setPositionPhysical.asFunction();
+      _setPositionPhysical = api.setPositionPhysical.asFunction(),
+      _followsContent = api.followsContent.asFunction(),
+      _isShrinkWrapped = api.isShrinkWrapped.asFunction();
 
   /// Resolve the table from `PlatformDispatcher.engineId`.
   ///
@@ -228,6 +232,8 @@ class GlfwWindowingApi {
   final _GetSizeD _getSizePhysical;
   final _WorkAreaD _getMonitorWorkareaPhysical;
   final _SetPositionD _setPositionPhysical;
+  final _GetBoolD _followsContent;
+  final _GetBoolD _isShrinkWrapped;
 
   /// Create a window; returns the engine view id, or `-1`.
   int createWindow({
@@ -326,6 +332,12 @@ class GlfwWindowingApi {
   bool isFullscreen(int viewId) => _isFullscreen(viewId) != 0;
   bool activate(int viewId) => _activate(viewId) == 0;
   bool isActivated(int viewId) => _isActivated(viewId) != 0;
+
+  /// Whether the view still follows its content size.
+  bool followsContent(int viewId) => _followsContent(viewId) != 0;
+
+  /// Whether the view belongs to a shrink-wrapped window.
+  bool isShrinkWrapped(int viewId) => _isShrinkWrapped(viewId) != 0;
   double getScale(int viewId) => _getScale(viewId);
   bool setParent(int viewId, int parent) => _setParent(viewId, parent) == 0;
 

@@ -124,13 +124,24 @@ class _WindowCreationButtons extends StatelessWidget {
         ElevatedButton(
           onPressed: () {
             late final WindowEntry entry;
-            final controller = WindowController(
-              delegate: CallbackWindowControllerDelegate(
-                onDestroyed: () => windowRegistry.unregister(entry),
-              ),
-              title: 'Regular',
-              size: windowSettings.regularSize,
-            );
+            final WindowController controller;
+            if (windowSettings.shrinkWrap) {
+              controller = WindowController.shrinkWrap(
+                resizable: windowSettings.regularResizable,
+                delegate: CallbackWindowControllerDelegate(
+                  onDestroyed: () => windowRegistry.unregister(entry),
+                ),
+                title: 'Regular',
+              );
+            } else {
+              controller = WindowController(
+                delegate: CallbackWindowControllerDelegate(
+                  onDestroyed: () => windowRegistry.unregister(entry),
+                ),
+                title: 'Regular',
+                size: windowSettings.regularSize,
+              );
+            }
 
             entry = WindowEntry(
               controller: controller,
@@ -145,14 +156,26 @@ class _WindowCreationButtons extends StatelessWidget {
         ElevatedButton(
           onPressed: () {
             late final WindowEntry entry;
-            final controller = DialogWindowController(
-              delegate: CallbackDialogWindowControllerDelegate(
-                onDestroyed: () => windowRegistry.unregister(entry),
-              ),
-              title: 'Modal Dialog',
-              size: windowSettings.dialogSize,
-              parent: windowController,
-            );
+            final DialogWindowController controller;
+            if (windowSettings.dialogShrinkWrap) {
+              controller = DialogWindowController.shrinkWrap(
+                resizable: windowSettings.dialogResizable,
+                delegate: CallbackDialogWindowControllerDelegate(
+                  onDestroyed: () => windowRegistry.unregister(entry),
+                ),
+                title: 'Modal Dialog',
+                parent: windowController,
+              );
+            } else {
+              controller = DialogWindowController(
+                delegate: CallbackDialogWindowControllerDelegate(
+                  onDestroyed: () => windowRegistry.unregister(entry),
+                ),
+                title: 'Modal Dialog',
+                size: windowSettings.dialogSize,
+                parent: windowController,
+              );
+            }
 
             entry = WindowEntry(
               controller: controller,

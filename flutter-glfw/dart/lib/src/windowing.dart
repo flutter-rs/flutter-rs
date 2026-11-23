@@ -11,7 +11,8 @@ import 'dart:ffi' hide Size;
 import 'dart:ui' show Display;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/rendering.dart' show BoxConstraints;
+import 'package:flutter/rendering.dart'
+    show BoxConstraints, RenderView, ViewConfiguration;
 import 'package:flutter/src/foundation/_features.dart' show isWindowingEnabled;
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/src/widgets/_window_positioner.dart';
@@ -77,6 +78,78 @@ class GlfwWindowingBinding extends WidgetsFlutterBinding {
 
     return GlfwWindowingOwner();
   }
+
+  /// Gives a shrink-wrapped view unbounded constraints so the framework
+  /// measures its content.
+  ///
+  /// The view metrics carry a finite loose maximum, and `Overlay` (and
+  /// therefore `MaterialApp`) lays its content out at `constraints.biggest`
+  /// whenever that maximum is finite. A shrink-wrap window would then be laid
+  /// out at the size its native window was created with — 400×300 for a
+  /// `WindowController.shrinkWrap` — and its content would overflow that box
+  /// until the embedder resized the window.
+  ///
+  /// With unbounded constraints the root render object sizes itself to its
+  /// child instead, and `ViewConfiguration.toPhysicalSize` passes that size to
+  /// the engine. The compositor then resizes the native window to the frame it
+  /// receives. Once a resizable window hands sizing over to the user, the
+  /// owner reports `followsContent == false` and the view gets the metrics'
+  /// constraints back.
+  @override
+  ViewConfiguration createViewConfigurationFor(RenderView renderView) {
+    final ViewConfiguration configuration = super.createViewConfigurationFor(
+      renderView,
+    );
+    final WindowingOwner owner = windowingOwner;
+    if (owner is! GlfwWindowingOwner) {
+      return configuration;
+    }
+    final int viewId = renderView.flutterView.viewId;
+
+    return windowConfigurationFor(
+      configuration,
+      followsContent: owner.followsContent(viewId),
+      shrinkWrapped: owner.isShrinkWrapped(viewId),
+    );
+  }
+}
+
+/// Adapts [configuration] for a view that sizes itself to its content.
+///
+/// A following view gets unbounded constraints so the framework measures its
+/// content. A shrink-wrapped view that has handed sizing over to the user keeps
+/// the metrics' constraints, plus one logical pixel of layout slack: a
+/// content-sized window is rounded to whole device pixels, so the content's
+/// intrinsic size can be a fraction of a pixel wider than the window and trip a
+/// sub-pixel overflow. The physical constraints still clamp the frame to the
+/// window, so the excess is cropped rather than shown.
+@visibleForTesting
+ViewConfiguration windowConfigurationFor(
+  ViewConfiguration configuration, {
+  required bool followsContent,
+  required bool shrinkWrapped,
+}) {
+  if (followsContent) {
+    return ViewConfiguration(
+      physicalConstraints: const BoxConstraints(),
+      logicalConstraints: const BoxConstraints(),
+      devicePixelRatio: configuration.devicePixelRatio,
+    );
+  }
+  if (shrinkWrapped) {
+    return ViewConfiguration(
+      physicalConstraints: configuration.physicalConstraints,
+      logicalConstraints: BoxConstraints(
+        minWidth: configuration.logicalConstraints.minWidth,
+        maxWidth: configuration.logicalConstraints.maxWidth + 1,
+        minHeight: configuration.logicalConstraints.minHeight,
+        maxHeight: configuration.logicalConstraints.maxHeight + 1,
+      ),
+      devicePixelRatio: configuration.devicePixelRatio,
+    );
+  }
+
+  return configuration;
 }
 
 /// The GLFW windowing owner.
@@ -133,6 +206,12 @@ class GlfwWindowingOwner extends WindowingOwner {
   void unregister(int viewId) {
     _controllers.remove(viewId);
   }
+
+  /// Whether [viewId] still follows its content size.
+  bool followsContent(int viewId) => _api.followsContent(viewId);
+
+  /// Whether [viewId] belongs to a shrink-wrapped window.
+  bool isShrinkWrapped(int viewId) => _api.isShrinkWrapped(viewId);
 
   int _create({
     required int kind,

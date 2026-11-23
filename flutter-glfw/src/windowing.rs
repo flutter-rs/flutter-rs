@@ -106,6 +106,10 @@ pub struct FgWindowingApi {
     pub get_size_physical: GetPhysicalSizeFn,
     pub get_monitor_workarea_physical: PhysicalWorkAreaFn,
     pub set_position_physical: SetPhysicalPositionFn,
+    /// Whether the view still follows its content size.
+    pub follows_content: GetBoolFn,
+    /// Whether the view belongs to a shrink-wrapped window.
+    pub is_shrink_wrapped: GetBoolFn,
 }
 
 static API: FgWindowingApi = FgWindowingApi {
@@ -136,6 +140,8 @@ static API: FgWindowingApi = FgWindowingApi {
     get_size_physical,
     get_monitor_workarea_physical,
     set_position_physical,
+    follows_content,
+    is_shrink_wrapped,
 };
 
 /// The table address, forwarded to Dart as `PlatformDispatcher.engineId`.
@@ -574,6 +580,43 @@ pub unsafe extern "C" fn is_activated(view_id: i64) -> i32 {
     })
 }
 
+/// Whether a view still follows its content size.
+///
+/// The Dart binding gives a following view unbounded constraints so the
+/// framework measures its content instead of filling the reported maximum.
+///
+/// # Safety
+///
+/// Callable from the platform thread only; the ABI guarantees that.
+pub unsafe extern "C" fn follows_content(view_id: i64) -> i32 {
+    with_app(0, |state| {
+        i32::from(
+            state
+                .windows
+                .borrow()
+                .get(&view_id)
+                .is_some_and(|record| record.follow_content),
+        )
+    })
+}
+
+/// Whether a view belongs to a window that sizes itself to its content.
+///
+/// # Safety
+///
+/// Callable from the platform thread only; the ABI guarantees that.
+pub unsafe extern "C" fn is_shrink_wrapped(view_id: i64) -> i32 {
+    with_app(0, |state| {
+        i32::from(
+            state
+                .windows
+                .borrow()
+                .get(&view_id)
+                .is_some_and(|record| record.shrink_wrap),
+        )
+    })
+}
+
 /// The window's content scale.
 ///
 /// # Safety
@@ -846,6 +889,6 @@ mod tests {
     fn abi_layout_matches_the_dart_package() {
         // These numbers are asserted by flutter-glfw/dart/test/api_layout_test.dart.
         assert_eq!(size_of::<FgWindowParams>(), 56);
-        assert_eq!(size_of::<FgWindowingApi>(), 8 + 25 * size_of::<usize>());
+        assert_eq!(size_of::<FgWindowingApi>(), 8 + 27 * size_of::<usize>());
     }
 }

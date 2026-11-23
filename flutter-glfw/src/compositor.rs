@@ -407,14 +407,14 @@ impl FlutterCompositorHandler for GlfwCompositor {
     }
 
     fn present_view(&self, view_id: FlutterViewId, layers: &[&FlutterLayer]) -> bool {
-        let Some((context, settled_size, scale, shrink_wrap)) = ({
+        let Some((context, settled_size, scale, follows_content)) = ({
             let views = self.state.views.lock();
             views.get(&view_id).map(|view| {
                 (
                     Arc::clone(&view.context),
                     view.settled_size,
                     view.scale,
-                    view.shrink_wrap,
+                    view.shrink_wrap && view.follow_content,
                 )
             })
         }) else {
@@ -462,7 +462,7 @@ impl FlutterCompositorHandler for GlfwCompositor {
             }
             // SAFETY: as above.
             let backing = unsafe { &*(user_data as *const MetalBackingStore) };
-            if shrink_wrap {
+            if follows_content {
                 self.resize_shrink_wrapped(view_id, backing.size, scale, settled_size);
             }
             return metal.present(view_id, &backing.texture, backing.size, scale);
@@ -555,7 +555,7 @@ impl FlutterCompositorHandler for GlfwCompositor {
         // Keep the buffer we are about to swap the same size as the window, so
         // an animated shrink-wrapped view is laid out at its new size on the
         // next frame instead of the previous one.
-        if shrink_wrap {
+        if follows_content {
             self.resize_shrink_wrapped(view_id, texture_size, scale, settled_size);
         }
         // SAFETY: a context is current; the framebuffer names are written by

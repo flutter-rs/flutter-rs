@@ -40,6 +40,12 @@ pub(crate) struct ViewRender {
     pub scale: f64,
     /// Whether the framework sizes this view to its content.
     pub shrink_wrap: bool,
+    /// Whether the view still follows its content size.
+    ///
+    /// A resizable shrink-wrapped window follows its content only until the
+    /// user resizes it; after that the content fills the window like an
+    /// ordinary resizable window, and the compositor must stop resizing it.
+    pub follow_content: bool,
     /// A content size requested by the last presented frame; the main thread
     /// applies it with `glfwSetWindowSize`.
     pub desired_size: Mutex<Option<(f64, f64)>>,
@@ -108,6 +114,7 @@ impl RenderState {
         framebuffer_size: (i32, i32),
         scale: f64,
         shrink_wrap: bool,
+        follow_content: bool,
     ) {
         self.views.lock().insert(
             view_id,
@@ -117,6 +124,7 @@ impl RenderState {
                 settled_size: framebuffer_size,
                 scale,
                 shrink_wrap,
+                follow_content,
                 desired_size: Mutex::new(None),
             },
         );
@@ -124,6 +132,13 @@ impl RenderState {
 
     pub(crate) fn remove_view(&self, view_id: i64) {
         self.views.lock().remove(&view_id);
+    }
+
+    /// Stop (or resume) resizing a shrink-wrapped view to its content.
+    pub(crate) fn set_follow_content(&self, view_id: i64, follow_content: bool) {
+        if let Some(view) = self.views.lock().get_mut(&view_id) {
+            view.follow_content = follow_content;
+        }
     }
 
     pub(crate) fn update_metrics(&self, view_id: i64, framebuffer_size: (i32, i32), scale: f64) {

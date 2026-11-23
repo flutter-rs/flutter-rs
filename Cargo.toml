@@ -51,6 +51,9 @@ objc2 = "0.6"
 objc2-core-foundation = { version = "0.3", default-features = false, features = [
     "CFCGTypes",
     "objc2",
+    "CFDate",
+    "CFRunLoop",
+    "CFString",
 ] }
 objc2-metal = { version = "0.3", features = [
     "MTLBlitCommandEncoder",

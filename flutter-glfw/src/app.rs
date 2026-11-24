@@ -303,6 +303,95 @@ fn install_tracking_timer(state: &Rc<AppState>) {
     }
 }
 
+/// Keep the engine ticking while Win32 runs a modal move/resize loop.
+///
+/// Dragging a window edge or title bar enters a modal loop inside
+/// `DispatchMessage`, so the event loop below is blocked until the drag ends.
+/// The framebuffer-size callback covers the steps where the pointer moves, but
+/// there are no size notifications while it pauses, and the content freezes.
+/// A 16 ms timer started on `WM_ENTERSIZEMOVE` pumps the engine exactly while
+/// such a loop is up, mirroring the macOS tracking timer.
+#[cfg(target_os = "windows")]
+fn install_live_resize_timer(window: &glfw::PWindow) {
+    use std::ffi::c_void;
+
+    type SubclassProc =
+        unsafe extern "system" fn(*mut c_void, u32, usize, isize, usize, usize) -> isize;
+
+    #[link(name = "comctl32")]
+    unsafe extern "system" {
+        fn SetWindowSubclass(
+            window: *mut c_void,
+            proc: SubclassProc,
+            id: usize,
+            data: usize,
+        ) -> i32;
+        fn DefSubclassProc(
+            window: *mut c_void,
+            message: u32,
+            wparam: usize,
+            lparam: isize,
+        ) -> isize;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetTimer(window: *mut c_void, id: usize, interval: u32, callback: *mut c_void) -> usize;
+        fn KillTimer(window: *mut c_void, id: usize) -> i32;
+    }
+
+    const WM_TIMER: u32 = 0x0113;
+    const WM_ENTERSIZEMOVE: u32 = 0x0231;
+    const WM_EXITSIZEMOVE: u32 = 0x0232;
+    const LIVE_RESIZE_TIMER: usize = 1;
+
+    unsafe extern "system" fn subclass(
+        window: *mut c_void,
+        message: u32,
+        wparam: usize,
+        lparam: isize,
+        _id: usize,
+        _data: usize,
+    ) -> isize {
+        match message {
+            WM_ENTERSIZEMOVE => {
+                // SAFETY: `window` is the subclassed live window.
+                unsafe {
+                    SetTimer(window, LIVE_RESIZE_TIMER, 16, std::ptr::null_mut());
+                }
+            }
+            WM_EXITSIZEMOVE => {
+                // SAFETY: as above.
+                unsafe {
+                    KillTimer(window, LIVE_RESIZE_TIMER);
+                }
+            }
+            WM_TIMER if wparam == LIVE_RESIZE_TIMER => {
+                if let Some(state) = current_app()
+                    && !state.embedder_busy.get()
+                {
+                    let _busy = BusyGuard::enter(&state.embedder_busy);
+                    state.pump_platform_tasks();
+                    state.apply_desired_sizes();
+                }
+            }
+            _ => {}
+        }
+        // SAFETY: chain to the procedure this subclass replaced with the
+        // arguments this procedure received.
+        unsafe { DefSubclassProc(window, message, wparam, lparam) }
+    }
+
+    let window = window.get_win32_window();
+    if window.is_null() {
+        return;
+    }
+    // SAFETY: a live HWND on the thread that owns it; `subclass` is valid for
+    // the lifetime of the window.
+    unsafe {
+        SetWindowSubclass(window, subclass, 1, 0);
+    }
+}
+
 impl AppState {
     /// Advance the engine while AppKit's tracking loop blocks the event loop.
     #[cfg(target_os = "macos")]
@@ -1587,6 +1676,8 @@ impl FlutterApp {
         // event that marks the view focused would be lost, leaving the view
         // unable to focus its text fields.
         Self::enable_window_polling(&mut window);
+        #[cfg(target_os = "windows")]
+        install_live_resize_timer(&window);
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             // AppKit runs a nested tracking loop and Win32 a modal sizing loop

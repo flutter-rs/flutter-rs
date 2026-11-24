@@ -223,8 +223,9 @@ pub(crate) struct AppState {
     /// size once the embedder is back in its event loop.
     pub(crate) embedder_busy: Cell<bool>,
     /// When the resize callback last pumped the engine, so a burst of AppKit
-    /// resize notifications is coalesced into one frame per display refresh.
-    #[cfg(target_os = "macos")]
+    /// or Win32 resize notifications is coalesced into one frame per display
+    /// refresh.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) last_resize_pump: Cell<Option<Instant>>,
     pub(crate) plugins: RwLock<PluginRegistrar>,
     pub(crate) focused: Arc<FocusedWindow>,
@@ -371,16 +372,17 @@ impl AppState {
 
     /// Send metrics computed from a window-size callback.
     ///
-    /// macOS runs a nested tracking loop while the user drags a window edge, so
-    /// the event loop does not drain GLFW events until the drag ends and the
-    /// content would freeze at its old size. GLFW calls the framebuffer-size
-    /// callback inside that loop; sending the metrics from there lets the
-    /// framework lay the window out while the user drags.
+    /// macOS runs a nested tracking loop and Win32 a modal sizing loop while
+    /// the user drags a window edge, so the event loop does not drain GLFW
+    /// events until the drag ends and the content would freeze at its old
+    /// size. GLFW calls the framebuffer-size callback inside those loops;
+    /// sending the metrics from there lets the framework lay the window out
+    /// while the user drags.
     ///
     /// It must not query the window: GLFW is holding it for the callback, and
     /// locking it here would alias that borrow. The callback supplies the
     /// framebuffer size, and the scale comes from the callback's window.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn send_metrics_from_size(&self, view_id: i64, framebuffer: (i32, i32), scale: f64) {
         let Some(engine) = self.engine() else {
             return;
@@ -1459,7 +1461,7 @@ impl FlutterApp {
             platform_task_handler,
             pumping_platform_tasks: Cell::new(false),
             embedder_busy: Cell::new(false),
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             last_resize_pump: Cell::new(None),
             plugins: RwLock::new(plugins),
             focused,
@@ -1585,13 +1587,14 @@ impl FlutterApp {
         // event that marks the view focused would be lost, leaving the view
         // unable to focus its text fields.
         Self::enable_window_polling(&mut window);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            // AppKit runs a nested tracking loop while the user drags a window
-            // edge, so the event loop does not drain GLFW's polling receiver
-            // until the drag ends and the content freezes at its old size.
-            // GLFW calls this callback from inside that loop, so the framework
-            // can follow the drag instead of catching up afterwards.
+            // AppKit runs a nested tracking loop and Win32 a modal sizing loop
+            // while the user drags a window edge, so the event loop does not
+            // drain GLFW's polling receiver until the drag ends and the content
+            // freezes at its old size. GLFW calls this callback from inside
+            // those loops, so the framework can follow the drag instead of
+            // catching up afterwards.
             let state = Rc::downgrade(&self.state);
             window.set_framebuffer_size_callback(move |window, width, height| {
                 if let Some(state) = state.upgrade() {
@@ -1621,6 +1624,21 @@ impl FlutterApp {
                     // tasks here; otherwise the layout never reaches the
                     // raster thread until the drag ends.
                     state.pump_platform_tasks();
+                    #[cfg(target_os = "windows")]
+                    {
+                        // The OpenGL presenter fills the drawable up to the
+                        // settled size. Before the blocked loop reaches the
+                        // queued FramebufferSize event that size is still the
+                        // one the drag started from, which leaves the strip the
+                        // window just gained black; the callback already knows
+                        // the size the window has now.
+                        if let Some(render) = state.render() {
+                            render.mark_size_settled(view_id);
+                        }
+                        // Shrink-wrapped tooltips and popups keep animating
+                        // while their parent is resized.
+                        state.apply_desired_sizes();
+                    }
                 }
             });
         }
@@ -2311,10 +2329,59 @@ fn set_x11_modal_state(child: &glfw::PWindow, glfw: &glfw::Glfw) {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Give a child window an owner so Windows keeps it directly above its parent.
+///
+/// Win32 has neither transient-for nor `addChildWindow:`. An owned window —
+/// the `GWLP_HWNDPARENT` value — is the equivalent: it stays above its owner
+/// and is hidden with it without floating over every other application, which
+/// is exactly what the macOS child-window path gets from AppKit.
+#[cfg(target_os = "windows")]
+fn attach_to_parent(child: &glfw::PWindow, parent: &glfw::PWindow, _glfw: &glfw::Glfw) {
+    let child = child.get_win32_window();
+    let parent = parent.get_win32_window();
+    if child.is_null() || parent.is_null() {
+        return;
+    }
+    // SAFETY: both are live HWNDs created by GLFW on this (the platform) thread.
+    unsafe {
+        set_window_owner(child, parent);
+    }
+}
+
+/// Clear the owner set by [`attach_to_parent`].
+#[cfg(target_os = "windows")]
+fn detach_from_parent(window: &glfw::PWindow) {
+    let window = window.get_win32_window();
+    if window.is_null() {
+        return;
+    }
+    // SAFETY: as above; a null owner clears the relationship.
+    unsafe {
+        set_window_owner(window, std::ptr::null_mut());
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn set_window_owner(window: *mut std::ffi::c_void, owner: *mut std::ffi::c_void) {
+    use std::ffi::c_void;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowLongPtrW(window: *mut c_void, index: i32, value: isize) -> isize;
+    }
+    const GWLP_HWNDPARENT: i32 = -8;
+
+    // SAFETY: the caller guarantees a live top-level HWND; the owner may be
+    // null, which removes the relationship.
+    unsafe {
+        SetWindowLongPtrW(window, GWLP_HWNDPARENT, owner as isize);
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn attach_to_parent(_child: &glfw::PWindow, _parent: &glfw::PWindow, _glfw: &glfw::Glfw) {}
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn detach_from_parent(_window: &glfw::PWindow) {}
 
 #[cfg(not(target_os = "linux"))]

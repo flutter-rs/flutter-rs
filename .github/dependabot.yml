@@ -1,0 +1,16 @@
+# Weekly dependency updates, for the two ecosystems this repository has.
+#
+# The cargo entry covers the workspace at the root: every member's manifest and
+# Cargo.lock. `flutter-winit` is deliberately out of scope — it is excluded from
+# the workspace until it is ported, so there is nothing to keep green there.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly

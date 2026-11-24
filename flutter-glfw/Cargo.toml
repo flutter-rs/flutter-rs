@@ -1,18 +1,69 @@
 [package]
 name = "flutter-glfw"
-version = "0.4.0"
-authors = ["juju <gliheng@gmail.com>", "Sophie Tauchert <sophie@999eagle.moe>", "Chandler Newman <chandler2newman@hotmail.co.uk>"]
-edition = "2018"
+version.workspace = true
+authors = [
+    "juju <gliheng@gmail.com>",
+    "Sophie Tauchert <sophie@999eagle.moe>",
+    "Chandler Newman <chandler2newman@hotmail.co.uk>",
+]
+edition.workspace = true
+# Not the workspace's 1.88: glfw 0.63 uses `cfg_select!`, stable since 1.95, and
+# declares `rust-version = "1.56"` itself, so cargo cannot work that out for us.
+# Without this, building on 1.88 fails with "cannot find macro `cfg_select`"
+# inside a dependency instead of a plain MSRV error here.
+rust-version = "1.95"
 description = "Flutter engine embedder using glfw."
-keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
-license = "MIT"
+keywords.workspace = true
+categories = ["gui", "rendering"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-glfw"
+license.workspace = true
 
 [dependencies]
-flutter-engine-sys = { path = "../flutter-engine-sys" }
-flutter-engine = { path = "../flutter-engine" }
-flutter-plugins = { path = "../flutter-plugins" }
-locale_config = "0.3.0"
-log = "0.4.8"
-parking_lot = "0.10.0"
-glfw = "0.37.0"
+# The host's light/dark preference for `flutter/settings`: the XDG appearance
+# portal on Linux and the BSDs, the registry on Windows, `NSUserDefaults` on
+# macOS. The workspace entry turns its default features off; this crate uses
+# only the blocking `detect()` and the thread-backed `subscribe()`.
+dark-light = { workspace = true, optional = true }
+flutter-engine.workspace = true
+flutter-engine-sys.workspace = true
+# The dialog plugin is registered unconditionally by `FlutterApp`.
+# `dialog` is a feature here too: tinyfiledialogs' C sources need Windows SDK
+# headers that mingw-w64 does not ship, so a windows-gnu build uses
+# `--no-default-features`.
+flutter-plugins = { workspace = true, default-features = false }
+gl.workspace = true
+glfw.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+sys-locale.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Loaded with dlopen, so it does not add a hard libX11 link dependency.
+x11-dl.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# The macOS engine has no OpenGL backend; Metal is the GPU path and the
+# software renderer remains the fallback.
+objc2.workspace = true
+objc2-core-foundation.workspace = true
+objc2-metal.workspace = true
+raw-window-handle.workspace = true
+
+[features]
+default = ["brightness", "dialog"]
+# Native file dialogs (`flutter-plugins/dialog`, via tinyfiledialogs).
+dialog = ["flutter-plugins/dialog"]
+# Read the host's light/dark preference and follow it for the rest of the run.
+# It is on by default because the alternative is telling every app the host
+# wants a light interface, which is wrong on any desktop set to dark — but it
+# costs `dark-light` and, with it, the zbus D-Bus stack: ~66 transitive crates
+# for one `MediaQuery.platformBrightness` value. Build with
+# `default-features = false` to drop them; `flutter/settings` is still sent,
+# carrying the framework's own default of `Brightness.light`.
+brightness = ["dep:dark-light"]
+
+[lints]
+workspace = true

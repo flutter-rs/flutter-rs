@@ -1,16 +1,23 @@
 [package]
 name = "flutter-engine-sys"
-version = "0.4.0"
+version.workspace = true
 authors = ["juju <gliheng@gmail.com>"]
-edition = "2018"
+edition.workspace = true
+rust-version.workspace = true
 description = "Rust bindings for the flutter engine."
-keywords = ["flutter", "GUI"]
-repository = "https://github.com/flutter-rs/flutter-rs"
-license = "MIT"
+keywords.workspace = true
+categories = ["external-ffi-bindings", "gui"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-engine-sys"
+license.workspace = true
+readme = "../README.md"
 
 [build-dependencies]
-bindgen = "0.52.0"
-dirs = "2.0.2"
+bindgen.workspace = true
 
 [dev-dependencies]
-libloading = "0.5.2"
+libloading.workspace = true
+
+[lints]
+workspace = true

@@ -1,113 +1,255 @@
-on: [push, pull_request]
+name: CI
 
-name: Flutter Rust
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Keep master runs so every commit keeps its own result; cancel superseded
+  # pull-request runs.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
 
 jobs:
-  ci:
+  # ---------------------------------------------------------------------------
+  # Build, lint and (on Linux only) test.
+  #
+  # Only `cargo test` needs the engine library: the workspace has no bin or
+  # example target, so an rlib-only `cargo check`/`clippy` never links
+  # `-lflutter_engine`. That is why the macOS cell can be useful without an
+  # engine, and why the Linux cell downloads one.
+  # ---------------------------------------------------------------------------
+  build:
+    name: build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
-        toolchain:
-        - rust: stable
-          flutter: stable
-        - rust: nightly
-          flutter: dev
-        platform:
-        - target: x86_64-unknown-linux-gnu
-          host: ubuntu-latest
-          cross: false
-
-        - target: x86_64-apple-darwin
-          host: macos-latest
-          cross: false
-
-        #- target: x86_64-pc-windows-msvc
-        #  host: windows-latest
-        #  cross: false
-
-        - target: armv7-linux-androideabi
-          host: ubuntu-latest
-          cross: true
-        - target: aarch64-linux-android
-          host: ubuntu-latest
-          cross: true
-        - target: i686-linux-android
-          host: ubuntu-latest
-          cross: true
-        - target: x86_64-linux-android
-          host: ubuntu-latest
-          cross: true
-
-        - target: armv7-apple-ios
-          host: macos-latest
-          cross: true
-        - target: aarch64-apple-ios
-          host: macos-latest
-          cross: true
-    env:
-      RUST_BACKTRACE: 1
-      CARGO_INCREMENTAL: 0
-      LLVM_CONFIG_PATH: /usr/local/opt/llvm/bin/llvm-config
-      NDK_HOME: /usr/local/lib/android/sdk/ndk-bundle
-
-    runs-on: ${{ matrix.platform.host }}
+        include:
+          - name: linux
+            os: ubuntu-latest
+            test: true
+          # macOS compiles only. The embedder links `-lflutter_engine`, but the
+          # only Apple artifact Flutter publishes is `FlutterEmbedder.framework`
+          # (darwin-x64, a universal binary; there is no darwin-arm64 artifact
+          # at all), so putting it on the link path means renaming the framework
+          # binary to libflutter_engine.dylib and rewriting its install name.
+          # Nobody has verified that, so this cell does not pretend to test.
+          # Note: unlike the Linux cell, this one has never been run — it was
+          # written without access to a macOS host, so its first run may need
+          # adjusting. The platform-conditional code it compiles is small
+          # (flutter-glfw's four macOS modifier-key constants, two cfg(unix)
+          # helpers) and resolves against glfw 0.63.
+          - name: macos
+            os: macos-latest
+            test: false
+    runs-on: ${{ matrix.os }}
     steps:
-    - name: Checkout sources
-      uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
-    - name: Cache cargo folder
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo
-        key: ${{ matrix.platform.target }}-cargo-${{ matrix.toolchain.rust }}
+      # libclang: flutter-engine-sys runs bindgen from its build script, which
+      # happens even under `cargo check`.
+      # The rest is what GLFW 3.4 asks for when `glfw-sys` finds no system GLFW
+      # >= 3.4 through pkg-config and falls back to building its vendored copy:
+      # X11 plus the Xrandr/Xinerama/Xcursor/Xi/Xext extensions, and
+      # wayland-client/cursor/egl plus xkbcommon for the Wayland backend (both
+      # backends are enabled in [workspace.dependencies]).
+      # macOS needs none of this: Xcode supplies libclang, GLFW uses Cocoa, and
+      # cmake is preinstalled on the runner image.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake pkg-config libclang-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libwayland-dev libxkbcommon-dev
 
-    - name: Install dependencies ubuntu
-      if: matrix.platform.host == 'ubuntu-latest'
-      run: sudo apt-get install llvm-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
-    - name: Install dependencies macos
-      if: matrix.platform.host == 'macos-latest'
-      run: brew install llvm
+      # Keyed on Cargo.lock and the rustc version; caches the registry and
+      # ./target but not ~/.cargo/bin. Placed before the engine download so the
+      # key does not move when the engine hash changes.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
 
-    - name: Install dependencies windows
-      if: matrix.platform.host == 'windows-latest'
-      run: choco install llvm
+      - name: Install Flutter
+        if: matrix.test
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-    - name: Install rust toolchain
-      uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: ${{ matrix.toolchain.rust }}
-        targets: ${{ matrix.platform.target }}
+      # Google publishes a JIT (debug) build of the generic embedder per engine
+      # revision, and nothing else: no AOT build, and no darwin-arm64 build.
+      # The archive is ~15 MB and holds libflutter_engine.so at its root.
+      #
+      # flutter-action exports FLUTTER_ROOT but never runs `flutter`, so
+      # bin/cache/engine.stamp does not exist yet; bin/internal/engine.version
+      # is committed on every tagged release, which is what `channel: stable`
+      # installs. Both are read, newest-first, and a miss fails the job.
+      #
+      # $HOME/.flutter-engine rather than $RUNNER_TEMP: the path is baked into
+      # the build-script output, so a stable one keeps the cache warm.
+      - name: Download the matching Flutter engine library
+        if: matrix.test
+        run: |
+          set -euo pipefail
+          hash="$(
+            cat "$FLUTTER_ROOT/bin/cache/engine.stamp" 2>/dev/null \
+              || cat "$FLUTTER_ROOT/bin/internal/engine.version"
+          )"
+          hash="${hash//[[:space:]]/}"
+          [ -n "$hash" ] || { echo "::error::could not read the SDK's engine revision"; exit 1; }
+          echo "engine revision: $hash"
+          dir="$HOME/.flutter-engine"
+          rm -rf "$dir" && mkdir -p "$dir"
+          curl -fL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/embedder.zip" \
+            "https://storage.googleapis.com/flutter_infra_release/flutter/$hash/linux-x64/linux-x64-embedder.zip"
+          unzip -oq "$RUNNER_TEMP/embedder.zip" -d "$dir"
+          test -f "$dir/libflutter_engine.so" ||
+            { echo "::error::$dir/libflutter_engine.so is missing from the archive"; exit 1; }
+          # FLUTTER_ENGINE_LIB_DIR makes flutter-engine-sys's build script emit
+          # a link-search path, which every test binary in the workspace
+          # inherits. It also emits an rpath, but only for its own package's
+          # binaries, so the loader still needs LD_LIBRARY_PATH for the rest.
+          echo "FLUTTER_ENGINE_LIB_DIR=$dir" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$dir" >> "$GITHUB_ENV"
 
-    - name: Install flutter
-      uses: subosito/flutter-action@v1
-      with:
-        channel: ${{ matrix.toolchain.flutter }}
+      - name: cargo check
+        run: cargo check --workspace --all-targets --locked
 
-    - name: Install cargo-flutter
-      run: cargo install cargo-flutter --force
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-    - name: Build
-      run: cargo flutter --quiet --no-flutter build -p flutter-winit --target ${{ matrix.platform.target }}
+      - name: cargo test
+        if: matrix.test
+        run: cargo test --workspace --locked
 
-    - name: Test
-      if: matrix.platform.cross == false
-      run: cargo flutter --quiet --no-flutter test
-
-  lint:
+  # ---------------------------------------------------------------------------
+  # Formatting. No system dependencies and no compilation, so it is its own job
+  # and reports in seconds.
+  # ---------------------------------------------------------------------------
+  fmt:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout sources
-      uses: actions/checkout@v2
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
 
-    - name: Install rust toolchain
-      uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: stable
-        components: clippy, rustfmt
+  # ---------------------------------------------------------------------------
+  # Documentation. `broken_intra_doc_links` is only `warn` in
+  # [workspace.lints.rustdoc], so RUSTDOCFLAGS is what makes a dead link fail.
+  # --no-deps keeps third-party rustdoc warnings out of the gate.
+  # ---------------------------------------------------------------------------
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake pkg-config libclang-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libwayland-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
 
-    - name: cargo fmt
-      run: cargo fmt --all -- --check
+  # ---------------------------------------------------------------------------
+  # Minimum supported Rust version.
+  #
+  # Two cells, because the workspace declares two floors:
+  #
+  #   * 1.88, from [workspace.package] rust-version, for the four non-GLFW
+  #     crates.
+  #   * 1.95 for flutter-glfw, which overrides it in its own manifest: glfw 0.63
+  #     uses `cfg_select!`, stable from 1.95 (1.94 fails on its `_ =>` arm), and
+  #     declares rust-version 1.56 itself, so cargo cannot work it out for us.
+  #
+  # Each cell therefore checks exactly what its toolchain is declared to
+  # support; a `--workspace` build on 1.88 is refused by cargo by design.
+  # `cargo check` never links, so no engine library is needed here.
+  # ---------------------------------------------------------------------------
+  msrv:
+    name: msrv ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust: "1.88"
+            packages: -p flutter-engine-sys -p flutter-engine -p flutter-plugins -p flutter-tools
+          - rust: "1.95"
+            packages: --workspace
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake pkg-config libclang-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libwayland-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - run: cargo check ${{ matrix.packages }} --locked
 
-    - name: cargo clippy
-      run: cargo clippy -- -D warnings
+  # ---------------------------------------------------------------------------
+  # Dependency advisories, licenses, duplicate majors and source registries,
+  # all configured in deny.toml. The advisory database moves on its own, so
+  # this job can go red without a commit touching the repository.
+  # ---------------------------------------------------------------------------
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          # The action's image pins Rust 1.85, which is below this workspace's
+          # declared rust-version; `rustup default stable` inside the container
+          # keeps `cargo metadata` out of that argument entirely.
+          rust-version: stable
+          command: check advisories licenses bans sources
+
+  # ---------------------------------------------------------------------------
+  # The generated half of flutter-glfw/src/keymap.rs against the SDK's own key
+  # data. `--check` re-scrapes keyboard_maps.g.dart / keyboard_key.g.dart and
+  # compares; it writes nothing.
+  #
+  # This catches a hand-edit of the generated table, and — like `deny` — can go
+  # red without a commit touching the repository, when Flutter stable changes a
+  # key id. The fix for that is to re-run the generator and look at what moved
+  # upstream, never to edit the table.
+  #
+  # No Rust toolchain, no engine and no `flutter` run: the two .g.dart files
+  # ship in the SDK checkout, so installing the SDK is the whole setup. python3
+  # is preinstalled on the runner image.
+  # ---------------------------------------------------------------------------
+  keymap:
+    name: keymap in sync with the sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      # flutter-action exports FLUTTER_ROOT, which is where the generator looks
+      # before falling back to `flutter` on PATH.
+      - run: python3 scripts/gen-keymap.py --check

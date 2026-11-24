@@ -2,3 +2,22 @@
 **/*.rs.bk
 /.vscode
 /.cargo
+
+# Flutter engine libraries. `scripts/build-engine.sh --out DIR` and the README
+# examples drop a ~40 MB libflutter_engine.so into one of these directories;
+# an unguarded `git add` would otherwise stage it.
+# (flutter-tools needs nothing here: it caches downloads under the user's
+# cache dir, outside the tree.)
+/.engine
+/.engine-*
+**/.engine/
+**/.engine-*/
+libflutter_engine.so
+libflutter_engine.dylib
+flutter_engine.dll
+flutter_engine.dll.lib
+FlutterEmbedder.framework/
+icudtl.dat
+
+# Note: Cargo.lock is deliberately NOT ignored. It is tracked, and CI builds
+# with `--locked` against it.

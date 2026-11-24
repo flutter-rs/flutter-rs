@@ -1,12 +1,25 @@
 [package]
 name = "flutter-tools"
-version = "0.1.0"
+version.workspace = true
 authors = ["Chandler Newman <chandler2newman@hotmail.co.uk>"]
-edition = "2018"
+edition.workspace = true
+rust-version.workspace = true
+description = "Flutter SDK locator and engine artifact downloader for flutter-rs."
+keywords.workspace = true
+categories = ["development-tools::build-utils", "gui"]
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/flutter-tools"
+license.workspace = true
+readme = "../README.md"
 
 [dependencies]
-which = "3.1.1"
-dirs = "2.0.2"
-curl = "0.4.29"
-indicatif = "0.14.0"
-zip = "0.5.5"
+curl.workspace = true
+dirs.workspace = true
+indicatif.workspace = true
+thiserror.workspace = true
+which.workspace = true
+zip.workspace = true
+
+[lints]
+workspace = true
